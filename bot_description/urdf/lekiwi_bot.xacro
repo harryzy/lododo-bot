@@ -1,0 +1,602 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="LeKiwi">
+
+    <!-- ====================================================================== -->
+    <!-- 第1部分: 常量与属性定义 / Part 1: Constants and Properties             -->
+    <!-- ====================================================================== -->
+    <material name="White">
+        <color rgba="1 1 1 1" />
+    </material>
+    <material name="Black">
+        <color rgba="0 0 0 1" />
+    </material>
+
+    <!-- 数学常量 / Mathematical Constants -->
+    <xacro:property name="M_PI" value="3.141592653589793" />
+    <xacro:property name="M_PI_2" value="1.5707963267948966" />    <!-- π/2 = 90° -->
+    <xacro:property name="M_PI_3" value="1.0471975511965976" />    <!-- π/3 = 60° -->
+    <xacro:property name="M_PI_6" value="0.5235987755982988" />    <!-- π/6 = 30° -->
+    <xacro:property name="DEG_15" value="0.26179938779914924" />   <!-- 15° -->
+    <xacro:property name="DEG_75" value="1.3089969389957468" />    <!-- 75° -->
+    <xacro:property name="DEG_80" value="1.3962634015954636" />    <!-- 80° -->
+    <xacro:property name="DEG_100" value="1.7453292519943302" />   <!-- 100° -->
+    <xacro:property name="DEG_120" value="2.094395102393195" />    <!-- 120° -->
+    <xacro:property name="DEG_150" value="2.6179938779914944" />   <!-- 150° -->
+
+    <!-- 网格文件路径与缩放 / Mesh file path and scale -->
+    <xacro:property name="mesh_pkg" value="package://bot_description/urdf/meshes" />
+    <xacro:property name="mesh_scale" value="0.001 0.001 0.001" />
+
+    <!-- ====================================================================== -->
+    <!-- 第2部分: 宏定义 / Part 2: Macro Definitions                            -->
+    <!-- ====================================================================== -->
+
+    <!-- 
+        通用带惯性属性的 Link 宏 / Generic Link Macro with Inertial Properties
+        用于创建包含惯性、视觉和碰撞属性的 link
+        Used to create links with inertial, visual, and collision properties
+        参数 material_name: 材质颜色名称，默认为 White / Material color name, default is White
+    -->
+    <xacro:macro name="mesh_link"
+        params="name mesh_file 
+        inertial_xyz inertial_rpy mass ixx iyy izz ixy iyz ixz
+        visual_xyz visual_rpy material_name:=White">
+        <link name="${name}">
+            <inertial>
+                <origin xyz="${inertial_xyz}" rpy="${inertial_rpy}" />
+                <mass value="${mass}" />
+                <inertia ixx="${ixx}" iyy="${iyy}" izz="${izz}"
+                    ixy="${ixy}" iyz="${iyz}" ixz="${ixz}" />
+            </inertial>
+            <visual name="${name}_visual">
+                <origin xyz="${visual_xyz}" rpy="${visual_rpy}" />
+                <geometry>
+                    <mesh filename="${mesh_pkg}/${mesh_file}" scale="${mesh_scale}" />
+                </geometry>
+                <material name="${material_name}" />
+            </visual>
+            <collision name="${name}_collision">
+                <origin xyz="${visual_xyz}" rpy="${visual_rpy}" />
+                <geometry>
+                    <mesh filename="${mesh_pkg}/${mesh_file}" scale="${mesh_scale}" />
+                </geometry>
+            </collision>
+        </link>
+    </xacro:macro>
+
+    <!-- 
+        六角铜柱宏 / Hex Standoff Macro
+        用于创建固定支撑柱 / Used to create fixed support standoffs
+    -->
+    <xacro:macro name="hex_standoff"
+        params="suffix mesh_file parent_link xyz
+        inertial_xyz inertial_z visual_z">
+        <xacro:mesh_link
+            name="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff${suffix}"
+            mesh_file="${mesh_file}"
+            inertial_xyz="${inertial_xyz} ${inertial_z}"
+            inertial_rpy="0 0 0"
+            mass="0.006150070863406618"
+            ixx="1.0965196650850464e-06" iyy="1.0965196548945862e-06" izz="1.837396493115063e-08"
+            ixy="0" iyz="-9.149560110748543e-14" ixz="0"
+            visual_xyz="0 0 ${visual_z}"
+            visual_rpy="${M_PI} 0 0" />
+        <joint name="base_plate_layer1-v5_Rigid_standoff${suffix}" type="fixed">
+            <origin xyz="${xyz}" rpy="${M_PI} 0 0" />
+            <parent link="${parent_link}" />
+            <child link="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff${suffix}" />
+        </joint>
+    </xacro:macro>
+
+    <!-- 
+        轮组装配宏 / Wheel Assembly Macro
+        包含: 电机支架 -> 舵机 -> 轮毂 -> 全向轮
+        Contains: Motor Mount -> Servo Motor -> Wheel Mount -> Omni Wheel
+    -->
+    <xacro:macro name="wheel_assembly"
+        params="suffix
+        mount_mesh motor_mesh wheel_mount_mesh wheel_mesh
+        mount_xyz mount_rpy mount_inertial_xyz mount_inertial_rpy mount_mass 
+        mount_ixx mount_iyy mount_izz mount_ixy mount_iyz mount_ixz
+        mount_visual_xyz mount_visual_rpy
+        motor_joint_xyz motor_joint_rpy
+        motor_inertial_xyz motor_inertial_rpy motor_mass
+        motor_ixx motor_iyy motor_izz motor_ixy motor_iyz motor_ixz
+        motor_visual_xyz motor_visual_rpy
+        wheel_revolute_xyz wheel_revolute_rpy wheel_axis
+        wheel_mount_inertial_xyz wheel_mount_inertial_rpy wheel_mount_mass
+        wheel_mount_ixx wheel_mount_iyy wheel_mount_izz wheel_mount_ixy wheel_mount_iyz wheel_mount_ixz
+        wheel_mount_visual_xyz wheel_mount_visual_rpy
+        wheel_joint_xyz wheel_joint_rpy
+        wheel_inertial_xyz wheel_inertial_rpy wheel_mass
+        wheel_ixx wheel_iyy wheel_izz wheel_ixy wheel_iyz wheel_ixz
+        wheel_visual_xyz wheel_visual_rpy">
+
+        <!-- 电机支架 Link / Motor Mount Link -->
+        <xacro:mesh_link
+            name="drive_motor_mount-v11${suffix}"
+            mesh_file="${mount_mesh}"
+            inertial_xyz="${mount_inertial_xyz}" inertial_rpy="${mount_inertial_rpy}"
+            mass="${mount_mass}"
+            ixx="${mount_ixx}" iyy="${mount_iyy}" izz="${mount_izz}"
+            ixy="${mount_ixy}" iyz="${mount_iyz}" ixz="${mount_ixz}"
+            visual_xyz="${mount_visual_xyz}" visual_rpy="${mount_visual_rpy}" />
+
+        <!-- 底板到电机支架的关节 / Joint from Base Plate to Motor Mount -->
+        <joint name="base_plate_layer1-v5_baseplate2mount${suffix}" type="fixed">
+            <origin xyz="${mount_xyz}" rpy="${mount_rpy}" />
+            <parent link="base_plate_layer1-v5" />
+            <child link="drive_motor_mount-v11${suffix}" />
+        </joint>
+
+        <!-- 舵机 Link / Servo Motor Link -->
+        <xacro:mesh_link
+            name="ST3215_Servo_Motor-v1${suffix}"
+            mesh_file="${motor_mesh}"
+            inertial_xyz="${motor_inertial_xyz}" inertial_rpy="${motor_inertial_rpy}"
+            mass="${motor_mass}"
+            ixx="${motor_ixx}" iyy="${motor_iyy}" izz="${motor_izz}"
+            ixy="${motor_ixy}" iyz="${motor_iyz}" ixz="${motor_ixz}"
+            visual_xyz="${motor_visual_xyz}" visual_rpy="${motor_visual_rpy}" />
+
+        <!-- 电机支架到舵机的关节 / Joint from Motor Mount to Servo -->
+        <joint name="drive_motor_mount-v11${suffix}_to_servo" type="fixed">
+            <origin xyz="${motor_joint_xyz}" rpy="${motor_joint_rpy}" />
+            <parent link="drive_motor_mount-v11${suffix}" />
+            <child link="ST3215_Servo_Motor-v1${suffix}" />
+        </joint>
+
+        <!-- 轮毂 Link / Wheel Mount Link -->
+        <xacro:mesh_link
+            name="omni_wheel_mount-v5${suffix}"
+            mesh_file="${wheel_mount_mesh}"
+            inertial_xyz="${wheel_mount_inertial_xyz}" inertial_rpy="${wheel_mount_inertial_rpy}"
+            mass="${wheel_mount_mass}"
+            ixx="${wheel_mount_ixx}" iyy="${wheel_mount_iyy}" izz="${wheel_mount_izz}"
+            ixy="${wheel_mount_ixy}" iyz="${wheel_mount_iyz}" ixz="${wheel_mount_ixz}"
+            visual_xyz="${wheel_mount_visual_xyz}" visual_rpy="${wheel_mount_visual_rpy}" />
+
+        <!-- 舵机到轮毂的旋转关节 / Revolute Joint from Servo to Wheel Mount -->
+        <joint name="ST3215_Servo_Motor-v1${suffix}_Revolute" type="continuous">
+            <origin xyz="${wheel_revolute_xyz}" rpy="${wheel_revolute_rpy}" />
+            <parent link="ST3215_Servo_Motor-v1${suffix}" />
+            <child link="omni_wheel_mount-v5${suffix}" />
+            <axis xyz="${wheel_axis}" />
+        </joint>
+
+        <!-- 全向轮 Link / Omni Wheel Link -->
+        <xacro:mesh_link
+            name="4-Omni-Directional-Wheel_Single_Body-v1${suffix}"
+            mesh_file="${wheel_mesh}"
+            inertial_xyz="${wheel_inertial_xyz}" inertial_rpy="${wheel_inertial_rpy}"
+            mass="${wheel_mass}"
+            ixx="${wheel_ixx}" iyy="${wheel_iyy}" izz="${wheel_izz}"
+            ixy="${wheel_ixy}" iyz="${wheel_iyz}" ixz="${wheel_ixz}"
+            visual_xyz="${wheel_visual_xyz}" visual_rpy="${wheel_visual_rpy}"
+            material_name="Black" />
+
+        <!-- 轮毂到全向轮的关节 / Joint from Wheel Mount to Omni Wheel -->
+        <joint name="omni_wheel_mount-v5${suffix}_to_wheel" type="fixed">
+            <origin xyz="${wheel_joint_xyz}" rpy="${wheel_joint_rpy}" />
+            <parent link="omni_wheel_mount-v5${suffix}" />
+            <child link="4-Omni-Directional-Wheel_Single_Body-v1${suffix}" />
+        </joint>
+    </xacro:macro>
+
+    <!-- ====================================================================== -->
+    <!-- 第3部分: 底盘基座 / Part 3: Chassis Base                               -->
+    <!-- ====================================================================== -->
+
+    <!-- 
+        虚拟根节点 (无惯性属性以满足 KDL 要求)
+        Dummy root link without inertial to satisfy KDL (no inertia on root)
+    -->
+    <link name="base_link" />
+
+    <!-- 底板第一层 / Base Plate Layer 1 -->
+    <xacro:mesh_link
+        name="base_plate_layer1-v5"
+        mesh_file="base_plate_layer1-v5.stl"
+        inertial_xyz="0 -2.7155537377808555e-05 -0.0035"
+        inertial_rpy="0 0 0"
+        mass="1.9468624348344596"
+        ixx="0.005637109888809055" iyy="0.005628440956780792" izz="0.0112496514690387"
+        ixy="0" iyz="0" ixz="0"
+        visual_xyz="0 0 0"
+        visual_rpy="0 0 0" />
+
+    <!-- base_link -> base_plate_layer1-v5 -->
+    <joint name="base_link_to_base_plate" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 -${M_PI_2}" />
+        <parent link="base_link" />
+        <child link="base_plate_layer1-v5" />
+    </joint>
+
+    <!-- ====================================================================== -->
+    <!-- 第4部分: 轮组装配 (3组全向轮) / Part 4: Wheel Assemblies (3 Omni Wheels) -->
+    <!-- ====================================================================== -->
+
+    <!-- 
+        轮组1: 后轮 (Back Wheel) - suffix: -2
+        base_plate_layer1 -> drive_motor_mount-2 -> servo_motor-2 -> wheel_mount-2 -> wheel-2
+    -->
+    <xacro:wheel_assembly suffix="-2"
+        mount_mesh="drive_motor_mount-v11-2.stl"
+        motor_mesh="ST3215_Servo_Motor-v1-2.stl"
+        wheel_mount_mesh="omni_wheel_mount-v5-2.stl"
+        wheel_mesh="4-Omni-Directional-Wheel_Single_Body-v1-2.stl"
+        mount_xyz="-0.02 -0.1 0.0"
+        mount_rpy="${M_PI} 0 0"
+        mount_inertial_xyz="-0.0005387977877578853 0.00013596517365616734 -0.0031122813365712966"
+        mount_inertial_rpy="0 0 0"
+        mount_mass="0.047242276734470956"
+        mount_ixx="5.0825527819301506e-06" mount_iyy="4.311179042786683e-06"
+        mount_izz="8.973045405784286e-06"
+        mount_ixy="-1.350766273806132e-08" mount_iyz="3.9985254125769694e-08"
+        mount_ixz="-1.2930640441004792e-07"
+        mount_visual_xyz="0 0 -0.0035"
+        mount_visual_rpy="${M_PI} 0 ${M_PI_2}"
+        motor_joint_xyz="-0.01214 -0.016 -0.00761"
+        motor_joint_rpy="${M_PI} ${M_PI_2} 0"
+        motor_inertial_xyz="0.010251219185305343 -0.016877183343657672 -0.021914257028179583"
+        motor_inertial_rpy="0 0 0"
+        motor_mass="0.0658962961901927"
+        motor_ixx="1.8215748982019337e-05" motor_iyy="1.391369165568997e-05"
+        motor_izz="1.030090838794644e-05"
+        motor_ixy="0" motor_iyz="-1.195158171269568e-07" motor_ixz="0"
+        motor_visual_xyz="0.01025 -0.0256 -0.00725"
+        motor_visual_rpy="-${M_PI} -${M_PI_2} 0"
+        wheel_revolute_xyz="0.01025 -0.0352 -0.03275"
+        wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
+        wheel_axis="0 0 -1.0"
+        wheel_mount_inertial_xyz="0 0 -0.005522899140934374"
+        wheel_mount_inertial_rpy="0 0 0"
+        wheel_mount_mass="0.1235708646349694"
+        wheel_mount_ixx="1.78648151778313e-05" wheel_mount_iyy="1.7864798695374842e-05"
+        wheel_mount_izz="3.26402691752235e-05"
+        wheel_mount_ixy="0" wheel_mount_iyz="0" wheel_mount_ixz="0"
+        wheel_mount_visual_xyz="0 0 -0.0055875"
+        wheel_mount_visual_rpy="${M_PI} 0 0"
+        wheel_joint_xyz="0 0 -0.007175"
+        wheel_joint_rpy="-${M_PI_2} 0 0"
+        wheel_inertial_xyz="0 0.015875012090586064 0"
+        wheel_inertial_rpy="0 0 0"
+        wheel_mass="1.3542854082324305"
+        wheel_ixx="0.0010936167993003225" wheel_iyy="0.0018798127501507863"
+        wheel_izz="0.0010936140861738455"
+        wheel_ixy="0" wheel_iyz="0" wheel_ixz="0"
+        wheel_visual_xyz="0 0.015875 0"
+        wheel_visual_rpy="${M_PI_2} ${DEG_15} 0" />
+
+    <!-- 
+        轮组2: 右前轮 (Right Front Wheel) - suffix: -1
+        base_plate_layer1 -> drive_motor_mount-1 -> servo_motor-1 -> wheel_mount-1 -> wheel-1
+    -->
+    <xacro:wheel_assembly suffix="-1"
+        mount_mesh="drive_motor_mount-v11-1.stl"
+        motor_mesh="ST3215_Servo_Motor-v1-1.stl"
+        wheel_mount_mesh="omni_wheel_mount-v5-1.stl"
+        wheel_mesh="4-Omni-Directional-Wheel_Single_Body-v1-1.stl"
+        mount_xyz="0.07928203 0.02267949 0.0"
+        mount_rpy="0 0 0"
+        mount_inertial_xyz="0.00038715049105024767 -0.0003986280605619008 0.0031122813365712966"
+        mount_inertial_rpy="0 0 0"
+        mount_mass="0.047242276734470956"
+        mount_ixx="4.515720456649471e-06" mount_iyy="4.8780113680673386e-06"
+        mount_izz="8.973045405784395e-06"
+        mount_ixy="-3.4076845832425005e-07" mount_iyz="9.199000402824292e-08"
+        mount_ixz="-9.928144805471037e-08"
+        mount_visual_xyz="0 0 0.0035"
+        mount_visual_rpy="0 0 ${M_PI_6}"
+        motor_joint_xyz="-0.0077864 -0.01851355 0.00761"
+        motor_joint_rpy="0 -${M_PI_2} 0"
+        motor_inertial_xyz="0.01025121918530536 0.027816898485662264 -0.00435175717107704"
+        motor_inertial_rpy="0 0 0"
+        motor_mass="0.0658962961901927"
+        motor_ixx="1.82157489820195e-05" motor_iyy="1.1100600471096564e-05"
+        motor_izz="1.3113999572540226e-05"
+        motor_ixy="0" motor_iyz="-1.504623135553104e-06" motor_ixz="0"
+        motor_visual_xyz="0.01025 0.019478687706257793 -0.019238066498388086"
+        motor_visual_rpy="-${M_PI_2} ${M_PI_6} -${M_PI_2}"
+        wheel_revolute_xyz="0.01025 0.04636234 -0.01480191"
+        wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
+        wheel_axis="0.866025 0 0.5"
+        wheel_mount_inertial_xyz="0.004782968825905343 0 0.0027614494161754166"
+        wheel_mount_inertial_rpy="0 0 0"
+        wheel_mount_mass="0.1235708646349694"
+        wheel_mount_ixx="2.8946401592011724e-05" wheel_mount_iyy="1.7864815177831735e-05"
+        wheel_mount_izz="2.155866627858642e-05"
+        wheel_mount_ixy="0" wheel_mount_iyz="0" wheel_mount_ixz="6.397966372990203e-06"
+        wheel_mount_visual_xyz="0.004838917318364206 0 0.002793745502761027"
+        wheel_mount_visual_rpy="${M_PI_3} 0 ${M_PI_2}"
+        wheel_joint_xyz="0.00621373 0 0.0035875"
+        wheel_joint_rpy="-${M_PI_2} 0 0"
+        wheel_inertial_xyz="0.01374810955311503 -0.007937600014431929 0"
+        wheel_inertial_rpy="0 0 0"
+        wheel_mass="1.3542854082324305"
+        wheel_ixx="0.0016832621879788534" wheel_iyy="0.0012901614102005313"
+        wheel_izz="0.0010936200374455259"
+        wheel_ixy="-0.0003404354598931583" wheel_iyz="0" wheel_ixz="0"
+        wheel_visual_xyz="0.013748155931950041 -0.007937495502761073 0"
+        wheel_visual_rpy="-${M_PI_6} -${M_PI_2} 0" />
+
+    <!-- 
+        轮组3: 左前轮 (Left Front Wheel) - suffix: (empty)
+        base_plate_layer1 -> drive_motor_mount -> servo_motor -> wheel_mount -> wheel
+    -->
+    <xacro:wheel_assembly suffix=""
+        mount_mesh="drive_motor_mount-v11.stl"
+        motor_mesh="ST3215_Servo_Motor-v1.stl"
+        wheel_mount_mesh="omni_wheel_mount-v5.stl"
+        wheel_mesh="4-Omni-Directional-Wheel_Single_Body-v1.stl"
+        mount_xyz="-0.05928203 0.05732051 0.0"
+        mount_rpy="${M_PI} 0 0"
+        mount_inertial_xyz="0.00015164729670767764 -0.0005345932342180682 -0.003112281336571299"
+        mount_inertial_rpy="0 0 0"
+        mount_mass="0.047242276734470956"
+        mount_ixx="4.492324498495657e-06" mount_iyy="4.901407326221227e-06"
+        mount_izz="8.973045405784395e-06"
+        mount_ixy="-3.2726079558618873e-07" mount_iyz="-1.319752581540088e-07"
+        mount_ixz="3.002495635533459e-08"
+        mount_visual_xyz="0 0 -0.0035"
+        mount_visual_rpy="-${M_PI} 0 -${DEG_150}"
+        motor_joint_xyz="0.0199264 -0.00251355 -0.00761"
+        motor_joint_rpy="${M_PI} ${M_PI_2} 0"
+        motor_inertial_xyz="0.010251219185305386 -0.010539715142004517 0.02557319387622896"
+        motor_inertial_rpy="0 0 0"
+        motor_mass="0.0658962961901927"
+        motor_ixx="1.8215748982019662e-05" motor_iyy="1.1307607938668487e-05"
+        motor_izz="1.2906992104968112e-05"
+        motor_ixy="0" motor_iyz="1.6241389526799929e-06" motor_ixz="0"
+        motor_visual_xyz="0.01025 0.006521312293742278 0.02579524618281096"
+        motor_visual_rpy="${M_PI_2} ${M_PI_6} ${M_PI_2}"
+        wheel_revolute_xyz="0.01025 -0.01076234 0.04685909"
+        wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
+        wheel_axis="-0.866025 0 0.5"
+        wheel_mount_inertial_xyz="-0.00478297352513172 0 0.002761449724759064"
+        wheel_mount_inertial_rpy="0 0 0"
+        wheel_mount_mass="0.1235708646349694"
+        wheel_mount_ixx="2.8946401518511002e-05" wheel_mount_iyy="1.7864815177831735e-05"
+        wheel_mount_izz="2.155866635208752e-05"
+        wheel_mount_ixy="0" wheel_mount_iyz="0" wheel_mount_ixz="-6.397966415425984e-06"
+        wheel_mount_visual_xyz="-0.004838917002787113 0 0.002793754497239087"
+        wheel_mount_visual_rpy="-${M_PI_3} 0 ${M_PI_2}"
+        wheel_joint_xyz="-0.00621373 0 0.0035875"
+        wheel_joint_rpy="-${M_PI_2} 0 0"
+        wheel_inertial_xyz="-0.013748211804798878 -0.007937431357202592 0"
+        wheel_inertial_rpy="0 0 0"
+        wheel_mass="1.3542854082324305"
+        wheel_ixx="0.00168326307714072" wheel_iyy="0.0012901637591839067"
+        wheel_izz="0.001093616799300322"
+        wheel_ixy="0.00034043401176330265" wheel_iyz="0" wheel_ixz="0"
+        wheel_visual_xyz="-0.013748155616372878 -0.007937504497239081 0"
+        wheel_visual_rpy="${M_PI_2} -${DEG_75} ${DEG_120}" />
+
+    <!-- ====================================================================== -->
+    <!-- 第5部分: 电子元器件 / Part 5: Electronic Components                    -->
+    <!-- ====================================================================== -->
+
+    <!-- 舵机控制器支架 / Servo Controller Mount -->
+    <xacro:mesh_link
+        name="servo_controller_mount-v3"
+        mesh_file="servo_controller_mount-v3.stl"
+        inertial_xyz="0 0 0.0031621761491414137"
+        inertial_rpy="0 0 0"
+        mass="0.12559881449596652"
+        ixx="3.9342162518597853e-05" iyy="2.2687082259147483e-05" izz="6.101873120031777e-05"
+        ixy="0" iyz="0" ixz="0"
+        visual_xyz="0 0 0.006"
+        visual_rpy="0 0 ${M_PI_2}" />
+
+    <!-- base_plate_layer1 -> servo_controller_mount -->
+    <joint name="base_plate_layer1-v5_to_servo_controller" type="fixed">
+        <origin xyz="0 0.06 0" rpy="0 0 0" />
+        <parent link="base_plate_layer1-v5" />
+        <child link="servo_controller_mount-v3" />
+    </joint>
+
+    <!-- 电池支架 / Battery Mount -->
+    <xacro:mesh_link
+        name="lipo_battery_mount-v3"
+        mesh_file="lipo_battery_mount-v3.stl"
+        inertial_xyz="-0.008318729060206734 0 -0.0046380028574369405"
+        inertial_rpy="0 0 0"
+        mass="0.2984320446179905"
+        ixx="0.00012005856115871003" iyy="0.0001714977017617139" izz="0.0002832588139475423"
+        ixy="0" iyz="0" ixz="3.436962366808516e-06"
+        visual_xyz="-0.01 0 -0.0035"
+        visual_rpy="${M_PI} 0 -${M_PI_2}" />
+
+    <!-- base_plate_layer1 -> lipo_battery_mount -->
+    <joint name="base_plate_layer1-v5_to_battery_mount" type="fixed">
+        <origin xyz="-0.04 -0.02 0" rpy="${M_PI} 0 0" />
+        <parent link="base_plate_layer1-v5" />
+        <child link="lipo_battery_mount-v3" />
+    </joint>
+
+    <!-- 电池 / Battery -->
+    <xacro:mesh_link
+        name="Battery---Battery-5.2-Ah-DC5521-Plug-v2"
+        mesh_file="Battery---Battery-5.2-Ah-DC5521-Plug-v2.stl"
+        inertial_xyz="-7.797576827959673e-05 -8.300646300726023e-05 0.02"
+        inertial_rpy="0 0 0"
+        mass="1.2215469988184764"
+        ixx="0.00047597821218279624" iyy="0.00065975897252246" izz="0.0008162228074590446"
+        ixy="-3.1353787147811365e-06" iyz="0" ixz="0"
+        visual_xyz="-0.035 0 0"
+        visual_rpy="0 -${M_PI_2} 0" />
+
+    <!-- lipo_battery_mount -> Battery -->
+    <joint name="lipo_battery_mount-v3_to_battery" type="fixed">
+        <origin xyz="-0.0115 0 -0.0065" rpy="${M_PI} 0 0" />
+        <parent link="lipo_battery_mount-v3" />
+        <child link="Battery---Battery-5.2-Ah-DC5521-Plug-v2" />
+    </joint>
+
+    <!-- ====================================================================== -->
+    <!-- 第6部分: 相机系统 / Part 6: Camera System                              -->
+    <!-- ====================================================================== -->
+
+    <!-- 相机支架 / Camera Mount -->
+    <xacro:mesh_link
+        name="Camera-Mount-v8"
+        mesh_file="Camera-Mount-v8.stl"
+        inertial_xyz="-0.019889007343132665 0.003162253231103023 0.020248493842242046"
+        inertial_rpy="0 0 0"
+        mass="0.09265469509875414"
+        ixx="1.7978739433416715e-05" iyy="3.514579199775795e-05" izz="1.872943107726426e-05"
+        ixy="2.2659313403750657e-08" iyz="1.493014354660236e-06" ixz="-1.7551355004084038e-07"
+        visual_xyz="-0.02 0 0"
+        visual_rpy="0 0 ${M_PI_2}" />
+
+    <!-- base_plate_layer1 -> Camera-Mount -->
+    <joint name="base_plate_layer1-v5_to_camera_mount" type="fixed">
+        <origin xyz="0.02 0.1 0" rpy="0 0 0" />
+        <parent link="base_plate_layer1-v5" />
+        <child link="Camera-Mount-v8" />
+    </joint>
+
+    <!-- 相机 / Camera -->
+    <xacro:mesh_link
+        name="Camera-Model-v3"
+        mesh_file="Camera-Model-v3.stl"
+        inertial_xyz="-0.01552129548236823 0.006733132771749837 -0.011599583774026805"
+        inertial_rpy="0 0 0"
+        mass="0.039920058315088616"
+        ixx="5.3846132096854386e-06" iyy="7.612080863465678e-06" izz="5.20250984027362e-06"
+        ixy="3.6969144888008537e-07" iyz="-9.014266851093004e-08" ixz="3.317962541199677e-08"
+        visual_xyz="-0.01600892660245488 0.0024310699968045314 -0.011393166874206155"
+        visual_rpy="${DEG_100} ${DEG_80} -${M_PI}" />
+
+    <!-- Camera-Mount -> Camera -->
+    <joint name="Camera-Mount-v8_to_camera" type="fixed">
+        <origin xyz="-0.034 0.00636666 0.03831948" rpy="${M_PI} -${DEG_80} ${M_PI}" />
+        <parent link="Camera-Mount-v8" />
+        <child link="Camera-Model-v3" />
+    </joint>
+
+    <!-- ====================================================================== -->
+    <!-- 第7部分: 支撑铜柱与第二层底板 / Part 7: Standoffs and Second Layer     -->
+    <!-- ====================================================================== -->
+
+    <!-- 
+        六角铜柱 (6个) / Hex Standoffs (6 pieces)
+        连接底板第一层和第二层 / Connect base plate layer 1 and layer 2
+    -->
+
+    <!-- 铜柱0: 中心 / Standoff 0: Center -->
+    <xacro:hex_standoff suffix=""
+        mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff.stl"
+        parent_link="base_plate_layer1-v5"
+        xyz="0 0 0"
+        inertial_xyz="0 0"
+        inertial_z="-0.02499999330297986"
+        visual_z="-0.025" />
+
+    <!-- 铜柱1: 左侧 / Standoff 1: Left -->
+    <xacro:hex_standoff suffix="-1"
+        mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-1.stl"
+        parent_link="base_plate_layer1-v5"
+        xyz="-0.1 -0.02 0"
+        inertial_xyz="0 0"
+        inertial_z="-0.02499999330297986"
+        visual_z="-0.025" />
+
+    <!-- 铜柱2: 右侧 / Standoff 2: Right -->
+    <xacro:hex_standoff suffix="-2"
+        mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-2.stl"
+        parent_link="base_plate_layer1-v5"
+        xyz="0.1 -0.02 0"
+        inertial_xyz="0 0"
+        inertial_z="-0.02481596290467566"
+        visual_z="-0.0248159696016958" />
+
+    <!-- 铜柱3: 左后 / Standoff 3: Left Rear -->
+    <xacro:hex_standoff suffix="-3"
+        mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-3.stl"
+        parent_link="base_plate_layer1-v5"
+        xyz="-0.09660254 0.03267949 0"
+        inertial_xyz="0 0"
+        inertial_z="-0.024999993302979855"
+        visual_z="-0.025" />
+
+    <!-- 铜柱4: 右后 / Standoff 4: Right Rear -->
+    <xacro:hex_standoff suffix="-4"
+        mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-4.stl"
+        parent_link="base_plate_layer1-v5"
+        xyz="0.07660254 0.06732051 0"
+        inertial_xyz="0 0"
+        inertial_z="-0.02499999330297986"
+        visual_z="-0.025" />
+
+    <!-- 铜柱5: 前方 / Standoff 5: Front -->
+    <xacro:hex_standoff suffix="-5"
+        mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-5.stl"
+        parent_link="base_plate_layer1-v5"
+        xyz="0.02 -0.1 0"
+        inertial_xyz="0 0"
+        inertial_z="-0.02499999330297986"
+        visual_z="-0.025" />
+
+    <!-- 底板第二层 / Base Plate Layer 2 -->
+    <xacro:mesh_link
+        name="base_plate_layer2-v3"
+        mesh_file="base_plate_layer2-v3.stl"
+        inertial_xyz="0 -0.000737848116891558 0.0035"
+        inertial_rpy="0 0 0"
+        mass="1.9153836917607525"
+        ixx="0.005568248812566009" iyy="0.00562277090534615" izz="0.01117537741776278"
+        ixy="0" iyz="0" ixz="0"
+        visual_xyz="0 0 0.007"
+        visual_rpy="0 0 0" />
+
+    <!-- Standoff -> base_plate_layer2 -->
+    <joint name="standoff_to_base_plate_layer2" type="fixed">
+        <origin xyz="0 0 -0.05" rpy="${M_PI} 0 0" />
+        <parent link="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff" />
+        <child link="base_plate_layer2-v3" />
+    </joint>
+
+    <!-- ====================================================================== -->
+    <!-- 第8部分: 顶部盖板 / Part 8: Top Covers                                 -->
+    <!-- ====================================================================== -->
+
+    <!-- 底部盖板 / Bottom Cover -->
+    <xacro:mesh_link
+        name="Bottom-V2-v3"
+        mesh_file="Bottom-V2-v3.stl"
+        inertial_xyz="0.021623799145011228 0.034248555702746215 0.002860022373659428"
+        inertial_rpy="0 0 0"
+        mass="0.14588862570926195"
+        ixx="5.861212367196979e-05" iyy="0.00012648590487769422" izz="0.0001820968398762769"
+        ixy="1.504419769130789e-06" iyz="7.708271472892277e-07" ixz="-2.5907710844293995e-06"
+        visual_xyz="0.02 0.036 0"
+        visual_rpy="0 0 -${M_PI}" />
+
+    <!-- base_plate_layer2 -> Bottom-V2 -->
+    <joint name="base_plate_layer2-v3_to_bottom_cover" type="fixed">
+        <origin xyz="-0.02 -0.1 0.007" rpy="0 0 0" />
+        <parent link="base_plate_layer2-v3" />
+        <child link="Bottom-V2-v3" />
+    </joint>
+
+    <!-- 顶部盖板 / Top Cover -->
+    <xacro:mesh_link
+        name="Top-V2-v2"
+        mesh_file="Top-V2-v2.stl"
+        inertial_xyz="0.00394392416615524 -0.00045096335632409 0.021552698750372336"
+        inertial_rpy="0 0 0"
+        mass="0.1256590419653392"
+        ixx="5.8982381320791524e-05" iyy="0.00013338786905954623" izz="0.00018586375094365218"
+        ixy="-1.6170683703386755e-07" iyz="5.073018525688332e-07" ixz="2.7949770042390678e-06"
+        visual_xyz="0.0003002260252632436 -0.00012500000000001065 0.026499570509487737"
+        visual_rpy="-${M_PI} 0 -${M_PI}" />
+
+    <!-- Bottom-V2 -> Top-V2 -->
+    <joint name="Bottom-V2-v3_to_top_cover" type="fixed">
+        <origin xyz="0.0197 0.036125 0.0025" rpy="0 0 0" />
+        <parent link="Bottom-V2-v3" />
+        <child link="Top-V2-v2" />
+    </joint>
+
+</robot>
