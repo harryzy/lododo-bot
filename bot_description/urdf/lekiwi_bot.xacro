@@ -157,11 +157,10 @@
             visual_xyz="${wheel_mount_visual_xyz}" visual_rpy="${wheel_mount_visual_rpy}" />
 
         <!-- 舵机到轮毂的旋转关节 / Revolute Joint from Servo to Wheel Mount -->
-        <joint name="ST3215_Servo_Motor-v1${suffix}_Revolute" type="continuous">
+        <joint name="ST3215_Servo_Motor-v1${suffix}_Revolute" type="fixed">
             <origin xyz="${wheel_revolute_xyz}" rpy="${wheel_revolute_rpy}" />
             <parent link="ST3215_Servo_Motor-v1${suffix}" />
             <child link="omni_wheel_mount-v5${suffix}" />
-            <axis xyz="${wheel_axis}" />
         </joint>
 
         <!-- 全向轮 Link / Omni Wheel Link -->
@@ -184,7 +183,7 @@
     </xacro:macro>
 
     <!-- ====================================================================== -->
-    <!-- 第3部分: 底盘基座 / Part 3: Chassis Base                               -->
+    <!-- 第3部分: 底盘基座 / Par    source ~/.bashrc    source ~/.bashrct 3: Chassis Base                               -->
     <!-- ====================================================================== -->
 
     <!-- 

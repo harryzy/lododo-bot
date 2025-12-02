@@ -29,6 +29,7 @@ setup(
     entry_points={
         'console_scripts': [
             'omni_controller = bot_control.omni_controller:main',
+            'wheel_joint_publisher = bot_control.wheel_joint_publisher:main',
         ],
     },
 )

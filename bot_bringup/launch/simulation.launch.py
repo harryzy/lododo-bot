@@ -51,14 +51,26 @@ def generate_launch_description():
         }]
     )
     
-    # Joint State Publisher (转发关节状态)
+    # 轮子关节状态发布器
+    wheel_joint_publisher = Node(
+        package='bot_control',
+        executable='wheel_joint_publisher',
+        name='wheel_joint_publisher',
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time')
+        }]
+    )
+    
+    # Joint State Publisher (发布关节状态)
+    # 为continuous关节发布默认状态
     joint_state_publisher = Node(
         package='joint_state_publisher',
         executable='joint_state_publisher',
         name='joint_state_publisher',
         output='screen',
         parameters=[{
-            'use_sim_time': LaunchConfiguration('use_sim_time')
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
         }]
     )
     
@@ -82,6 +94,6 @@ def generate_launch_description():
         use_sim_time_arg,
         gazebo_launch,
         omni_controller,
-        joint_state_publisher,
+        wheel_joint_publisher,
         rviz,
     ])
