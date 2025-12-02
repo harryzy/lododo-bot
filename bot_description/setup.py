@@ -12,7 +12,7 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         # launch setup
         ("share/" + package_name + "/launch", glob("launch/py/*_launch.py")),
-        ("share/" + package_name + "/urdf", glob("urdf/*.urdf") + glob("urdf/*.xacro") + glob("urdf/*.rviz")),
+        ("share/" + package_name + "/urdf", glob("urdf/*.urdf") + glob("urdf/*.xacro") + glob("urdf/*.rviz") + glob("urdf/*.gazebo.xacro")),
         # config setup
         ("share/" + package_name + "/config", glob("config/*.yaml")),
         # meshes setup

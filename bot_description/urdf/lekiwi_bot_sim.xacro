@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- 
+  LeKiwi机器人仿真URDF
+  集成Gazebo插件配置
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="LeKiwi">
+
+  <!-- 包含主URDF文件 -->
+  <xacro:include filename="$(find bot_description)/urdf/lekiwi_bot.xacro" />
+  
+  <!-- 包含Gazebo插件配置 -->
+  <xacro:include filename="$(find bot_description)/urdf/lekiwi_bot.gazebo.xacro" />
+
+</robot>
