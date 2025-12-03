@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-感知节点启动文件
-所有感知相关节点在虚拟环境中运行（支持NumPy 1.x）
+Perception Node Launch File / 感知节点启动文件
+All perception related nodes run in virtual environment (supporting NumPy 1.x) / 所有感知相关节点在虚拟环境中运行（支持NumPy 1.x）
 """
 
 import os
@@ -15,18 +15,18 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     
-    # 参数
+    # Parameters / 参数
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
         default_value='true',
-        description='使用仿真时间'
+        description='Use simulation time / 使用仿真时间'
     )
     
-    # 获取虚拟环境启动脚本路径
+    # Get virtual environment startup script path / 获取虚拟环境启动脚本路径
     perception_share = get_package_share_directory('bot_perception')
     venv_wrapper = os.path.join(perception_share, 'scripts', 'run_with_venv.sh')
     
-    # 深度图转激光雷达（在虚拟环境中运行）
+    # Depth to LaserScan (running in virtual environment) / 深度图转激光雷达（在虚拟环境中运行）
     depth_to_laserscan = Node(
         package='bot_perception',
         executable='depth_to_laserscan',

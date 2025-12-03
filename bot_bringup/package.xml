@@ -3,9 +3,9 @@
 <package format="3">
   <name>bot_bringup</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Robot bringup package for LeKiwi bot / LeKiwi机器人启动包</description>
   <maintainer email="jeladeer@msn.com">hurry</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>

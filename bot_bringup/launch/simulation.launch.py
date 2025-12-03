@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-LeKiwi机器人仿真完整启动文件
-包括Gazebo、控制器、感知节点、RViz等
+LeKiwi Robot Simulation Complete Launch File / LeKiwi机器人仿真完整启动文件
+Including Gazebo, controllers, perception nodes, RViz, etc. / 包括Gazebo、控制器、感知节点、RViz等
 """
 
 from launch import LaunchDescription
@@ -18,7 +18,7 @@ def generate_launch_description():
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
         default_value='true',
-        description='使用仿真时间'
+        description='Use simulation time / 使用仿真时间'
     )
     
     # 包含Gazebo启动文件
@@ -35,7 +35,7 @@ def generate_launch_description():
         }.items()
     )
     
-    # 包含感知节点启动文件（在虚拟环境中运行）
+    # Include perception node launch file (running in virtual environment) / 包含感知节点启动文件（在虚拟环境中运行）
     perception_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             PathJoinSubstitution([
@@ -49,7 +49,7 @@ def generate_launch_description():
         }.items()
     )
     
-    # 全向轮控制器
+    # Omni-directional wheel controller / 全向轮控制器
     omni_controller = Node(
         package='bot_control',
         executable='omni_controller',
@@ -65,7 +65,7 @@ def generate_launch_description():
         }]
     )
     
-    # 轮子关节状态发布器
+    # Wheel joint state publisher / 轮子关节状态发布器
     wheel_joint_publisher = Node(
         package='bot_control',
         executable='wheel_joint_publisher',
@@ -76,7 +76,7 @@ def generate_launch_description():
         }]
     )
     
-    # RViz2可视化
+    # RViz2 visualization / RViz2可视化
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -95,7 +95,7 @@ def generate_launch_description():
     return LaunchDescription([
         use_sim_time_arg,
         gazebo_launch,
-        perception_launch,  # 感知节点（虚拟环境）
+        perception_launch,  # Perception nodes (virtual environment) / 感知节点（虚拟环境）
         omni_controller,
         wheel_joint_publisher,
         rviz,

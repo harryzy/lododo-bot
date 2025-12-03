@@ -295,7 +295,7 @@ def search_rpy_for_axis_alignment(parent_rpy, target_axis='Z', target_direction=
 
 
 def print_transform(name, xyz, rpy):
-    """打印变换信息"""
+    """打印变换信息 / Print transformation information"""
     print(f"\n{name}:")
     print(f"  xyz: [{xyz[0]:.6f}, {xyz[1]:.6f}, {xyz[2]:.6f}]")
     print(f"  rpy: [{rpy[0]:.6f}, {rpy[1]:.6f}, {rpy[2]:.6f}]")
@@ -303,7 +303,7 @@ def print_transform(name, xyz, rpy):
 
 
 def print_rotation_matrix(name, R):
-    """打印旋转矩阵及其轴方向"""
+    """打印旋转矩阵及其轴方向 / Print rotation matrix and axis directions"""
     print(f"\n{name} Rotation Matrix:")
     for i in range(3):
         print(f"  [{R[i,0]:7.4f}, {R[i,1]:7.4f}, {R[i,2]:7.4f}]")
@@ -315,7 +315,7 @@ def print_rotation_matrix(name, R):
 
 
 def print_urdf_origin(xyz, rpy):
-    """打印URDF格式的origin标签"""
+    """打印URDF格式的origin标签 / Print URDF format origin tag"""
     # 常用的xacro常量
     xacro_constants = {
         np.pi: "M_PI",
@@ -341,7 +341,7 @@ def print_urdf_origin(xyz, rpy):
 
 
 def verify_result(parent_xyz, parent_rpy, joint_xyz, joint_rpy, target_xyz, target_R=None):
-    """验证计算结果"""
+    """验证计算结果 / Verify calculation results"""
     print("\n" + "=" * 80)
     print("Verification:")
     print("=" * 80)
@@ -468,7 +468,7 @@ def camera_frame_example():
 
 def interactive_mode():
     """
-    交互式模式 - 引导用户输入参数
+    交互式模式 - 引导用户输入参数 / Interactive mode - guide user input parameters
     """
     print("=" * 80)
     print("TF Calculator - Interactive Mode")
@@ -564,10 +564,12 @@ def interactive_mode():
 
 def quick_mode(args):
     """
-    快速模式 - 命令行参数直接计算
+    快速模式 - 命令行参数直接计算 / Quick mode - direct calculation with command line arguments
     
     用法: python tf_calculator.py -q <target_xyz> <z_axis_dir> <parent_xyz> <parent_rpy>
     示例: python tf_calculator.py -q "0.146,0,0.038" "X" "0.106,0.014,0.038" "-180,-80,90"
+    Usage: python tf_calculator.py -q <target_xyz> <z_axis_dir> <parent_xyz> <parent_rpy_deg>
+    Example: python tf_calculator.py -q '0.146,0,0.038' 'X' '0.106,0.014,0.038' '-180,-80,90'
     """
     if len(args) < 4:
         print("Usage: python tf_calculator.py -q <target_xyz> <z_axis_dir> <parent_xyz> <parent_rpy_deg>")
@@ -600,7 +602,7 @@ def quick_mode(args):
 
 
 def main():
-    """主函数"""
+    """主函数 / Main function"""
     if len(sys.argv) > 1:
         if sys.argv[1] == "-i":
             interactive_mode()

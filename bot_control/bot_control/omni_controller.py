@@ -66,9 +66,9 @@ class OmniController(Node):
         publish_rate = self.get_parameter('publish_rate').value
         self.timer = self.create_timer(1.0 / publish_rate, self.publish_joint_commands)
         
-        self.get_logger().info('三轮全向控制器已启动')
-        self.get_logger().info(f'轮子半径: {self.wheel_radius}m')
-        self.get_logger().info(f'后轮距离: {self.L1}m, 前轮距离: {self.L2}m')
+        self.get_logger().info('Three-wheel omni-directional controller started')
+        self.get_logger().info(f'Wheel radius: {self.wheel_radius}m')
+        self.get_logger().info(f'Rear wheel distance: {self.L1}m, Front wheel distance: {self.L2}m')
 
     def cmd_vel_callback(self, msg):
         """接收速度命令"""

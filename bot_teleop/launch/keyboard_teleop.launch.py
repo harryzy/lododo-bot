@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-键盘遥控启动文件
+Keyboard Teleop Launch File / 键盘遥控启动文件
 """
 
 from launch import LaunchDescription
@@ -14,7 +14,7 @@ def generate_launch_description():
         executable='keyboard_teleop',
         name='keyboard_teleop',
         output='screen',
-        prefix='xterm -e',  # 在新终端中运行
+        prefix='xterm -e',  # Run in new terminal / 在新终端中运行
     )
     
     return LaunchDescription([

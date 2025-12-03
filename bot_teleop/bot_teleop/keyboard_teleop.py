@@ -13,30 +13,30 @@ import tty
 
 
 HELP_MSG = """
-LeKiwi机器人键盘控制
+LeKiwi Robot Keyboard Control / LeKiwi机器人键盘控制
 ---------------------------
-移动控制:
-   w/s: 前进/后退
-   a/d: 左移/右移
-   q/e: 左转/右转
+Movement Control / 移动控制:
+   w/s: Forward/Backward / 前进/后退
+   a/d: Left/Right / 左移/右移
+   q/e: Turn Left/Turn Right / 左转/右转
    
-   i: 前进+左移
-   o: 前进+右移
-   k: 后退+左移
-   l: 后退+右移
+   i: Forward+Left / 前进+左移
+   o: Forward+Right / 前进+右移
+   k: Backward+Left / 后退+左移
+   l: Backward+Right / 后退+右移
 
-速度控制:
-   z: 增加线速度
-   x: 减少线速度
-   c: 增加角速度
-   v: 减少角速度
+Speed Control / 速度控制:
+   z: Increase Linear Speed / 增加线速度
+   x: Decrease Linear Speed / 减少线速度
+   c: Increase Angular Speed / 增加角速度
+   v: Decrease Angular Speed / 减少角速度
 
-其他:
-   space: 急停
-   h: 显示帮助
-   Ctrl+C: 退出
+Other / 其他:
+   space: Emergency Stop / 急停
+   h: Show Help / 显示帮助
+   Ctrl+C: Exit / 退出
 ---------------------------
-当前速度: 线速度={:.2f} m/s, 角速度={:.2f} rad/s
+Current Speed / 当前速度: Linear={:.2f} m/s, Angular={:.2f} rad/s
 """
 
 
@@ -61,7 +61,7 @@ class KeyboardTeleop(Node):
         # 保存终端设置
         self.settings = termios.tcgetattr(sys.stdin)
         
-        self.get_logger().info('键盘遥控节点已启动')
+        self.get_logger().info('Keyboard teleop node started')
         self.print_help()
 
     def print_help(self):
@@ -119,30 +119,30 @@ class KeyboardTeleop(Node):
                         self.linear_speed + self.speed_step,
                         self.max_linear_speed
                     )
-                    print(f'线速度: {self.linear_speed:.2f} m/s')
+                    print(f'Linear speed: {self.linear_speed:.2f} m/s')
                 elif key == 'x':  # 减少线速度
                     self.linear_speed = max(
                         self.linear_speed - self.speed_step,
                         0.0
                     )
-                    print(f'线速度: {self.linear_speed:.2f} m/s')
+                    print(f'Linear speed: {self.linear_speed:.2f} m/s')
                 elif key == 'c':  # 增加角速度
                     self.angular_speed = min(
                         self.angular_speed + self.speed_step,
                         self.max_angular_speed
                     )
-                    print(f'角速度: {self.angular_speed:.2f} rad/s')
+                    print(f'Angular speed: {self.angular_speed:.2f} rad/s')
                 elif key == 'v':  # 减少角速度
                     self.angular_speed = max(
                         self.angular_speed - self.speed_step,
                         0.0
                     )
-                    print(f'角速度: {self.angular_speed:.2f} rad/s')
+                    print(f'Angular speed: {self.angular_speed:.2f} rad/s')
                 
                 # 急停
                 elif key == ' ':
                     twist = Twist()  # 全零
-                    print('急停!')
+                    print('Emergency stop!')
                 
                 # 帮助
                 elif key == 'h':
@@ -156,7 +156,7 @@ class KeyboardTeleop(Node):
                 self.cmd_vel_pub.publish(twist)
                 
         except Exception as e:
-            self.get_logger().error(f'错误: {e}')
+            self.get_logger().error(f'Error: {e}')
         finally:
             # 恢复终端设置
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)

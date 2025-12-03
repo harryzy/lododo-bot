@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Gazebo仿真启动文件
-启动Gazebo并加载LeKiwi机器人模型
+Gazebo Simulation Launch File / Gazebo仿真启动文件
+Launch Gazebo and load LeKiwi robot model / 启动Gazebo并加载LeKiwi机器人模型
 """
 
 from launch import LaunchDescription
@@ -21,7 +21,7 @@ def generate_launch_description():
     pkg_bot_gazebo = get_package_share_directory('bot_gazebo')
     pkg_bot_description = get_package_share_directory('bot_description')
     
-    # 设置Gazebo模型路径指向share目录，这样model://bot_description/urdf/meshes能被正确解析
+    # Set Gazebo model path to share directory, so model://bot_description/urdf/meshes can be correctly parsed / 设置Gazebo模型路径指向share目录，这样model://bot_description/urdf/meshes能被正确解析
     share_dir = os.path.dirname(pkg_bot_description)  # 获取share目录
     gazebo_model_path = os.environ.get('GAZEBO_MODEL_PATH', '')
     if gazebo_model_path:
@@ -32,29 +32,29 @@ def generate_launch_description():
         value=share_dir
     )
     
-    # 世界文件路径
-    world_file = os.path.join(pkg_bot_gazebo, 'worlds', 'empty_test.world')
+    # World file path / 世界文件路径
+    world_file = os.path.join(pkg_bot_gazebo, 'worlds', 'cafe.world')
     
-    # URDF文件路径
+    # URDF file path / URDF文件路径
     urdf_file = os.path.join(pkg_bot_description, 'urdf', 'lekiwi_bot_sim.xacro')
     
     # 使用xacro处理URDF文件，并包装为ParameterValue
     robot_description_content = ParameterValue(Command(['xacro ', urdf_file]), value_type=str)
     
-    # 声明参数
+    # Declare parameters / 声明参数
     world_arg = DeclareLaunchArgument(
         'world',
         default_value=world_file,
-        description='Gazebo世界文件路径'
+        description='Gazebo world file path / Gazebo世界文件路径'
     )
     
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
         default_value='true',
-        description='使用仿真时间'
+        description='Use simulation time / 使用仿真时间'
     )
     
-    # 启动Gazebo服务器
+    # Start Gazebo server / 启动Gazebo服务器
     gazebo_server = ExecuteProcess(
         cmd=['gzserver', 
              '--verbose',
@@ -64,13 +64,13 @@ def generate_launch_description():
         output='screen'
     )
     
-    # 启动Gazebo客户端
+    # Start Gazebo client / 启动Gazebo客户端
     gazebo_client = ExecuteProcess(
         cmd=['gzclient'],
         output='screen'
     )
     
-    # Robot State Publisher
+    # Robot State Publisher / Robot State Publisher
     robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -82,7 +82,7 @@ def generate_launch_description():
         }]
     )
     
-    # 在Gazebo中生成机器人
+    # Spawn robot in Gazebo / 在Gazebo中生成机器人
     spawn_robot = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
