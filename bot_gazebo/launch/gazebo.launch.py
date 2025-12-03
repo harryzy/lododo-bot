@@ -33,7 +33,7 @@ def generate_launch_description():
     )
     
     # 世界文件路径
-    world_file = os.path.join(pkg_bot_gazebo, 'worlds', 'cafe.world')
+    world_file = os.path.join(pkg_bot_gazebo, 'worlds', 'empty_test.world')
     
     # URDF文件路径
     urdf_file = os.path.join(pkg_bot_description, 'urdf', 'lekiwi_bot_sim.xacro')

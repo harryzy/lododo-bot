@@ -17,6 +17,7 @@
     <xacro:property name="M_PI_3" value="1.0471975511965976" />    <!-- π/3 = 60° -->
     <xacro:property name="M_PI_6" value="0.5235987755982988" />    <!-- π/6 = 30° -->
     <xacro:property name="DEG_15" value="0.26179938779914924" />   <!-- 15° -->
+    <xacro:property name="DEG_10" value="0.17453292519943295" />   <!-- 10° -->
     <xacro:property name="DEG_75" value="1.3089969389957468" />    <!-- 75° -->
     <xacro:property name="DEG_80" value="1.3962634015954636" />    <!-- 80° -->
     <xacro:property name="DEG_100" value="1.7453292519943302" />   <!-- 100° -->
@@ -472,6 +473,67 @@
         <origin xyz="-0.034 0.00636666 0.03831948" rpy="${M_PI} -${DEG_80} ${M_PI}" />
         <parent link="Camera-Mount-v8" />
         <child link="Camera-Model-v3" />
+    </joint>
+
+    <!-- 
+        相机坐标系（双 Frame 结构）/ Camera Frames (Dual Frame Structure)
+        
+        说明 / Description:
+        1. camera_link: Gazebo 传感器附着点，使用 Gazebo 相机约定
+           - Gazebo 相机看向 +X 方向，图像上方是 +Z
+           - 此 frame 与 base_link 方向相同，位于镜头前方
+           
+        2. camera_optical_frame: ROS 光学坐标系约定
+           - Z 轴是光轴（指向前方），Y 轴是图像下方，X 轴是图像右方
+           - 用于点云、深度图像等 ROS 数据处理
+    -->
+    
+    <!-- camera_link: Gazebo 传感器使用此 frame -->
+    <link name="camera_link">
+        <!-- 空 link，仅用作 Gazebo 传感器附着点 -->
+    </link>
+
+    <!-- Camera-Model-v3 -> camera_link -->
+    <joint name="camera_link_joint" type="fixed">
+        <!-- 
+            目标: camera_link 在 base_link 中位于 [0.146, 0, 0.038]，方向与 base_link 相同
+            这样 Gazebo 相机会看向机器人前方(+X)，横屏显示
+            
+            计算: T_joint = T_base_cam_model^(-1) @ T_base_cam_link
+            其中 T_base_cam_model 来自 tf2_echo
+        -->
+        <origin xyz="-0.002425 0.040000 -0.013788" rpy="${DEG_100} 0 ${M_PI_2}" />
+        <parent link="Camera-Model-v3" />
+        <child link="camera_link" />
+    </joint>
+    
+    <!-- camera_optical_frame: ROS 光学坐标系 -->
+    <link name="camera_optical_frame">
+        <!-- 空 link，仅用作光学坐标系参考 -->
+    </link>
+
+    <!-- camera_link -> camera_optical_frame -->
+    <joint name="camera_optical_frame_joint" type="fixed">
+        <!-- 
+            标准的 Gazebo -> ROS 光学坐标系转换
+            从 Gazebo 约定 (X前, Y左, Z上) 到 ROS 光学约定 (Z前, X右, Y下)
+            旋转: 先绕 Y 轴 -90° (X->Z)，再绕 X 轴 -90° (Y->-Z, Z->Y)
+            等效 RPY: [-π/2, 0, -π/2]
+        -->
+        <origin xyz="0 0 0" rpy="-${M_PI_2} 0 -${M_PI_2}" />
+        <parent link="camera_link" />
+        <child link="camera_optical_frame" />
+    </joint>
+    
+    <!-- 兼容性别名: camera_frame 指向 camera_optical_frame -->
+    <link name="camera_frame">
+        <!-- 保持向后兼容 -->
+    </link>
+    
+    <joint name="camera_frame_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="camera_optical_frame" />
+        <child link="camera_frame" />
     </joint>
 
     <!-- ====================================================================== -->

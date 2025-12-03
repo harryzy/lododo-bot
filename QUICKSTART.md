@@ -5,6 +5,45 @@
 
 ---
 
+## ⚠️ 重要说明：Python虚拟环境
+
+由于感知功能（深度图转激光雷达、YOLOv8等）需要特定版本的NumPy和OpenCV，项目使用Python虚拟环境。
+
+### 虚拟环境已配置
+```bash
+# 虚拟环境位置
+~/lododo_bot/venv_ros2/
+
+# 已安装的包
+- numpy==1.26.4
+- opencv-python==4.10.0.84
+```
+
+### 启动方式（推荐）
+```bash
+# 使用便捷脚本（自动激活虚拟环境）
+cd ~/lododo_bot
+./start_simulation.sh
+```
+
+### 手动启动方式
+```bash
+# 1. 激活虚拟环境
+source ~/lododo_bot/venv_ros2/bin/activate
+
+# 2. Source ROS2
+source /opt/ros/humble/setup.bash
+source ~/lododo_bot/install/setup.bash
+
+# 3. 启动仿真
+ros2 launch bot_bringup simulation.launch.py
+
+# 4. 完成后退出虚拟环境
+deactivate
+```
+
+---
+
 ## 🎉 已完成的工作
 
 ### 1. 依赖安装 ✅

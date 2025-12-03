@@ -1,0 +1,11 @@
+# LeKiwi机器人Python依赖
+# 用于感知、深度学习等功能
+
+# 核心依赖
+numpy==1.26.4
+opencv-python==4.10.0.84
+
+# 未来依赖（暂时注释）
+# ultralytics>=8.0.0  # YOLOv8
+# torch>=2.0.0        # PyTorch
+# torchvision>=0.15.0 # PyTorch Vision

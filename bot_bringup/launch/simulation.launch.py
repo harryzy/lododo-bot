@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 LeKiwi机器人仿真完整启动文件
-包括Gazebo、控制器、键盘遥控等
+包括Gazebo、控制器、感知节点、RViz等
 """
 
 from launch import LaunchDescription
@@ -28,6 +28,20 @@ def generate_launch_description():
                 FindPackageShare('bot_gazebo'),
                 'launch',
                 'gazebo.launch.py'
+            ])
+        ]),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time')
+        }.items()
+    )
+    
+    # 包含感知节点启动文件（在虚拟环境中运行）
+    perception_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            PathJoinSubstitution([
+                FindPackageShare('bot_perception'),
+                'launch',
+                'perception.launch.py'
             ])
         ]),
         launch_arguments={
@@ -62,18 +76,6 @@ def generate_launch_description():
         }]
     )
     
-    # Joint State Publisher (发布关节状态)
-    # 为continuous关节发布默认状态
-    joint_state_publisher = Node(
-        package='joint_state_publisher',
-        executable='joint_state_publisher',
-        name='joint_state_publisher',
-        output='screen',
-        parameters=[{
-            'use_sim_time': LaunchConfiguration('use_sim_time'),
-        }]
-    )
-    
     # RViz2可视化
     rviz = Node(
         package='rviz2',
@@ -81,9 +83,9 @@ def generate_launch_description():
         name='rviz2',
         output='screen',
         arguments=['-d', PathJoinSubstitution([
-            FindPackageShare('bot_description'),
-            'urdf',
-            'lekiwi_bot.rviz'
+            FindPackageShare('bot_gazebo'),
+            'config',
+            'gazebo_bot.rviz'
         ])],
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time')
@@ -93,6 +95,7 @@ def generate_launch_description():
     return LaunchDescription([
         use_sim_time_arg,
         gazebo_launch,
+        perception_launch,  # 感知节点（虚拟环境）
         omni_controller,
         wheel_joint_publisher,
         rviz,

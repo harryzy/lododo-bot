@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+from glob import glob
+import os
 
 package_name = 'bot_perception'
 
@@ -10,6 +12,12 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        # 安装launch文件
+        (os.path.join('share', package_name, 'launch'), 
+            glob('launch/*.launch.py')),
+        # 安装脚本
+        (os.path.join('share', package_name, 'scripts'), 
+            glob('scripts/*.sh')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,6 +32,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'depth_to_laserscan = bot_perception.depth_to_laserscan:main',
         ],
     },
 )

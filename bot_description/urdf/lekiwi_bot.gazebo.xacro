@@ -41,38 +41,44 @@
   </gazebo>
 
   <!-- RGB-D 相机插件 (模拟Astra Pro) -->
-  <gazebo reference="Camera-Model-v3">
+  <!-- 
+    重要说明：
+    - Gazebo 传感器附着在 camera_link（使用 Gazebo 相机约定：+X 看向前方）
+    - frame_name 设置为 camera_optical_frame（符合 ROS 光学坐标系约定）
+    - 这样 Gazebo 渲染正确，同时 ROS 消息使用正确的 frame
+  -->
+  <gazebo reference="camera_link">
     <sensor name="camera" type="depth">
       <update_rate>30</update_rate>
-      <camera>
-        <horizontal_fov>1.047</horizontal_fov>  <!-- 60度 -->
+      <camera name="camera">
+        <horizontal_fov>1.047</horizontal_fov>
         <image>
           <width>640</width>
           <height>480</height>
           <format>R8G8B8</format>
         </image>
         <clip>
-          <near>0.6</near>
+          <near>0.05</near>
           <far>8.0</far>
         </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.007</stddev>
+        </noise>
       </camera>
       
       <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
         <camera_name>camera</camera_name>
-        <frame_name>Camera-Model-v3</frame_name>
-        
-        <!-- 话题命名 -->
-        <image_topic>color/image_raw</image_topic>
-        <camera_info_topic>color/camera_info</camera_info_topic>
-        <depth_image_topic>depth/image_raw</depth_image_topic>
-        <depth_image_camera_info_topic>depth/camera_info</depth_image_camera_info_topic>
-        <point_cloud_topic>depth/points</point_cloud_topic>
-        
-        <!-- 深度相机参数 -->
-        <min_depth>0.6</min_depth>
-        <max_depth>8.0</max_depth>
+        <frame_name>camera_optical_frame</frame_name>
+        <hack_baseline>0.07</hack_baseline>
       </plugin>
     </sensor>
+  </gazebo>
+  
+  <!-- Camera-Model-v3 材质 -->
+  <gazebo reference="Camera-Model-v3">
+    <material>Gazebo/Black</material>
   </gazebo>
 
   <!-- 材质颜色定义 -->
@@ -122,11 +128,6 @@
   <!-- 相机支架 -->
   <gazebo reference="Camera-Mount-v8">
     <material>Gazebo/Orange</material>
-  </gazebo>
-
-  <!-- 相机 -->
-  <gazebo reference="Camera-Model-v3">
-    <material>Gazebo/Black</material>
   </gazebo>
 
 </robot>
