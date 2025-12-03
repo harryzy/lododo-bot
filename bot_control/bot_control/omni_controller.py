@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-LeKiwi三轮全向轮运动学控制器
-实现cmd_vel到轮速的转换
+LeKiwi三轮全向轮运动学控制器 / LeKiwi Three-Wheel Omni-directional Kinematic Controller
+实现cmd_vel到轮速的转换 / Convert cmd_vel to wheel speeds
 """
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import JointState
 import numpy as np
@@ -47,12 +48,23 @@ class OmniController(Node):
         self.target_vy = 0.0
         self.target_omega_z = 0.0
         
-        # 订阅cmd_vel
+        # ================================================================
+        # QoS 配置 / QoS Configuration
+        # 命令话题使用 RELIABLE 确保送达 / Command topics use RELIABLE
+        # ================================================================
+        cmd_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+        
+        # 订阅cmd_vel（使用RELIABLE确保命令送达）
+        # Subscribe to cmd_vel (use RELIABLE to ensure command delivery)
         self.cmd_vel_sub = self.create_subscription(
             Twist,
             'cmd_vel',
             self.cmd_vel_callback,
-            10
+            cmd_qos
         )
         
         # 发布关节状态 (仅用于仿真模式，真实硬件会有硬件接口)

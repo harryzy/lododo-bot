@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-键盘遥控节点
-支持全向移动控制
+键盘遥控节点 / Keyboard Teleop Node
+支持全向移动控制 / Support omnidirectional movement control
 """
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from geometry_msgs.msg import Twist
 import sys
 import termios
@@ -51,12 +52,23 @@ class KeyboardTeleop(Node):
         self.angular_speed = 0.5  # 角速度 (rad/s)
         self.speed_step = 0.05    # 速度增量
         
-        # 最大速度限制
+        # 最大速度限制 / Maximum speed limits
         self.max_linear_speed = 0.20  # m/s
         self.max_angular_speed = 1.5  # rad/s
         
-        # 发布cmd_vel
-        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        # ================================================================
+        # QoS 配置 / QoS Configuration
+        # 命令话题使用 RELIABLE 确保送达 / Command topics use RELIABLE
+        # ================================================================
+        cmd_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+        
+        # 发布cmd_vel（使用RELIABLE确保命令送达）
+        # Publish cmd_vel (use RELIABLE to ensure command delivery)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', cmd_qos)
         
         # 保存终端设置
         self.settings = termios.tcgetattr(sys.stdin)

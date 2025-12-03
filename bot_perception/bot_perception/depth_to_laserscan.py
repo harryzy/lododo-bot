@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-深度图转激光雷达扫描节点
+深度图转激光雷达扫描节点 / Depth to LaserScan Conversion Node
 将RGB-D相机的深度图像转换为2D激光雷达数据，用于导航
+Converts RGB-D camera depth image to 2D laser scan data for navigation
 """
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from sensor_msgs.msg import Image, LaserScan
 from cv_bridge import CvBridge
 import numpy as np
@@ -13,16 +15,31 @@ import math
 
 
 class DepthToLaserScan(Node):
-    """将深度图像转换为激光雷达扫描数据"""
+    """将深度图像转换为激光雷达扫描数据 / Convert depth image to laser scan data"""
     
     def __init__(self):
         super().__init__('depth_to_laserscan')
         
-        # 声明参数
-        self.declare_parameter('scan_height', 10)  # 扫描行数
-        self.declare_parameter('scan_time', 0.033)  # 扫描周期（30Hz）
-        self.declare_parameter('range_min', 0.1)  # 最小距离（米）- 降低以检测近距离物体
-        self.declare_parameter('range_max', 8.0)  # 最大距离（米）
+        # ====================================================================
+        # QoS 配置 - 使用传感器数据标准QoS / QoS config - use sensor data standard QoS
+        # BEST_EFFORT: 允许丢包，减少延迟 / Allow packet loss, reduce latency
+        # VOLATILE: 不需要持久化 / No persistence needed
+        # KEEP_LAST(5): 只保留最近5条消息 / Keep only last 5 messages
+        # ====================================================================
+        sensor_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=5
+        )
+        
+        # 声明参数 / Declare parameters
+        self.declare_parameter('scan_height', 10)  # 扫描行数 / Number of rows to scan
+        self.declare_parameter('scan_time', 0.033)  # 扫描周期（30Hz）/ Scan period
+        # 最小距离：设为0.05m(5cm)以支持近距离检测，配合机械臂操作
+        # Min range: set to 0.05m(5cm) for close-range detection, for arm manipulation
+        self.declare_parameter('range_min', 0.05)  # 最小距离（米）
+        self.declare_parameter('range_max', 8.0)  # 最大距离（米）/ Max range
         self.declare_parameter('angle_min', -0.5236)  # 最小角度（-30度，相机FOV约60度）
         self.declare_parameter('angle_max', 0.5236)  # 最大角度（30度）
         self.declare_parameter('angle_increment', 0.00436)  # 角度增量（约0.25度）
@@ -38,21 +55,22 @@ class DepthToLaserScan(Node):
         self.angle_increment = self.get_parameter('angle_increment').value
         self.output_frame = self.get_parameter('output_frame').value
         
-        # CvBridge用于图像转换
+        # CvBridge用于图像转换 / CvBridge for image conversion
         self.bridge = CvBridge()
         
-        # 订阅深度图像
+        # 订阅深度图像（使用传感器QoS）/ Subscribe to depth image (using sensor QoS)
         self.depth_sub = self.create_subscription(
             Image,
             '/camera/depth/image_raw',
             self.depth_callback,
-            10
+            sensor_qos
         )
         
-        # 发布激光雷达数据
-        self.scan_pub = self.create_publisher(LaserScan, '/scan', 10)
+        # 发布激光雷达数据（使用传感器QoS）/ Publish laser scan (using sensor QoS)
+        self.scan_pub = self.create_publisher(LaserScan, '/scan', sensor_qos)
         
         self.get_logger().info('Depth to LaserScan node started')
+        self.get_logger().info(f'  QoS: BEST_EFFORT, VOLATILE, KEEP_LAST(5)')
         self.get_logger().info(f'  Range: [{self.range_min}, {self.range_max}] m')
         self.get_logger().info(f'  Angle: [{math.degrees(self.angle_min):.1f}, {math.degrees(self.angle_max):.1f}] deg')
         self.get_logger().info(f'  Scan height: {self.scan_height} pixels')
@@ -84,9 +102,11 @@ class DepthToLaserScan(Node):
             min_depths = np.nanmin(depth_slice, axis=0)
             
             # 计算角度范围
-            num_readings = int((self.angle_max - self.angle_min) / self.angle_increment)
+            # LaserScan包含端点，所以点数 = (angle_max - angle_min) / angle_increment + 1
+            # LaserScan includes endpoints, so num_readings = (angle_max - angle_min) / angle_increment + 1
+            num_readings = int((self.angle_max - self.angle_min) / self.angle_increment) + 1
             
-            # 从完整宽度采样到目标点数
+            # 从完整宽度采样到目标点数 / Sample from full width to target number of points
             if width > num_readings:
                 # 下采样
                 indices = np.linspace(0, width - 1, num_readings, dtype=int)

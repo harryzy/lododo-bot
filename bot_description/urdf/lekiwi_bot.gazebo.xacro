@@ -57,8 +57,11 @@
           <height>480</height>
           <format>R8G8B8</format>
         </image>
+        <!-- 深度裁剪距离 / Depth clip distance -->
+        <!-- near: 最小检测距离，设为0.05m(5cm)以支持近距离操作 -->
+        <!-- near: minimum detection distance, set to 0.05m(5cm) for close-range manipulation -->
         <clip>
-          <near>0.05</near>
+          <near>0.02</near>
           <far>8.0</far>
         </clip>
         <noise>
@@ -71,7 +74,15 @@
       <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
         <camera_name>camera</camera_name>
         <frame_name>camera_optical_frame</frame_name>
-        <hack_baseline>0.07</hack_baseline>
+        <!-- hack_baseline: 模拟立体相机基线，影响最小检测距离 -->
+        <!-- hack_baseline: simulates stereo camera baseline, affects min detection range -->
+        <!-- 原值0.07(7cm)最小检测~40cm，改为0.02(2cm)可检测~10cm -->
+        <!-- Original 0.07(7cm) min ~40cm, changed to 0.02(2cm) for ~10cm min -->
+        <hack_baseline>0.02</hack_baseline>
+        <!-- 最小深度距离 / Minimum depth distance -->
+        <min_depth>0.05</min_depth>
+        <!-- 最大深度距离 / Maximum depth distance -->
+        <max_depth>8.0</max_depth>
       </plugin>
     </sensor>
   </gazebo>

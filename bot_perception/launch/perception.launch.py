@@ -36,11 +36,12 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'scan_height': 10,
-            'range_min': 0.1,  # 降低最小距离
+            # 最小距离0.05m(5cm)支持近距离检测 / Min range 0.05m(5cm) for close-range detection
+            'range_min': 0.05,
             'range_max': 8.0,
-            'angle_min': -0.5236,  # -30度，匹配相机 FOV
-            'angle_max': 0.5236,   # +30度
-            'output_frame': 'base_link'  # LaserScan 在 base_link 平面
+            'angle_min': -0.5236,  # -30度，匹配相机 FOV / -30 deg, match camera FOV
+            'angle_max': 0.5236,   # +30度 / +30 deg
+            'output_frame': 'base_link'  # LaserScan 在 base_link 平面 / LaserScan in base_link plane
         }]
     )
     

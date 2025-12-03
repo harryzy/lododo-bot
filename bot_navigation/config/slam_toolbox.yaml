@@ -1,0 +1,186 @@
+# ==============================================================================
+# Slam Toolbox 参数配置 / Slam Toolbox Parameters Configuration
+# 适用于 LeKiwi 三轮全向移动机器人 / For LeKiwi 3-wheel omnidirectional robot
+# ==============================================================================
+
+slam_toolbox:
+  ros__parameters:
+    # ========================================================================
+    # 基本参数 / Basic parameters
+    # ========================================================================
+    
+    # 使用仿真时间 / Use simulation time
+    use_sim_time: true
+    
+    # 里程计坐标系 / Odometry frame
+    odom_frame: odom
+    
+    # 地图坐标系 / Map frame
+    map_frame: map
+    
+    # 机器人基座坐标系 / Robot base frame
+    base_frame: base_link
+    
+    # 激光雷达话题 / Laser scan topic
+    scan_topic: /scan
+    
+    # 运行模式 / Mode
+    # mapping: 建图模式 / mapping mode
+    # localization: 定位模式 / localization mode
+    mode: mapping
+    
+    # 地图起始位姿 / Map start pose
+    # 设置地图原点偏移，使机器人在地图中心而不是边缘
+    # Set map origin offset so robot is at map center, not edge
+    # [x, y, theta] - 机器人在地图中的初始位置
+    # This makes the map expand around the robot symmetrically
+    map_start_pose: [0.0, 0.0, 0.0]
+
+    # ========================================================================
+    # 求解器参数 / Solver parameters
+    # ========================================================================
+    
+    # 是否启用交互模式 / Enable interactive mode
+    enable_interactive_mode: true
+    
+    # 是否使用响应式扩展 / Use scan matching
+    use_scan_matching: true
+    
+    # 是否使用扫描重叠 / Use scan barycenter
+    use_scan_barycenter: true
+    
+    # 最小行驶距离才更新 / Minimum travel distance for update
+    minimum_travel_distance: 0.3
+    
+    # 最小旋转角度才更新（弧度）/ Minimum rotation for update (radians)
+    minimum_travel_heading: 0.3
+    
+    # 扫描缓冲大小 / Scan buffer size
+    scan_buffer_size: 10
+    
+    # 扫描缓冲最大距离 / Scan buffer maximum scan distance
+    scan_buffer_maximum_scan_distance: 8.0
+    
+    # 链接匹配最小响应 / Link match minimum response fine
+    link_match_minimum_response_fine: 0.1
+    
+    # 链接扫描最大距离 / Link scan maximum distance
+    link_scan_maximum_distance: 1.5
+    
+    # 闭环搜索最大距离 / Loop search maximum distance
+    loop_search_maximum_distance: 3.0
+    
+    # 是否进行闭环搜索 / Do loop closing
+    do_loop_closing: true
+    
+    # 闭环匹配最小链接数 / Loop match minimum chain size
+    loop_match_minimum_chain_size: 10
+    
+    # 闭环匹配最大方差粗糙 / Loop match maximum variance coarse
+    loop_match_maximum_variance_coarse: 3.0
+    
+    # 闭环匹配最小响应粗糙 / Loop match minimum response coarse
+    loop_match_minimum_response_coarse: 0.35
+    
+    # 闭环匹配最小响应精细 / Loop match minimum response fine
+    loop_match_minimum_response_fine: 0.45
+    
+    # ========================================================================
+    # 相关扫描匹配参数 / Correlation scan matching parameters
+    # ========================================================================
+    
+    # 相关搜索空间尺寸 / Correlation search space dimension
+    correlation_search_space_dimension: 0.5
+    
+    # 相关搜索空间分辨率 / Correlation search space resolution
+    correlation_search_space_resolution: 0.01
+    
+    # 相关搜索空间涂抹偏差 / Correlation search space smear deviation
+    correlation_search_space_smear_deviation: 0.1
+    
+    # ========================================================================
+    # 闭环参数 / Loop closure parameters
+    # ========================================================================
+    
+    # 闭环搜索空间尺寸 / Loop search space dimension
+    loop_search_space_dimension: 8.0
+    
+    # 闭环搜索空间分辨率 / Loop search space resolution
+    loop_search_space_resolution: 0.05
+    
+    # 闭环搜索空间涂抹偏差 / Loop search space smear deviation
+    loop_search_space_smear_deviation: 0.03
+    
+    # ========================================================================
+    # 距离和惩罚参数 / Distance and penalty parameters
+    # ========================================================================
+    
+    # 距离方差惩罚 / Distance variance penalty
+    distance_variance_penalty: 0.5
+    
+    # 角度方差惩罚 / Angle variance penalty
+    angle_variance_penalty: 1.0
+    
+    # 精细搜索角度偏移 / Fine search angle offset
+    fine_search_angle_offset: 0.00349
+    
+    # 粗糙搜索角度偏移 / Coarse search angle offset
+    coarse_search_angle_offset: 0.349
+    
+    # 粗糙角度分辨率 / Coarse angle resolution
+    coarse_angle_resolution: 0.0349
+    
+    # 最小角度惩罚 / Minimum angle penalty
+    minimum_angle_penalty: 0.9
+    
+    # 最小距离惩罚 / Minimum distance penalty
+    minimum_distance_penalty: 0.5
+    
+    # 使用响应扩展 / Use response expansion
+    use_response_expansion: true
+    
+    # ========================================================================
+    # 地图参数 / Map parameters
+    # ========================================================================
+    
+    # 地图分辨率（米/像素）/ Map resolution (meters/pixel)
+    resolution: 0.05
+    
+    # 最大激光距离 / Maximum laser range
+    max_laser_range: 8.0
+    
+    # 最小激光距离（与 depth_to_laserscan 的 range_min 匹配）
+    # Minimum laser range (match depth_to_laserscan range_min)
+    min_laser_range: 0.1
+    
+    # 最小时间间隔 / Minimum time interval between scans
+    minimum_time_interval: 0.5
+    
+    # TF超时时间 / Transform timeout
+    transform_timeout: 0.5
+    
+    # TF缓冲持续时间 / TF buffer duration
+    tf_buffer_duration: 30.0
+    
+    # 节流扫描 / Throttle scans
+    throttle_scans: 1
+    
+    # 发布周期 / Transform publish period
+    transform_publish_period: 0.02
+    
+    # 地图更新间隔 / Map update interval
+    map_update_interval: 5.0
+    
+    # ========================================================================
+    # 堆栈大小（针对大地图）/ Stack size for large maps
+    # ========================================================================
+    
+    # Ceres求解器堆栈大小 / Stack size to use for ceres
+    stack_size_to_use: 40000000
+    
+    # ========================================================================
+    # 调试参数 / Debug parameters
+    # ========================================================================
+    
+    # 是否启用调试日志 / Enable debug logging
+    debug_logging: false

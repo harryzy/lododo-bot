@@ -1,0 +1,527 @@
+# ==============================================================================
+# Nav2 导航参数配置 / Nav2 Navigation Parameters Configuration
+# 适用于 LeKiwi 三轮全向移动机器人 / For LeKiwi 3-wheel omnidirectional robot
+# ==============================================================================
+
+amcl:
+  ros__parameters:
+    use_sim_time: True
+    
+    # 全局定位参数 / Global localization parameters
+    alpha1: 0.2       # 旋转噪声(旋转) / Rotation noise from rotation
+    alpha2: 0.2       # 旋转噪声(平移) / Rotation noise from translation
+    alpha3: 0.2       # 平移噪声(平移) / Translation noise from translation
+    alpha4: 0.2       # 平移噪声(旋转) / Translation noise from rotation
+    alpha5: 0.2       # 全向运动噪声 / Omnidirectional motion noise
+    
+    base_frame_id: "base_link"
+    beam_skip_distance: 0.5
+    beam_skip_error_threshold: 0.9
+    beam_skip_threshold: 0.3
+    do_beams_skip: false
+    global_frame_id: "map"
+    
+    # 激光雷达参数 / Laser parameters
+    lambda_short: 0.1
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 8.0
+    # 最小距离设为0.05m(5cm)以支持近距离检测 / Min range 0.05m(5cm) for close-range detection
+    laser_min_range: 0.05
+    laser_model_type: "likelihood_field"
+    
+    # 粒子滤波参数 / Particle filter parameters
+    max_beams: 60
+    max_particles: 2000
+    min_particles: 500
+    
+    odom_frame_id: "odom"
+    pf_err: 0.05
+    pf_z: 0.99
+    recovery_alpha_fast: 0.0
+    recovery_alpha_slow: 0.0
+    resample_interval: 1
+    
+    # 全向运动模型 / Omnidirectional motion model
+    robot_model_type: "nav2_amcl::OmniMotionModel"
+    
+    save_pose_rate: 0.5
+    sigma_hit: 0.2
+    tf_broadcast: true
+    transform_tolerance: 1.0
+    
+    # 更新阈值 / Update thresholds
+    update_min_a: 0.2   # 最小旋转更新 / Minimum rotation update
+    update_min_d: 0.1   # 最小平移更新 / Minimum translation update
+    
+    z_hit: 0.5
+    z_max: 0.05
+    z_rand: 0.5
+    z_short: 0.05
+    
+    scan_topic: scan
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: True
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    
+    # 全向机器人使用的行为树 / Behavior tree for omnidirectional robot
+    # 使用 Nav2 默认行为树 / Use Nav2 default behavior trees
+    default_nav_to_pose_bt_xml: /opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml
+    default_nav_through_poses_bt_xml: /opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml
+    
+    # 导航插件 / Navigation plugins
+    plugin_lib_names:
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_smooth_path_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_spin_action_bt_node
+      - nav2_wait_action_bt_node
+      - nav2_assisted_teleop_action_bt_node
+      - nav2_back_up_action_bt_node
+      - nav2_drive_on_heading_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_is_stuck_condition_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_globally_updated_goal_condition_bt_node
+      - nav2_is_path_valid_condition_bt_node
+      - nav2_initial_pose_received_condition_bt_node
+      - nav2_reinitialize_global_localization_service_bt_node
+      - nav2_rate_controller_bt_node
+      - nav2_distance_controller_bt_node
+      - nav2_speed_controller_bt_node
+      - nav2_truncate_path_action_bt_node
+      - nav2_truncate_path_local_action_bt_node
+      - nav2_goal_updater_node_bt_node
+      - nav2_recovery_node_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_round_robin_node_bt_node
+      - nav2_transform_available_condition_bt_node
+      - nav2_time_expired_condition_bt_node
+      - nav2_path_expiring_timer_condition
+      - nav2_distance_traveled_condition_bt_node
+      - nav2_single_trigger_bt_node
+      - nav2_goal_updated_controller_bt_node
+      - nav2_is_battery_low_condition_bt_node
+      - nav2_navigate_through_poses_action_bt_node
+      - nav2_navigate_to_pose_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node
+      - nav2_planner_selector_bt_node
+      - nav2_controller_selector_bt_node
+      - nav2_goal_checker_selector_bt_node
+      - nav2_controller_cancel_bt_node
+      - nav2_path_longer_on_approach_bt_node
+      - nav2_wait_cancel_bt_node
+      - nav2_spin_cancel_bt_node
+      - nav2_back_up_cancel_bt_node
+      - nav2_assisted_teleop_cancel_bt_node
+      - nav2_drive_on_heading_cancel_bt_node
+
+controller_server:
+  ros__parameters:
+    use_sim_time: True
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001  # 全向运动需要 / Required for omnidirectional motion
+    min_theta_velocity_threshold: 0.001
+    
+    failure_tolerance: 0.3
+    
+    # 进度检查 / Progress checker
+    progress_checker_plugin: "progress_checker"
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+    
+    # 目标检查器 / Goal checker
+    goal_checker_plugins: ["general_goal_checker"]
+    general_goal_checker:
+      stateful: True
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.15        # 位置容差 / Position tolerance
+      yaw_goal_tolerance: 0.25       # 角度容差 / Angle tolerance
+    
+    # 控制器插件 / Controller plugins
+    controller_plugins: ["FollowPath"]
+    
+    # DWB 控制器 - 适合全向轮 / DWB Controller - suitable for omnidirectional wheels
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+      
+      # 调试 / Debug
+      debug_trajectory_details: True
+      
+      # 速度限制 / Velocity limits
+      min_vel_x: -0.15              # 允许后退 / Allow backward motion
+      max_vel_x: 0.20
+      min_vel_y: -0.15              # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.15               # 全向运动 / Omnidirectional motion
+      max_vel_theta: 1.0
+      min_speed_xy: 0.0
+      max_speed_xy: 0.20
+      min_speed_theta: 0.0
+      
+      # 加速度限制 / Acceleration limits
+      acc_lim_x: 1.5
+      acc_lim_y: 1.5                # 全向运动 / Omnidirectional motion
+      acc_lim_theta: 2.0
+      decel_lim_x: -1.5
+      decel_lim_y: -1.5             # 全向运动 / Omnidirectional motion
+      decel_lim_theta: -2.0
+      
+      # 轨迹生成参数 / Trajectory generation parameters
+      vx_samples: 20
+      vy_samples: 10                # 全向运动采样 / Omnidirectional sampling
+      vtheta_samples: 20
+      sim_time: 1.5
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      transform_tolerance: 0.2
+      
+      # 短距离容差 / Short distance tolerance
+      xy_goal_tolerance: 0.15
+      trans_stopped_velocity: 0.25
+      
+      # 评分 / Scoring
+      short_circuit_trajectory_evaluation: True
+      stateful: True
+      
+      # 评价器 / Critics
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
+      
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 32.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 24.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 32.0
+      GoalDist.scale: 24.0
+      RotateToGoal.scale: 32.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: True
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      # TF容差增大以适应仿真启动延迟 / Increase TF tolerance for simulation startup delay
+      # 增大到10秒以处理慢速仿真 / Increase to 10s for slow simulation
+      transform_tolerance: 10.0
+      
+      # 机器人半径 / Robot radius (for circular footprint)
+      robot_radius: 0.15
+      
+      # 或使用多边形足迹 / Or use polygon footprint
+      # footprint: "[[0.12, 0.0], [0.06, 0.104], [-0.06, 0.104], [-0.12, 0.0], [-0.06, -0.104], [0.06, -0.104]]"
+      
+      plugins: ["voxel_layer", "inflation_layer"]
+      
+      # 体素层 - 3D障碍物 / Voxel layer - 3D obstacles
+      voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: True
+        publish_voxel_map: True
+        origin_z: 0.0
+        z_resolution: 0.05
+        z_voxels: 16
+        max_obstacle_height: 2.0
+        mark_threshold: 0
+        
+        observation_sources: scan
+        scan:
+          topic: /scan
+          # 传感器坐标系 / Sensor frame (LaserScan is in base_link frame)
+          sensor_frame: base_link
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+          # 处理无穷大值 / Handle infinite values
+          inf_is_valid: true
+      
+      # 膨胀层 / Inflation layer
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.35
+      
+      always_send_full_costmap: True
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: True
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      # TF容差增大以适应仿真启动延迟 / Increase TF tolerance for simulation startup delay
+      # 增大到10秒以处理慢速仿真 / Increase to 10s for slow simulation
+      transform_tolerance: 10.0
+      
+      # 机器人半径 / Robot radius
+      robot_radius: 0.15
+      
+      resolution: 0.05
+      track_unknown_space: true
+      
+      # 使用滚动窗口模式，设置固定大小的窗口围绕机器人
+      # Use rolling window mode with fixed size around robot
+      # 这样避免了依赖SLAM地图边界，机器人始终在costmap中心
+      # This avoids dependency on SLAM map boundaries, robot always at costmap center
+      rolling_window: true
+      width: 10
+      height: 10
+      
+      # 注意：rolling_window 模式下不使用 static_layer
+      # Note: static_layer is not used with rolling_window mode
+      plugins: ["obstacle_layer", "inflation_layer"]
+      
+      # 障碍物层 / Obstacle layer
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        # 增加观测源的TF容差 / Increase observation source TF tolerance
+        observation_sources: scan
+        scan:
+          topic: /scan
+          # 传感器坐标系 / Sensor frame (LaserScan is in base_link frame)
+          sensor_frame: base_link
+          # 观测保留时间 / Observation keep time (seconds)
+          observation_persistence: 0.0
+          # 预期更新率 / Expected update rate
+          expected_update_rate: 0.0
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+          # 处理无穷大值 / Handle infinite values
+          inf_is_valid: true
+      
+      # 膨胀层 / Inflation layer
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.35
+      
+      always_send_full_costmap: True
+
+map_server:
+  ros__parameters:
+    use_sim_time: True
+    yaml_filename: ""
+    
+map_saver:
+  ros__parameters:
+    use_sim_time: True
+    save_map_timeout: 5.0
+    free_thresh_default: 0.25
+    occupied_thresh_default: 0.65
+    map_subscribe_transient_local: True
+
+planner_server:
+  ros__parameters:
+    use_sim_time: True
+    
+    expected_planner_frequency: 20.0
+    
+    planner_plugins: ["GridBased"]
+    
+    # NavFn 全局规划器 / NavFn global planner
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.5
+      use_astar: false
+      allow_unknown: true
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: True
+    
+    smoother_plugins: ["simple_smoother"]
+    
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: True
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: True
+    
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
+    
+    # 原地旋转 / Spin in place
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    
+    # 后退 / Backup
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    
+    # 直线行驶 / Drive on heading
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+    
+    # 辅助遥控 / Assisted teleop
+    assisted_teleop:
+      plugin: "nav2_behaviors/AssistedTeleop"
+    
+    # 等待 / Wait
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    
+    global_frame: odom
+    robot_base_frame: base_link
+    transform_tolerance: 0.1
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 1.0
+    min_rotational_vel: 0.4
+    rotational_acc_lim: 2.0
+
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: True
+    loop_rate: 20
+    stop_on_failure: false
+    
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: True
+      waypoint_pause_duration: 200
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: True
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "OPEN_LOOP"
+    
+    # 速度限制 / Velocity limits
+    max_velocity: [0.20, 0.15, 1.0]      # [x, y, theta] 全向运动 / omnidirectional
+    min_velocity: [-0.15, -0.15, -1.0]   # [x, y, theta]
+    
+    # 加速度限制 / Acceleration limits
+    max_accel: [1.5, 1.5, 2.0]           # [x, y, theta]
+    max_decel: [-1.5, -1.5, -2.0]        # [x, y, theta]
+    
+    odom_topic: "odom"
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+
+# ==============================================================================
+# Slam Toolbox 参数配置 / Slam Toolbox Parameters Configuration
+# ==============================================================================
+slam_toolbox:
+  ros__parameters:
+    # 使用仿真时间 / Use simulation time
+    use_sim_time: true
+    
+    # 坐标系配置 / Frame configuration
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    
+    # 激光雷达话题 / Laser scan topic
+    scan_topic: /scan
+    
+    # 运行模式 / Mode
+    mode: mapping
+    
+    # 调试日志 / Debug logging
+    debug_logging: false
+    
+    # 节流扫描 / Throttle scans
+    throttle_scans: 1
+    
+    # ==========================================================================
+    # 扫描消息队列大小 / Scan message queue size
+    # 增大队列以防止消息被丢弃（默认1太小）
+    # Increase queue to prevent message dropping (default 1 is too small)
+    # ==========================================================================
+    scan_queue_size: 30
+    
+    # TF超时时间（增大以适应仿真延迟）/ Transform timeout (increased for simulation delay)
+    transform_timeout: 2.0
+    
+    # TF缓冲持续时间 / TF buffer duration
+    tf_buffer_duration: 60.0
+    
+    # 地图更新间隔 / Map update interval
+    map_update_interval: 5.0
+    
+    # 发布周期 / Transform publish period
+    transform_publish_period: 0.05
+    
+    # 分辨率 / Resolution
+    resolution: 0.05
+    
+    # 最大激光距离 / Maximum laser range
+    max_laser_range: 8.0
+    
+    # 最小行驶距离才更新 / Minimum travel distance for update
+    minimum_travel_distance: 0.3
+    
+    # 最小旋转角度才更新 / Minimum rotation for update
+    minimum_travel_heading: 0.3
+    
+    # 扫描缓冲大小 / Scan buffer size
+    scan_buffer_size: 10
+    
+    # 扫描缓冲最大距离 / Scan buffer maximum distance
+    scan_buffer_maximum_scan_distance: 8.0
+    
+    # 闭环检测 / Loop closure
+    do_loop_closing: true
+    loop_search_maximum_distance: 3.0
+    
+    # 求解器参数 / Solver parameters
+    use_scan_matching: true
+    use_scan_barycenter: true
+    
+    # 相关搜索空间 / Correlation search space
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+    
+    # 闭环搜索空间 / Loop search space
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+    
+    # 距离和角度惩罚 / Distance and angle penalties
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    
+    # Ceres求解器堆栈大小 / Stack size for ceres solver
+    stack_size_to_use: 40000000

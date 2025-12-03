@@ -1,0 +1,329 @@
+<?xml version="1.0" ?>
+<!-- 
+  简单障碍物测试世界 / Simple Obstacles Test World
+  用于导航功能测试 / For navigation function testing
+-->
+<sdf version="1.6">
+  <world name="simple_obstacles">
+    
+    <!-- 物理引擎配置 / Physics engine configuration -->
+    <physics type="ode">
+      <real_time_update_rate>1000.0</real_time_update_rate>
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+    </physics>
+    
+    <!-- 光照 / Lighting -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+    
+    <!-- 地面 / Ground plane -->
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+    
+    <!-- ================================================================== -->
+    <!-- 围墙 / Walls (5m x 5m 区域 / area) -->
+    <!-- ================================================================== -->
+    
+    <!-- 北墙 / North wall -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>0 2.5 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>5.0 0.1 0.5</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>5.0 0.1 0.5</size></box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 南墙 / South wall -->
+    <model name="wall_south">
+      <static>true</static>
+      <pose>0 -2.5 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>5.0 0.1 0.5</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>5.0 0.1 0.5</size></box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 东墙 / East wall -->
+    <model name="wall_east">
+      <static>true</static>
+      <pose>2.5 0 0.25 0 0 1.5708</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>5.0 0.1 0.5</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>5.0 0.1 0.5</size></box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 西墙 / West wall -->
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-2.5 0 0.25 0 0 1.5708</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>5.0 0.1 0.5</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>5.0 0.1 0.5</size></box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- ================================================================== -->
+    <!-- 障碍物 / Obstacles -->
+    <!-- ================================================================== -->
+    
+    <!-- 障碍物1: 红色圆柱 / Obstacle 1: Red cylinder -->
+    <model name="obstacle_cylinder_1">
+      <static>true</static>
+      <pose>1.0 1.0 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.15</radius>
+              <length>0.5</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.15</radius>
+              <length>0.5</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.8 0.2 0.2 1</ambient>
+            <diffuse>1.0 0.3 0.3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 障碍物2: 蓝色方块 / Obstacle 2: Blue box -->
+    <model name="obstacle_box_1">
+      <static>true</static>
+      <pose>-1.0 0.5 0.2 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>0.4 0.4 0.4</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.4 0.4 0.4</size></box>
+          </geometry>
+          <material>
+            <ambient>0.2 0.2 0.8 1</ambient>
+            <diffuse>0.3 0.3 1.0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 障碍物3: 绿色圆柱 / Obstacle 3: Green cylinder -->
+    <model name="obstacle_cylinder_2">
+      <static>true</static>
+      <pose>0.5 -1.0 0.25 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.2</radius>
+              <length>0.5</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.2</radius>
+              <length>0.5</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.2 0.8 0.2 1</ambient>
+            <diffuse>0.3 1.0 0.3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 障碍物4: 黄色方块 / Obstacle 4: Yellow box -->
+    <model name="obstacle_box_2">
+      <static>true</static>
+      <pose>-0.8 -1.2 0.15 0 0 0.5</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>0.3 0.5 0.3</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>0.3 0.5 0.3</size></box>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.2 1</ambient>
+            <diffuse>1.0 1.0 0.3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 障碍物5: L形墙 / Obstacle 5: L-shaped wall -->
+    <model name="obstacle_L_wall">
+      <static>true</static>
+      <pose>1.5 -0.5 0.25 0 0 0</pose>
+      <link name="link">
+        <!-- L形水平部分 / L-shape horizontal part -->
+        <collision name="collision_h">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box><size>0.8 0.1 0.5</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual_h">
+          <pose>0 0 0 0 0 0</pose>
+          <geometry>
+            <box><size>0.8 0.1 0.5</size></box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.4 0.2 1</ambient>
+            <diffuse>0.8 0.5 0.3 1</diffuse>
+          </material>
+        </visual>
+        <!-- L形垂直部分 / L-shape vertical part -->
+        <collision name="collision_v">
+          <pose>0.35 0.35 0 0 0 0</pose>
+          <geometry>
+            <box><size>0.1 0.6 0.5</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual_v">
+          <pose>0.35 0.35 0 0 0 0</pose>
+          <geometry>
+            <box><size>0.1 0.6 0.5</size></box>
+          </geometry>
+          <material>
+            <ambient>0.6 0.4 0.2 1</ambient>
+            <diffuse>0.8 0.5 0.3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- ================================================================== -->
+    <!-- 导航目标标记 / Navigation goal markers -->
+    <!-- ================================================================== -->
+    
+    <!-- 目标点A标记 / Goal point A marker -->
+    <model name="goal_marker_A">
+      <static>true</static>
+      <pose>1.8 1.8 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.1</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0 1 0 1</ambient>
+            <diffuse>0 1 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 目标点B标记 / Goal point B marker -->
+    <model name="goal_marker_B">
+      <static>true</static>
+      <pose>-1.8 -1.8 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.1</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0 0 1 1</ambient>
+            <diffuse>0 0 1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+    <!-- 起始点标记 / Start point marker -->
+    <model name="start_marker">
+      <static>true</static>
+      <pose>0 0 0.01 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.15</radius>
+              <length>0.02</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>1 1 0 1</ambient>
+            <diffuse>1 1 0 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    
+  </world>
+</sdf>
