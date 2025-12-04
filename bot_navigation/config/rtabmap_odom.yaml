@@ -24,8 +24,11 @@ rgbd_odometry:
     # Critical for proper message synchronization
     # 关键的消息同步设置
     # ==========================================================================
-    qos: 2                        # Sensor data QoS (2 = Best effort for sensors)
-    qos_camera_info: 2            # Camera info QoS
+    # QoS values: 0=System Default, 1=Parameter Events (RELIABLE), 2=Sensor Data (BEST_EFFORT)
+    # Gazebo camera uses RELIABLE, so we must use RELIABLE (0 or 1) to receive data
+    # Gazebo 相机使用 RELIABLE，所以我们必须使用 RELIABLE (0 或 1) 才能接收数据
+    qos: 1                        # Use RELIABLE to match Gazebo camera publisher
+    qos_camera_info: 1            # Camera info also uses RELIABLE
     
     # ==========================================================================
     # Topic Configuration / 话题配置
@@ -37,54 +40,69 @@ rgbd_odometry:
     subscribe_rgb: true           # Subscribe to RGB image / 订阅RGB图像
     
     # ==========================================================================
+    # Image Synchronization / 图像同步配置
+    # Critical for Gazebo simulation where RGB and Depth timestamps may differ
+    # 对于 Gazebo 仿真至关重要，因为 RGB 和 Depth 时间戳可能不同
+    # ==========================================================================
+    approx_sync: true             # Enable approximate synchronization / 启用近似同步
+    approx_sync_max_interval: 0.1 # Max time diff between RGB/Depth (seconds)
+                                  # 设为 0.1s，足够允许轻微时间差异但避免重复触发
+                                  # Set to 0.1s, enough for slight time differences but avoids duplicate triggers
+    
+    # ==========================================================================
     # Visual Odometry Parameters / 视觉里程计参数
+    # Optimized for simulated textured environment with 60° FOV camera
+    # 针对 60° FOV 相机的仿真纹理环境优化
     # ==========================================================================
     
     # Odometry Strategy / 里程计策略
     # 0=Frame-to-Map (F2M), 1=Frame-to-Frame (F2F)
-    # F2M更精确但计算量大，F2F更快但累积误差
-    # F2M is more accurate but computationally heavy, F2F is faster but drifts
-    Odom/Strategy: "0"            # Frame-to-Map for better accuracy
+    # F2F is more robust for challenging environments with limited features
+    # F2F 对于特征有限的挑战性环境更加鲁棒
+    Odom/Strategy: "1"            # Frame-to-Frame for better robustness in simulation
     
     # Feature Type / 特征类型
     # 0=SURF, 2=ORB, 6=GFTT/BRIEF, 8=GFTT/ORB, 9=BRISK, 14=BEBLID
-    # GFTT/ORB (8) provides good balance of speed and accuracy
-    # GFTT/ORB (8) 在速度和精度之间取得良好平衡
-    Vis/FeatureType: "8"          # GFTT/ORB - good for textured environments
+    # ORB (2) is faster and works better in low-texture environments
+    # ORB (2) 更快且在低纹理环境中效果更好
+    Vis/FeatureType: "2"          # Pure ORB - better for simulation
     
     # Maximum Features / 最大特征数
-    # More features = more accurate but slower
-    # 更多特征 = 更准确但更慢
-    Vis/MaxFeatures: "600"        # Moderate feature count for real-time
+    # Increased for better tracking in challenging conditions
+    # 增加以在挑战性条件下获得更好的跟踪
+    Vis/MaxFeatures: "1000"       # Increased for more robust tracking
     
     # Minimum Inliers / 最小内点数
-    # Minimum matches required for valid transformation
-    # 有效变换所需的最小匹配数
-    Odom/MinInliers: "15"         # Lowered for 60° FOV camera
+    # Lowered to allow odometry even with fewer matches
+    # 降低以允许在匹配较少时也能进行里程计
+    Odom/MinInliers: "10"         # Further lowered for 60° FOV camera
     
     # Reset Count Down / 重置倒计时
-    # Reset odometry after this many consecutive failures
-    # 连续失败此次数后重置里程计
-    Odom/ResetCountdown: "3"
+    # Increased tolerance before reset
+    # 增加重置前的容错
+    Odom/ResetCountdown: "5"      # More tolerance before reset
     
     # ==========================================================================
     # Feature Detection Parameters / 特征检测参数
+    # Optimized for simulated environment / 针对仿真环境优化
     # ==========================================================================
     
     # GFTT (Good Features To Track) Parameters
     # Shi-Tomasi corner detection parameters
-    GFTT/MinDistance: "5"         # Minimum distance between features (pixels)
-    GFTT/QualityLevel: "0.001"    # Quality threshold (lower = more features)
+    GFTT/MinDistance: "3"         # Reduced for more features / 减小以获得更多特征
+    GFTT/QualityLevel: "0.0005"   # Lower threshold = more features / 更低阈值 = 更多特征
     GFTT/BlockSize: "3"           # Block size for corner detection
     GFTT/UseHarrisDetector: "false"  # Use Shi-Tomasi instead of Harris
     
     # ORB Parameters / ORB 参数
+    # Optimized for simulated textured walls / 针对仿真纹理墙壁优化
     ORB/ScaleFactor: "1.2"        # Pyramid scale factor
     ORB/NLevels: "8"              # Pyramid levels
-    ORB/EdgeThreshold: "31"       # Border where no features are detected
+    ORB/EdgeThreshold: "19"       # Reduced to detect features closer to edges
     ORB/FirstLevel: "0"           # First pyramid level
     ORB/WTA_K: "2"                # Points for BRIEF descriptor
     ORB/PatchSize: "31"           # Patch size for oriented BRIEF
+    ORB/FastThreshold: "10"       # Lower threshold for more keypoints / 更低阈值以获得更多关键点
     
     # ==========================================================================
     # Depth Image Parameters / 深度图像参数
@@ -168,10 +186,11 @@ rgbd_odometry:
     
     # ==========================================================================
     # Expected Update Rate / 预期更新频率
-    # Should match camera frame rate
-    # 应与相机帧率匹配
+    # Should match or exceed camera frame rate
+    # 应与相机帧率匹配或更高
     # ==========================================================================
-    expected_update_rate: 15.0    # Match camera rate (15 Hz in sim)
+    expected_update_rate: 30.0    # Set higher to accommodate Gazebo variable framerate
+                                  # 设置更高以适应 Gazebo 可变帧率
     
     # ==========================================================================
     # Wait for Transform / 等待变换

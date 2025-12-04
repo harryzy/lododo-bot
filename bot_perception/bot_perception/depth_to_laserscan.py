@@ -21,16 +21,36 @@ class DepthToLaserScan(Node):
         super().__init__('depth_to_laserscan')
         
         # ====================================================================
-        # QoS 配置 - 使用传感器数据标准QoS / QoS config - use sensor data standard QoS
-        # BEST_EFFORT: 允许丢包，减少延迟 / Allow packet loss, reduce latency
-        # VOLATILE: 不需要持久化 / No persistence needed
-        # KEEP_LAST(5): 只保留最近5条消息 / Keep only last 5 messages
+        # QoS 配置 / QoS Configuration
         # ====================================================================
-        sensor_qos = QoSProfile(
-            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+        
+        # 订阅者QoS - 使用RELIABLE以匹配Gazebo相机发布者
+        # Subscriber QoS - Use RELIABLE to match Gazebo camera publisher
+        # 注意：真实硬件可能需要改为BEST_EFFORT
+        # Note: Real hardware may need to change to BEST_EFFORT
+        sub_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
             durability=QoSDurabilityPolicy.VOLATILE,
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=5
+        )
+        
+        # 发布者QoS - BEST_EFFORT（模拟真实激光雷达传感器行为）
+        # Publisher QoS - BEST_EFFORT (mimic real laser scanner sensor behavior)
+        pub_qos_best_effort = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+        
+        # 发布者QoS - RELIABLE（供Nav2 costmap使用）
+        # Publisher QoS - RELIABLE (for Nav2 costmap)
+        pub_qos_reliable = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
         )
         
         # 声明参数 / Declare parameters
@@ -58,19 +78,28 @@ class DepthToLaserScan(Node):
         # CvBridge用于图像转换 / CvBridge for image conversion
         self.bridge = CvBridge()
         
-        # 订阅深度图像（使用传感器QoS）/ Subscribe to depth image (using sensor QoS)
+        # 订阅深度图像（使用RELIABLE QoS匹配Gazebo）
+        # Subscribe to depth image (RELIABLE QoS to match Gazebo)
         self.depth_sub = self.create_subscription(
             Image,
             '/camera/depth/image_raw',
             self.depth_callback,
-            sensor_qos
+            sub_qos
         )
         
-        # 发布激光雷达数据（使用传感器QoS）/ Publish laser scan (using sensor QoS)
-        self.scan_pub = self.create_publisher(LaserScan, '/scan', sensor_qos)
+        # 发布激光雷达数据 - 双话题策略 / Dual-topic strategy
+        # /scan: BEST_EFFORT - 模拟真实传感器行为，供RVIZ等工具使用
+        # /scan: BEST_EFFORT - mimic real sensor, for RVIZ and other tools
+        self.scan_pub = self.create_publisher(LaserScan, '/scan', pub_qos_best_effort)
+        
+        # /scan_reliable: RELIABLE - 供Nav2 costmap使用
+        # /scan_reliable: RELIABLE - for Nav2 costmap
+        self.scan_reliable_pub = self.create_publisher(LaserScan, '/scan_reliable', pub_qos_reliable)
         
         self.get_logger().info('Depth to LaserScan node started')
-        self.get_logger().info(f'  QoS: BEST_EFFORT, VOLATILE, KEEP_LAST(5)')
+        self.get_logger().info(f'  Subscribe QoS: RELIABLE (match Gazebo camera)')
+        self.get_logger().info(f'  Publish /scan: BEST_EFFORT (sensor-like)')
+        self.get_logger().info(f'  Publish /scan_reliable: RELIABLE (for Nav2)')
         self.get_logger().info(f'  Range: [{self.range_min}, {self.range_max}] m')
         self.get_logger().info(f'  Angle: [{math.degrees(self.angle_min):.1f}, {math.degrees(self.angle_max):.1f}] deg')
         self.get_logger().info(f'  Scan height: {self.scan_height} pixels')
@@ -144,8 +173,9 @@ class DepthToLaserScan(Node):
             
             scan.ranges = ranges.astype(np.float32).tolist()
             
-            # 发布激光雷达数据
-            self.scan_pub.publish(scan)
+            # 发布激光雷达数据到两个话题 / Publish laser scan to both topics
+            self.scan_pub.publish(scan)           # BEST_EFFORT
+            self.scan_reliable_pub.publish(scan)  # RELIABLE
             
         except Exception as e:
             self.get_logger().error(f'Error processing depth image: {str(e)}')

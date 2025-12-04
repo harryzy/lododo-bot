@@ -244,7 +244,8 @@ local_costmap:
         
         observation_sources: scan
         scan:
-          topic: /scan
+          # 使用 RELIABLE QoS 版本 / Use RELIABLE QoS version
+          topic: /scan_reliable
           # 传感器坐标系 / Sensor frame (LaserScan is in base_link frame)
           sensor_frame: base_link
           max_obstacle_height: 2.0
@@ -303,7 +304,8 @@ global_costmap:
         # 增加观测源的TF容差 / Increase observation source TF tolerance
         observation_sources: scan
         scan:
-          topic: /scan
+          # 使用 RELIABLE QoS 版本 / Use RELIABLE QoS version
+          topic: /scan_reliable
           # 传感器坐标系 / Sensor frame (LaserScan is in base_link frame)
           sensor_frame: base_link
           # 观测保留时间 / Observation keep time (seconds)
@@ -453,12 +455,11 @@ slam_toolbox:
     base_frame: base_link
     
     # 激光雷达话题 / Laser scan topic
-    scan_topic: /scan
-    
+    # 使用 RELIABLE QoS 版本 / Use RELIABLE QoS version
+    scan_topic: /scan_reliable
+
     # 运行模式 / Mode
-    mode: mapping
-    
-    # 调试日志 / Debug logging
+    mode: mapping    # 调试日志 / Debug logging
     debug_logging: false
     
     # 节流扫描 / Throttle scans

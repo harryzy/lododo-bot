@@ -22,22 +22,22 @@ Startup Sequence (Event-Driven) / 启动顺序（事件驱动）:
     Phase 1: Gazebo Simulation
         - Start Gazebo server and client
         - Spawn robot model
-        - Wait for robot_description and camera topics
+        - Event: OnProcessStart(spawn_robot) -> Phase 2
     
     Phase 2: Robot Control & Perception
         - Start omni_controller
         - Start perception nodes (depth_to_laserscan)
-        - Wait for /scan topic
+        - Event: OnProcessStart(perception) -> Phase 3
     
     Phase 3: Visual Odometry
         - Start rgbd_odometry
         - Start EKF fusion
-        - Wait for /odom (fused) topic
+        - Event: OnProcessStart(ekf_filter) -> Phase 4
     
     Phase 4: Navigation
         - Start SLAM Toolbox
         - Start Nav2 navigation stack
-        - Wait for navigation services
+        - Event: OnProcessStart(slam_toolbox) -> Phase 5
     
     Phase 5: Visualization (optional)
         - Start RViz with nav2 config
@@ -63,11 +63,13 @@ from launch.actions import (
     OpaqueFunction,
     GroupAction,
     RegisterEventHandler,
+    EmitEvent,
     TimerAction,
     ExecuteProcess,
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessStart, OnProcessExit, OnExecutionComplete
+from launch.events import Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
     LaunchConfiguration,
@@ -77,46 +79,17 @@ from launch.substitutions import (
     FindExecutable,
 )
 from launch_ros.actions import Node
+from launch_ros.event_handlers import OnStateTransition
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.parameter_descriptions import ParameterValue
 from nav2_common.launch import RewrittenYaml
 
 
-class TopicWaiter:
-    """
-    Helper class to check topic availability / 帮助类用于检查话题可用性
-    Uses ros2 topic info to verify topics exist before starting dependent nodes
-    使用 ros2 topic info 在启动依赖节点之前验证话题存在
-    """
-    
-    @staticmethod
-    def create_topic_check_node(
-        topic_name: str,
-        node_name: str,
-        timeout_sec: float = 30.0
-    ) -> Node:
-        """
-        Create a node that waits for a topic to be available
-        创建一个等待话题可用的节点
-        
-        This is a workaround since ROS2 launch doesn't have built-in topic waiting.
-        We use a simple Python script executed as a node.
-        
-        这是一个变通方法，因为 ROS2 launch 没有内置的话题等待功能。
-        我们使用作为节点执行的简单 Python 脚本。
-        """
-        # Note: In production, this would be a proper wait mechanism
-        # For now, we rely on TimerAction with appropriate delays
-        # 注意：在生产中，这将是一个适当的等待机制
-        # 目前，我们依赖带有适当延迟的 TimerAction
-        pass
-
-
 def launch_setup(context: LaunchContext, *args, **kwargs):
     """
     Dynamic launch setup function / 动态启动设置函数
-    Evaluates launch configurations and creates appropriate nodes
-    评估启动配置并创建适当的节点
+    Uses event-driven startup sequence for reliable node ordering
+    使用事件驱动的启动顺序确保节点可靠启动
     """
     
     # ==========================================================================
@@ -191,16 +164,18 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     )
     
     # ==========================================================================
-    # PHASE 1: Gazebo Environment / 第一阶段：Gazebo 环境
-    # ==========================================================================
-    
     # Set Gazebo model path / 设置 Gazebo 模型路径
+    # ==========================================================================
     gazebo_model_path = os.environ.get('GAZEBO_MODEL_PATH', '')
     share_dir = os.path.dirname(pkg_bot_description)
     if gazebo_model_path:
         full_model_path = share_dir + ':' + gazebo_model_path
     else:
         full_model_path = share_dir
+    
+    # ==========================================================================
+    # PHASE 1: Gazebo Environment Nodes / 第一阶段：Gazebo 环境节点
+    # ==========================================================================
     
     # Gazebo server / Gazebo 服务器
     gazebo_server = ExecuteProcess(
@@ -233,10 +208,9 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     )
     
     # Spawn robot / 生成机器人
-    spawn_robot = Node(
-        package='gazebo_ros',
-        executable='spawn_entity.py',
-        arguments=[
+    spawn_robot = ExecuteProcess(
+        cmd=[
+            'ros2', 'run', 'gazebo_ros', 'spawn_entity.py',
             '-entity', 'lekiwi_bot',
             '-topic', 'robot_description',
             '-x', '0.0',
@@ -247,7 +221,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     )
     
     # ==========================================================================
-    # PHASE 2: Robot Control & Perception / 第二阶段：机器人控制和感知
+    # PHASE 2: Robot Control & Perception Nodes / 第二阶段：机器人控制和感知节点
     # ==========================================================================
     
     # Omni-directional wheel controller / 全向轮控制器
@@ -277,27 +251,22 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         }]
     )
     
-    # Perception nodes (depth to laserscan) / 感知节点（深度到激光雷达）
+    # Perception launch (includes depth_to_laserscan with venv wrapper)
+    # 感知启动（包含使用虚拟环境的 depth_to_laserscan）
     perception_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
-            PathJoinSubstitution([
-                FindPackageShare('bot_perception'),
-                'launch',
-                'perception.launch.py'
-            ])
+            os.path.join(pkg_bot_perception, 'launch', 'perception.launch.py')
         ]),
         launch_arguments={
-            'use_sim_time': use_sim_time_str
+            'use_sim_time': use_sim_time_str,
         }.items()
     )
     
     # ==========================================================================
-    # PHASE 3: Visual Odometry (VIO) / 第三阶段：视觉里程计 (VIO)
+    # PHASE 3: Visual Odometry (VIO) Nodes / 第三阶段：视觉里程计 (VIO) 节点
     # ==========================================================================
     
     # Wheel odometry relay / 轮式里程计中继
-    # Relay /odom from Gazebo to /wheel_odom for EKF
-    # 将 Gazebo 的 /odom 中继到 /wheel_odom 供 EKF 使用
     wheel_odom_relay = Node(
         package='topic_tools',
         executable='relay',
@@ -312,7 +281,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         package='rtabmap_odom',
         executable='rgbd_odometry',
         name='rgbd_odometry',
-        output='log',  # Reduce terminal spam / 减少终端垃圾
+        output='log',
         arguments=['--ros-args', '--log-level', 'warn'],
         parameters=[
             rtabmap_config,
@@ -342,10 +311,10 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     )
     
     # ==========================================================================
-    # PHASE 4: Navigation Stack / 第四阶段：导航栈
+    # PHASE 4: Navigation Stack Nodes / 第四阶段：导航栈节点
     # ==========================================================================
     
-    # SLAM Toolbox (VIO optimized config) / SLAM Toolbox（VIO 优化配置）
+    # SLAM Toolbox / SLAM 工具箱
     slam_toolbox = Node(
         condition=IfCondition(slam),
         package='slam_toolbox',
@@ -398,7 +367,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     )
     
     # ==========================================================================
-    # PHASE 5: Visualization / 第五阶段：可视化
+    # PHASE 5: Visualization Node / 第五阶段：可视化节点
     # ==========================================================================
     
     # RViz node / RViz 节点
@@ -413,73 +382,118 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     )
     
     # ==========================================================================
-    # Staged Launch with TimerActions / 使用 TimerAction 的分阶段启动
+    # Event-Driven Startup Sequence / 事件驱动的启动顺序
     # ==========================================================================
     #
-    # We use TimerActions to create a staged startup sequence.
-    # This ensures each phase has time to initialize before the next starts.
-    # 
-    # Phase timing (seconds from launch):
-    #   0s:  Gazebo server, client, robot_state_publisher, spawn
-    #   5s:  Control and perception nodes
-    #   10s: Visual odometry (rgbd_odometry, wheel_odom_relay, EKF)
-    #   15s: Navigation stack (SLAM, Nav2)
-    #   25s: RViz (if enabled)
+    # Startup chain (using OnProcessStart/OnProcessExit events):
+    # 启动链（使用 OnProcessStart/OnProcessExit 事件）:
     #
-    # 我们使用 TimerActions 创建分阶段的启动顺序。
-    # 这确保每个阶段在下一个阶段开始之前有时间初始化。
+    #   gazebo_server starts
+    #         │
+    #         ▼ OnProcessStart
+    #   robot_state_publisher + gazebo_client start
+    #         │
+    #         ▼ OnProcessStart(robot_state_publisher)
+    #   spawn_robot starts
+    #         │
+    #         ▼ OnProcessExit(spawn_robot) - robot spawned successfully
+    #   Phase 2: control + perception start
+    #         │
+    #         ▼ OnProcessStart(depth_to_laserscan)
+    #   Phase 3: VIO nodes start
+    #         │
+    #         ▼ OnProcessStart(ekf_filter)
+    #   Phase 4: Navigation nodes start
+    #         │
+    #         ▼ OnProcessStart(slam_toolbox)
+    #   Phase 5: RViz starts
+    #
     # ==========================================================================
     
-    # Phase 1: Gazebo (immediate) / 第一阶段：Gazebo（立即）
-    phase1_gazebo = GroupAction([
-        LogInfo(msg='[Phase 1] Starting Gazebo simulation environment...'),
-        gazebo_server,
-        gazebo_client,
-        robot_state_publisher,
-        spawn_robot,
-    ])
-    
-    # Phase 2: Control & Perception (5s delay) / 第二阶段：控制和感知（延迟 5 秒）
-    phase2_control = TimerAction(
-        period=5.0,
-        actions=[
-            LogInfo(msg='[Phase 2] Starting robot control and perception...'),
-            omni_controller,
-            wheel_joint_publisher,
-            perception_launch,
-        ]
+    # Event: When gazebo_server starts -> start robot_state_publisher and gazebo_client
+    # 事件：当 gazebo_server 启动后 -> 启动 robot_state_publisher 和 gazebo_client
+    event_gazebo_started = RegisterEventHandler(
+        OnProcessStart(
+            target_action=gazebo_server,
+            on_start=[
+                LogInfo(msg='[Event] Gazebo server started, launching robot_state_publisher and client...'),
+                robot_state_publisher,
+                gazebo_client,
+            ]
+        )
     )
     
-    # Phase 3: Visual Odometry (10s delay) / 第三阶段：视觉里程计（延迟 10 秒）
-    phase3_vio = TimerAction(
-        period=10.0,
-        actions=[
-            LogInfo(msg='[Phase 3] Starting Visual Odometry (VIO) system...'),
-            wheel_odom_relay,
-            rgbd_odometry,
-            ekf_filter,
-        ]
+    # Event: When robot_state_publisher starts -> spawn robot
+    # 事件：当 robot_state_publisher 启动后 -> 生成机器人
+    event_rsp_started = RegisterEventHandler(
+        OnProcessStart(
+            target_action=robot_state_publisher,
+            on_start=[
+                LogInfo(msg='[Event] Robot state publisher started, spawning robot...'),
+                spawn_robot,
+            ]
+        )
     )
     
-    # Phase 4: Navigation (15s delay) / 第四阶段：导航（延迟 15 秒）
-    phase4_navigation = TimerAction(
-        period=15.0,
-        actions=[
-            LogInfo(msg='[Phase 4] Starting Navigation stack...'),
-            slam_toolbox,
-            map_saver,
-            nav2_navigation,
-            localization_launch,
-        ]
+    # Event: When spawn_robot completes (exits) -> start Phase 2 (control & perception)
+    # 事件：当 spawn_robot 完成（退出）后 -> 启动第二阶段（控制和感知）
+    event_robot_spawned = RegisterEventHandler(
+        OnProcessExit(
+            target_action=spawn_robot,
+            on_exit=[
+                LogInfo(msg='[Event] Robot spawned successfully!'),
+                LogInfo(msg='[Phase 2] Starting robot control and perception...'),
+                omni_controller,
+                wheel_joint_publisher,
+                perception_launch,
+            ]
+        )
     )
     
-    # Phase 5: RViz (25s delay) / 第五阶段：RViz（延迟 25 秒）
-    phase5_rviz = TimerAction(
-        period=25.0,
-        actions=[
-            LogInfo(msg='[Phase 5] Starting RViz visualization...'),
-            rviz_node,
-        ]
+    # Event: When perception launch completes -> start Phase 3 (VIO)
+    # 事件：当感知启动完成后 -> 启动第三阶段（VIO）
+    # Note: IncludeLaunchDescription triggers OnExecutionComplete when all its nodes start
+    # 注意：IncludeLaunchDescription 在其所有节点启动时触发 OnExecutionComplete
+    event_perception_started = RegisterEventHandler(
+        OnExecutionComplete(
+            target_action=perception_launch,
+            on_completion=[
+                LogInfo(msg='[Event] Perception nodes started!'),
+                LogInfo(msg='[Phase 3] Starting Visual Odometry (VIO) system...'),
+                wheel_odom_relay,
+                rgbd_odometry,
+                ekf_filter,
+            ]
+        )
+    )
+    
+    # Event: When EKF filter starts -> start Phase 4 (Navigation)
+    # 事件：当 EKF 滤波器启动后 -> 启动第四阶段（导航）
+    event_ekf_started = RegisterEventHandler(
+        OnProcessStart(
+            target_action=ekf_filter,
+            on_start=[
+                LogInfo(msg='[Event] EKF filter started!'),
+                LogInfo(msg='[Phase 4] Starting Navigation stack...'),
+                slam_toolbox,
+                map_saver,
+                nav2_navigation,
+                localization_launch,
+            ]
+        )
+    )
+    
+    # Event: When SLAM toolbox starts -> start Phase 5 (RViz)
+    # 事件：当 SLAM 工具箱启动后 -> 启动第五阶段（RViz）
+    event_slam_started = RegisterEventHandler(
+        OnProcessStart(
+            target_action=slam_toolbox,
+            on_start=[
+                LogInfo(msg='[Event] SLAM Toolbox started!'),
+                LogInfo(msg='[Phase 5] Starting RViz visualization...'),
+                rviz_node,
+            ]
+        )
     )
     
     # ==========================================================================
@@ -489,24 +503,34 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         # Startup info / 启动信息
         LogInfo(msg='========================================'),
         LogInfo(msg='Starting VIO Navigation Simulation'),
+        LogInfo(msg='  (Event-Driven Startup Sequence)'),
         LogInfo(msg=f'  World: {world_str or "textured_test.world"}'),
         LogInfo(msg=f'  SLAM Mode: {slam_str}'),
         LogInfo(msg=f'  RViz: {use_rviz_str}'),
         LogInfo(msg='========================================'),
-        LogInfo(msg='Startup phases:'),
-        LogInfo(msg='  [0s]  Phase 1: Gazebo environment'),
-        LogInfo(msg='  [5s]  Phase 2: Control & perception'),
-        LogInfo(msg='  [10s] Phase 3: Visual odometry (VIO)'),
-        LogInfo(msg='  [15s] Phase 4: Navigation stack'),
-        LogInfo(msg='  [25s] Phase 5: RViz (if enabled)'),
+        LogInfo(msg='Startup sequence:'),
+        LogInfo(msg='  [1] Gazebo server'),
+        LogInfo(msg='  [2] Robot state publisher + Gazebo client'),
+        LogInfo(msg='  [3] Spawn robot'),
+        LogInfo(msg='  [4] Control + Perception (on robot spawned)'),
+        LogInfo(msg='  [5] VIO system (on perception ready)'),
+        LogInfo(msg='  [6] Navigation (on EKF ready)'),
+        LogInfo(msg='  [7] RViz (on SLAM ready)'),
         LogInfo(msg='========================================'),
         
-        # Phased launch actions / 分阶段启动动作
-        phase1_gazebo,
-        phase2_control,
-        phase3_vio,
-        phase4_navigation,
-        phase5_rviz,
+        # Phase 1: Start Gazebo server (triggers the event chain)
+        # 第一阶段：启动 Gazebo 服务器（触发事件链）
+        LogInfo(msg='[Phase 1] Starting Gazebo simulation environment...'),
+        gazebo_server,
+        
+        # Event handlers (define the startup sequence)
+        # 事件处理器（定义启动顺序）
+        event_gazebo_started,
+        event_rsp_started,
+        event_robot_spawned,
+        event_perception_started,
+        event_ekf_started,
+        event_slam_started,
     ]
 
 

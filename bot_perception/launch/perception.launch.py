@@ -27,6 +27,8 @@ def generate_launch_description():
     venv_wrapper = os.path.join(perception_share, 'scripts', 'run_with_venv.sh')
     
     # Depth to LaserScan (running in virtual environment) / 深度图转激光雷达（在虚拟环境中运行）
+    # Publishes both /scan (BEST_EFFORT) and /scan_reliable (RELIABLE)
+    # 同时发布 /scan (BEST_EFFORT) 和 /scan_reliable (RELIABLE)
     depth_to_laserscan = Node(
         package='bot_perception',
         executable='depth_to_laserscan',

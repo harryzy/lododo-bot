@@ -217,7 +217,7 @@
       </link>
     </model>
     
-    <!-- West Wall - Rocky / 西墙 - 岩石 -->
+    <!-- West Wall - Grey Stone / 西墙 - 灰色石头 -->
     <model name="wall_west">
       <static>true</static>
       <pose>-5 0 1.0 0 0 1.5708</pose>
@@ -234,7 +234,7 @@
           <material>
             <script>
               <uri>file://media/materials/scripts/gazebo.material</uri>
-              <name>Gazebo/Rocky</name>
+              <name>Gazebo/DarkGrey</name>
             </script>
           </material>
         </visual>
@@ -373,7 +373,7 @@
       </link>
     </model>
     
-    <!-- Cylinder 2 - Rocky / 圆柱 2 - 岩石 -->
+    <!-- Cylinder 2 - Grey Stone / 圆柱 2 - 灰色石头 -->
     <model name="cylinder_rocky_1">
       <static>true</static>
       <pose>0 -3 0.6 0 0 0</pose>
@@ -396,7 +396,7 @@
           <material>
             <script>
               <uri>file://media/materials/scripts/gazebo.material</uri>
-              <name>Gazebo/Rocky</name>
+              <name>Gazebo/Grey</name>
             </script>
           </material>
         </visual>

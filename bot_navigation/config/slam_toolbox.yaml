@@ -22,7 +22,8 @@ slam_toolbox:
     base_frame: base_link
     
     # 激光雷达话题 / Laser scan topic
-    scan_topic: /scan
+    # 使用 RELIABLE QoS 版本 / Use RELIABLE QoS version
+    scan_topic: /scan_reliable
     
     # 运行模式 / Mode
     # mapping: 建图模式 / mapping mode
