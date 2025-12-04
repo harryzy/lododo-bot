@@ -1,0 +1,240 @@
+# ==============================================================================
+# Robot Localization EKF Configuration / 机器人定位 EKF 配置
+# Extended Kalman Filter for fusing wheel odometry and visual odometry
+# 扩展卡尔曼滤波器，用于融合轮式里程计和视觉里程计
+# ==============================================================================
+
+ekf_filter_node:
+  ros__parameters:
+    # ==========================================================================
+    # Simulation Time / 仿真时间
+    # ==========================================================================
+    use_sim_time: true
+    
+    # ==========================================================================
+    # Frame Configuration / 坐标系配置
+    # ==========================================================================
+    
+    # World Fixed Frame / 世界固定坐标系
+    # Should be set to the frame your robot considers "fixed"
+    # 应设置为机器人认为"固定"的坐标系
+    world_frame: odom
+    
+    # Map Frame / 地图坐标系
+    # Only used if world_frame is set to map
+    # 仅在 world_frame 设为 map 时使用
+    map_frame: map
+    
+    # Odometry Frame / 里程计坐标系
+    # The frame attached to the odometry system
+    # 连接到里程计系统的坐标系
+    odom_frame: odom
+    
+    # Base Frame / 基座坐标系
+    # The robot's base_link frame
+    # 机器人的 base_link 坐标系
+    base_link_frame: base_link
+    
+    # ==========================================================================
+    # TF Configuration / TF 配置
+    # ==========================================================================
+    
+    # Publish TF Transform / 发布 TF 变换
+    # EKF will publish odom -> base_link
+    # EKF 将发布 odom -> base_link 变换
+    publish_tf: true
+    
+    # TF Timeout / TF 超时
+    # How long to wait for transforms
+    # 等待变换的时间
+    transform_timeout: 0.5
+    
+    # TF Time Offset / TF 时间偏移
+    # Time offset for transform lookups
+    # 变换查找的时间偏移
+    transform_time_offset: 0.0
+    
+    # ==========================================================================
+    # Filter Configuration / 滤波器配置
+    # ==========================================================================
+    
+    # Update Frequency / 更新频率
+    # How often the filter produces a new estimate
+    # 滤波器产生新估计的频率
+    frequency: 30.0
+    
+    # Sensor Timeout / 传感器超时
+    # If no data received for this duration, stop predicting
+    # 如果在此时间内未收到数据，停止预测
+    sensor_timeout: 0.5
+    
+    # Two-Dimensional Mode / 二维模式
+    # For ground robots, set to true
+    # 对于地面机器人，设为 true
+    two_d_mode: true
+    
+    # ==========================================================================
+    # State Prediction Configuration / 状态预测配置
+    # ==========================================================================
+    
+    # Predict to Current Time / 预测到当前时间
+    # Extrapolate state to current time
+    # 将状态外推到当前时间
+    predict_to_current_time: true
+    
+    # Smooth Lagged Data / 平滑延迟数据
+    # Use delayed measurements to improve estimates
+    # 使用延迟测量来改善估计
+    smooth_lagged_data: true
+    
+    # History Length / 历史长度
+    # Duration of measurement history for smoothing
+    # 用于平滑的测量历史持续时间
+    history_length: 0.5
+    
+    # ==========================================================================
+    # Initial State / 初始状态
+    # Initial covariance diagonal (uncertainty)
+    # 初始协方差对角线（不确定性）
+    # ==========================================================================
+    initial_estimate_covariance: [
+      1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9
+    ]
+    
+    # ==========================================================================
+    # Process Noise Covariance / 过程噪声协方差
+    # Model uncertainty in robot motion
+    # 模型机器人运动的不确定性
+    # ==========================================================================
+    process_noise_covariance: [
+      0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.06,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.03,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.03,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.06,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.025, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.025, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.04,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.02,  0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.01,  0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.015
+    ]
+    
+    # ==========================================================================
+    # Odometry Source 0: Wheel Odometry (from Gazebo planar_move)
+    # 里程计源 0: 轮式里程计（来自 Gazebo planar_move）
+    # ==========================================================================
+    
+    # Input Topic / 输入话题
+    odom0: /wheel_odom
+    
+    # Configuration Matrix / 配置矩阵
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    # true = use this measurement, false = ignore
+    # Wheel odometry: Trust x, y positions and vx, vy velocities
+    # 轮式里程计：信任 x, y 位置和 vx, vy 速度
+    # Do NOT use yaw from wheel odom - it drifts significantly on omnidirectional robots
+    # 不使用轮式里程计的 yaw - 在全向机器人上漂移严重
+    odom0_config: [true,  true,  false, false, false, false,
+                   true,  true,  false, false, false, false,
+                   false, false, false]
+    
+    # Queue Size / 队列大小
+    # Must be large enough to handle sensor delays
+    # 必须足够大以处理传感器延迟
+    odom0_queue_size: 10
+    
+    # Differential Mode / 差分模式
+    # false = use absolute pose, true = use velocity/differential
+    # false = 使用绝对位姿, true = 使用速度/差分
+    odom0_differential: false
+    
+    # Relative Mode / 相对模式
+    # Use first measurement as origin
+    # 使用第一次测量作为原点
+    odom0_relative: false
+    
+    # Pose/Twist Rejection Threshold / 位姿/扭曲拒绝阈值
+    # Mahalanobis distance threshold for outlier rejection
+    # 马氏距离阈值用于异常值拒绝
+    odom0_pose_rejection_threshold: 5.0
+    odom0_twist_rejection_threshold: 3.0
+    
+    # ==========================================================================
+    # Odometry Source 1: Visual Odometry (from RTAB-Map rgbd_odometry)
+    # 里程计源 1: 视觉里程计（来自 RTAB-Map rgbd_odometry）
+    # ==========================================================================
+    
+    # Input Topic / 输入话题
+    odom1: /visual_odom
+    
+    # Configuration Matrix / 配置矩阵
+    # Visual odometry: Use yaw and yaw rate (vyaw) in DIFFERENTIAL mode
+    # 视觉里程计：在差分模式下使用 yaw 和 yaw 速率 (vyaw)
+    # Visual odometry provides better rotation estimation than wheel odometry
+    # 视觉里程计提供比轮式里程计更好的旋转估计
+    # Using differential mode to avoid absolute position jumps
+    # 使用差分模式避免绝对位置跳跃
+    odom1_config: [false, false, false, false, false, true,
+                   false, false, false, false, false, true,
+                   false, false, false]
+    
+    # Queue Size / 队列大小
+    odom1_queue_size: 5
+    
+    # Differential Mode / 差分模式
+    # CRITICAL: Use differential mode for visual odometry yaw
+    # 关键：对视觉里程计的 yaw 使用差分模式
+    # This prevents jumps when visual tracking is lost/recovered
+    # 这可以防止视觉追踪丢失/恢复时的跳跃
+    odom1_differential: true
+    
+    # Relative Mode / 相对模式
+    odom1_relative: false
+    
+    # Rejection Thresholds / 拒绝阈值
+    # Higher threshold for visual odom as it can have occasional outliers
+    # 对视觉里程计使用更高的阈值，因为它可能有偶发异常值
+    odom1_pose_rejection_threshold: 10.0
+    odom1_twist_rejection_threshold: 5.0
+    
+    # ==========================================================================
+    # Debug Configuration / 调试配置
+    # ==========================================================================
+    
+    # Print Diagnostics / 打印诊断信息
+    print_diagnostics: true
+    
+    # Debug Mode / 调试模式
+    # Set to true for verbose output during development
+    # 开发期间设为 true 获取详细输出
+    debug: false
+    
+    # Publish Acceleration / 发布加速度
+    publish_acceleration: false
+    
+    # ==========================================================================
+    # Output Topic / 输出话题
+    # ==========================================================================
+    # Default output topic is /odometry/filtered
+    # Can be remapped in launch file to /odom for Nav2 compatibility
+    # 默认输出话题是 /odometry/filtered
+    # 可在启动文件中重映射到 /odom 以兼容 Nav2

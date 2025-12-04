@@ -18,6 +18,10 @@ setup(
         # Nav2 配置文件 / Nav2 config files
         (os.path.join('share', package_name, 'config', 'nav2'), 
             glob(os.path.join('config', 'nav2', '*.yaml'))),
+        # VIO 配置文件 (rtabmap_odom, robot_localization, slam_toolbox_vio)
+        # VIO config files (rtabmap_odom, robot_localization, slam_toolbox_vio)
+        (os.path.join('share', package_name, 'config'), 
+            glob(os.path.join('config', '*.yaml'))),
         # RViz 配置文件 / RViz config files
         (os.path.join('share', package_name, 'config'), 
             glob(os.path.join('config', '*.rviz'))),

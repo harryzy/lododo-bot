@@ -7,11 +7,25 @@
   <maintainer email="jeladeer@msn.com">hurry</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- Core ROS2 Dependencies / 核心 ROS2 依赖 -->
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
+  
+  <!-- Launch Dependencies / 启动依赖 -->
+  <exec_depend>bot_description</exec_depend>
+  <exec_depend>bot_gazebo</exec_depend>
+  <exec_depend>bot_control</exec_depend>
+  <exec_depend>bot_perception</exec_depend>
+  <exec_depend>bot_navigation</exec_depend>
+  
+  <!-- Visual Odometry Dependencies for simulation_nav2_vio.launch.py -->
+  <!-- VIO 依赖用于 simulation_nav2_vio.launch.py -->
+  <exec_depend>rtabmap_odom</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+  <exec_depend>topic_tools</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

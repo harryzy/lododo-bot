@@ -81,6 +81,187 @@ LeKiwi是一个基于ROS2 Humble的全向移动机器人平台，具备以下核
 
 **选择建议**: 先采用方案A进行开发测试，如果发现定位漂移严重，再升级到方案B。
 
+### 2.3 视觉里程计集成方案（VIO）
+
+#### 2.3.1 问题背景
+
+LeKiwi 机器人使用 Astra Pro 相机，FOV 仅 60°（远小于常见激光雷达的 270°-360°）。这导致：
+
+1. **SLAM Toolbox 扫描匹配困难**: 窄视角提供的特征点有限，扫描匹配容易失败
+2. **轮式里程计累积误差**: 三轮全向轮在地面打滑时产生漂移
+3. **地图严重扭曲**: 角度估计不准确导致墙壁变成曲线
+
+#### 2.3.2 解决方案架构
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    视觉里程计融合架构 / VIO Architecture             │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   ┌──────────────┐     ┌──────────────────┐     ┌──────────────┐   │
+│   │ Gazebo       │     │ RTAB-Map         │     │ robot_       │   │
+│   │ planar_move  │────►│ rgbd_odometry    │────►│ localization │   │
+│   │              │     │                  │     │ (EKF)        │   │
+│   │ /odom        │     │ /visual_odom     │     │              │   │
+│   │ (轮式里程计)  │     │ (视觉里程计)      │     │ /odom/       │   │
+│   └──────────────┘     └──────────────────┘     │ filtered     │   │
+│          │                     │                │              │   │
+│          │                     │                │ 发布TF:      │   │
+│          │                     │                │ odom→        │   │
+│          │                     │                │ base_link    │   │
+│          │                     │                └──────────────┘   │
+│          │                     │                       │           │
+│          ▼                     ▼                       ▼           │
+│   ┌─────────────────────────────────────────────────────────────┐ │
+│   │                    传感器融合策略                             │ │
+│   ├─────────────────────────────────────────────────────────────┤ │
+│   │ 轮式里程计 (/odom):                                          │ │
+│   │   - 提供: x, y 位置 + vx, vy 线速度                          │ │
+│   │   - 优势: 高频率(50Hz)、低延迟                               │ │
+│   │   - 劣势: 打滑导致角度漂移                                    │ │
+│   │                                                             │ │
+│   │ 视觉里程计 (/visual_odom):                                   │ │
+│   │   - 提供: yaw 角度 + vyaw 角速度 (差分模式)                   │ │
+│   │   - 优势: 角度估计准确、不受轮子打滑影响                       │ │
+│   │   - 劣势: 依赖视觉特征、低纹理环境失效                        │ │
+│   │                                                             │ │
+│   │ 融合输出 (/odom/filtered):                                   │ │
+│   │   - 位置: 主要来自轮式里程计                                  │ │
+│   │   - 角度: 主要来自视觉里程计                                  │ │
+│   │   - 发布 odom→base_link TF                                  │ │
+│   └─────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### 2.3.3 TF 树变化
+
+**变化前（标准模式）**:
+```
+map → odom → base_link
+       ↑
+    Gazebo planar_move 发布
+```
+
+**变化后（VIO模式）**:
+```
+map → odom → base_link
+       ↑
+    robot_localization (EKF) 发布
+    
+Gazebo planar_move: publish_odom_tf = false
+```
+
+#### 2.3.4 关键配置文件
+
+**1. RTAB-Map 视觉里程计配置** (`rtabmap_odom.yaml`):
+```yaml
+rgbd_odometry:
+  ros__parameters:
+    frame_id: base_link
+    odom_frame_id: odom
+    publish_tf: false              # 不发布TF，交给EKF
+    
+    # 输入话题 / Input topics
+    subscribe_depth: true
+    subscribe_rgb: true
+    approx_sync: true
+    
+    # 视觉特征参数 / Visual feature parameters
+    Odom/Strategy: "0"             # Frame-to-Map
+    Vis/FeatureType: "6"           # ORB特征
+    Vis/MaxFeatures: "500"         # 最大特征点数
+    Vis/MinInliers: "10"           # 最小内点数
+    
+    # 适配窄FOV相机 / Adapt for narrow FOV camera
+    Vis/MaxDepth: "6.0"            # 最大深度
+    Vis/MinDepth: "0.1"            # 最小深度
+```
+
+**2. Robot Localization EKF 配置** (`robot_localization.yaml`):
+```yaml
+ekf_filter_node:
+  ros__parameters:
+    frequency: 50.0
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+    publish_tf: true               # EKF发布TF
+    
+    # 轮式里程计: 使用位置和线速度
+    odom0: /odom
+    odom0_config: [true,  true,  false,   # x, y, z
+                   false, false, false,   # roll, pitch, yaw
+                   true,  true,  false,   # vx, vy, vz
+                   false, false, false,   # vroll, vpitch, vyaw
+                   false, false, false]
+    
+    # 视觉里程计: 使用角度和角速度（差分模式）
+    odom1: /visual_odom
+    odom1_config: [false, false, false,
+                   false, false, true,    # yaw
+                   false, false, false,
+                   false, false, true,    # vyaw
+                   false, false, false]
+    odom1_differential: true       # 差分模式，避免跳变
+```
+
+**3. Gazebo 插件修改** (`lekiwi_bot.gazebo.xacro`):
+```xml
+<xacro:arg name="publish_odom_tf" default="true"/>
+
+<plugin name="omni_drive" filename="libgazebo_ros_planar_move.so">
+  <publish_odom>true</publish_odom>
+  <publish_odom_tf>$(arg publish_odom_tf)</publish_odom_tf>
+</plugin>
+```
+
+#### 2.3.5 启动文件层次
+
+```
+simulation_nav2_vio.launch.py (用户入口)
+├── simulation_gazebo.launch.py
+│   └── gazebo.launch.py (publish_odom_tf:=false)
+├── visual_odom.launch.py (延迟8秒启动)
+│   ├── rgbd_odometry (RTAB-Map)
+│   └── ekf_node (robot_localization)
+├── SLAM Toolbox (延迟12秒启动)
+├── Nav2 (延迟12秒启动)
+└── RViz (延迟20秒启动)
+```
+
+#### 2.3.6 带纹理的测试世界
+
+视觉里程计依赖图像特征点，纯色几何体无法提供足够特征。需要创建带纹理的 Gazebo 世界：
+
+```xml
+<!-- textured_test.world 关键配置 -->
+<visual name="wall_visual">
+  <material>
+    <script>
+      <uri>file://media/materials/scripts/gazebo.material</uri>
+      <name>Gazebo/Bricks</name>  <!-- 使用内置纹理 -->
+    </script>
+  </material>
+</visual>
+```
+
+可用的 Gazebo 内置纹理材质：
+- `Gazebo/Bricks` - 砖墙
+- `Gazebo/Wood` - 木纹
+- `Gazebo/WoodPallet` - 木托盘
+- `Gazebo/WoodFloor` - 木地板
+- `Gazebo/CeilingTiled` - 瓷砖
+
+#### 2.3.7 预期效果
+
+| 指标 | 优化前 | 优化后 |
+|------|--------|--------|
+| rgbd_odometry quality | 0 (无纹理) | 60-110 |
+| 角度漂移 (360°旋转) | > 10° | < 3° |
+| 直线误差 (1m) | > 10cm | < 5cm |
+| 地图墙壁 | 严重弯曲 | 基本直线 |
+
 ---
 
 ## 3. 运动学分析

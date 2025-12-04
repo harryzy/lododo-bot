@@ -7,10 +7,24 @@
   <maintainer email="jeladeer@msn.com">hurry</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- Core ROS2 Dependencies / 核心 ROS2 依赖 -->
   <depend>rclpy</depend>
   <depend>nav2_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
+  
+  <!-- Visual Odometry Dependencies / 视觉里程计依赖 -->
+  <!-- RTAB-Map odometry for visual feature tracking -->
+  <!-- RTAB-Map 里程计用于视觉特征追踪 -->
+  <depend>rtabmap_odom</depend>
+  
+  <!-- Robot Localization for sensor fusion (EKF) -->
+  <!-- Robot Localization 用于传感器融合 (EKF) -->
+  <depend>robot_localization</depend>
+  
+  <!-- Topic Tools for odometry relay -->
+  <!-- Topic Tools 用于里程计中继 -->
+  <depend>topic_tools</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

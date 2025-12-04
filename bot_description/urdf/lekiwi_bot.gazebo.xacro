@@ -2,37 +2,71 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!-- ====================================================================== -->
-  <!-- Gazebo插件配置文件                                                      -->
-  <!-- 用于LeKiwi三轮全向机器人的Gazebo仿真                                    -->
+  <!-- Gazebo Plugin Configuration / Gazebo 插件配置                           -->
+  <!-- For LeKiwi 3-wheel omnidirectional robot simulation                    -->
+  <!-- 用于 LeKiwi 三轮全向机器人的 Gazebo 仿真                                -->
   <!-- ====================================================================== -->
 
-  <!-- 全向轮移动插件 (Planar Move) -->
+  <!-- ====================================================================== -->
+  <!-- Xacro Arguments / Xacro 参数                                            -->
+  <!-- ====================================================================== -->
+  
+  <!-- 
+    publish_odom_tf: Control whether Gazebo publishes odom->base_link TF
+    发布里程计 TF：控制 Gazebo 是否发布 odom->base_link TF 变换
+    
+    - true (default): Gazebo publishes TF, suitable for basic simulation
+    - true（默认）：Gazebo 发布 TF，适用于基本仿真
+    
+    - false: Disable TF publishing, required when using external odometry fusion
+             (e.g., robot_localization EKF with visual odometry)
+    - false：禁用 TF 发布，当使用外部里程计融合时需要
+            （例如，robot_localization EKF 配合视觉里程计）
+  -->
+  <xacro:arg name="publish_odom_tf" default="true"/>
+
+  <!-- ====================================================================== -->
+  <!-- Omnidirectional Wheel Motion Plugin (Planar Move)                      -->
+  <!-- 全向轮移动插件 (Planar Move)                                            -->
+  <!-- ====================================================================== -->
   <gazebo>
     <plugin name="omni_drive_controller" filename="libgazebo_ros_planar_move.so">
       
-      <!-- 更新频率 -->
+      <!-- Update Rate / 更新频率 -->
       <update_rate>50.0</update_rate>
       
-      <!-- 命令话题 -->
+      <!-- Command Topic / 命令话题 -->
       <command_topic>cmd_vel</command_topic>
       
-      <!-- 里程计话题 -->
+      <!-- Odometry Topic / 里程计话题 -->
       <odometry_topic>odom</odometry_topic>
       
-      <!-- 坐标系 -->
+      <!-- Frame Configuration / 坐标系配置 -->
       <odometry_frame>odom</odometry_frame>
       <robot_base_frame>base_link</robot_base_frame>
       
-      <!-- 发布里程计 -->
+      <!-- 
+        Odometry Publishing Configuration / 里程计发布配置
+        
+        publish_odom: Always publish odometry messages
+        publish_odom_tf: Controlled by xacro arg for VIO compatibility
+        
+        publish_odom：始终发布里程计消息
+        publish_odom_tf：由 xacro 参数控制以兼容 VIO
+      -->
       <publish_odom>true</publish_odom>
-      <publish_odom_tf>true</publish_odom_tf>
+      <publish_odom_tf>$(arg publish_odom_tf)</publish_odom_tf>
       
-      <!-- 速度和加速度限制 -->
+      <!-- Velocity Limits / 速度限制 -->
       <max_vel_x>0.20</max_vel_x>
       <max_vel_y>0.20</max_vel_y>
       <max_vel_yaw>1.5</max_vel_yaw>
       
-      <!-- 协方差 -->
+      <!-- 
+        Covariance Configuration / 协方差配置
+        These values represent the uncertainty in wheel odometry
+        这些值表示轮式里程计的不确定性
+      -->
       <covariance_x>0.0001</covariance_x>
       <covariance_y>0.0001</covariance_y>
       <covariance_yaw>0.01</covariance_yaw>

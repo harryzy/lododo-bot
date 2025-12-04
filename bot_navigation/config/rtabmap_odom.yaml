@@ -1,0 +1,180 @@
+# ==============================================================================
+# RTAB-Map Visual Odometry Configuration / RTAB-Map 视觉里程计配置
+# For LeKiwi 3-wheel omnidirectional robot with Astra Pro camera
+# 适用于 LeKiwi 三轮全向机器人配备 Astra Pro 相机
+# ==============================================================================
+
+rgbd_odometry:
+  ros__parameters:
+    # ==========================================================================
+    # Frame Configuration / 坐标系配置
+    # ==========================================================================
+    frame_id: base_link           # Robot base frame / 机器人基座坐标系
+    odom_frame_id: vo             # Visual odometry frame / 视觉里程计坐标系
+    publish_tf: false             # Don't publish TF, let EKF handle it / 不发布TF，由EKF处理
+    publish_null_when_lost: false # Don't publish when tracking lost / 追踪丢失时不发布
+    
+    # ==========================================================================
+    # Simulation Time / 仿真时间
+    # ==========================================================================
+    use_sim_time: true
+    
+    # ==========================================================================
+    # QoS Settings / QoS 设置
+    # Critical for proper message synchronization
+    # 关键的消息同步设置
+    # ==========================================================================
+    qos: 2                        # Sensor data QoS (2 = Best effort for sensors)
+    qos_camera_info: 2            # Camera info QoS
+    
+    # ==========================================================================
+    # Topic Configuration / 话题配置
+    # Remapped in launch file, these are base names
+    # 在启动文件中重映射，这里是基础名称
+    # ==========================================================================
+    subscribe_rgbd: false         # Use separate RGB and Depth topics / 使用分离的RGB和深度话题
+    subscribe_depth: true         # Subscribe to depth image / 订阅深度图像
+    subscribe_rgb: true           # Subscribe to RGB image / 订阅RGB图像
+    
+    # ==========================================================================
+    # Visual Odometry Parameters / 视觉里程计参数
+    # ==========================================================================
+    
+    # Odometry Strategy / 里程计策略
+    # 0=Frame-to-Map (F2M), 1=Frame-to-Frame (F2F)
+    # F2M更精确但计算量大，F2F更快但累积误差
+    # F2M is more accurate but computationally heavy, F2F is faster but drifts
+    Odom/Strategy: "0"            # Frame-to-Map for better accuracy
+    
+    # Feature Type / 特征类型
+    # 0=SURF, 2=ORB, 6=GFTT/BRIEF, 8=GFTT/ORB, 9=BRISK, 14=BEBLID
+    # GFTT/ORB (8) provides good balance of speed and accuracy
+    # GFTT/ORB (8) 在速度和精度之间取得良好平衡
+    Vis/FeatureType: "8"          # GFTT/ORB - good for textured environments
+    
+    # Maximum Features / 最大特征数
+    # More features = more accurate but slower
+    # 更多特征 = 更准确但更慢
+    Vis/MaxFeatures: "600"        # Moderate feature count for real-time
+    
+    # Minimum Inliers / 最小内点数
+    # Minimum matches required for valid transformation
+    # 有效变换所需的最小匹配数
+    Odom/MinInliers: "15"         # Lowered for 60° FOV camera
+    
+    # Reset Count Down / 重置倒计时
+    # Reset odometry after this many consecutive failures
+    # 连续失败此次数后重置里程计
+    Odom/ResetCountdown: "3"
+    
+    # ==========================================================================
+    # Feature Detection Parameters / 特征检测参数
+    # ==========================================================================
+    
+    # GFTT (Good Features To Track) Parameters
+    # Shi-Tomasi corner detection parameters
+    GFTT/MinDistance: "5"         # Minimum distance between features (pixels)
+    GFTT/QualityLevel: "0.001"    # Quality threshold (lower = more features)
+    GFTT/BlockSize: "3"           # Block size for corner detection
+    GFTT/UseHarrisDetector: "false"  # Use Shi-Tomasi instead of Harris
+    
+    # ORB Parameters / ORB 参数
+    ORB/ScaleFactor: "1.2"        # Pyramid scale factor
+    ORB/NLevels: "8"              # Pyramid levels
+    ORB/EdgeThreshold: "31"       # Border where no features are detected
+    ORB/FirstLevel: "0"           # First pyramid level
+    ORB/WTA_K: "2"                # Points for BRIEF descriptor
+    ORB/PatchSize: "31"           # Patch size for oriented BRIEF
+    
+    # ==========================================================================
+    # Depth Image Parameters / 深度图像参数
+    # ==========================================================================
+    
+    # Depth Range / 深度范围
+    # Matching camera plugin settings in Gazebo
+    # 与 Gazebo 相机插件设置匹配
+    Vis/MinDepth: "0.1"           # Minimum depth (meters)
+    Vis/MaxDepth: "5.0"           # Maximum depth (meters) - reduced for indoor
+    
+    # Depth Decimation / 深度抽取
+    # Reduce resolution for faster processing
+    # 降低分辨率以加快处理
+    decimation: 2                  # Decimate depth by factor of 2
+    
+    # ==========================================================================
+    # Motion Model / 运动模型
+    # ==========================================================================
+    
+    # Guess from Motion / 从运动预测
+    # Use previous motion to predict current transformation
+    # 使用先前运动预测当前变换
+    Odom/GuessMotion: "true"
+    
+    # Key Frame Threshold / 关键帧阈值
+    # Add keyframe when movement exceeds threshold
+    # 当移动超过阈值时添加关键帧
+    Odom/KeyFrameThr: "0.4"       # Keyframe on significant movement
+    
+    # ==========================================================================
+    # Image Processing / 图像处理
+    # ==========================================================================
+    
+    # Image Decimation / 图像抽取
+    # Faster processing at cost of accuracy
+    # 以精度换取更快的处理速度
+    Vis/ImageDecimation: "1"      # No decimation for better accuracy
+    
+    # Maximum Depth Error / 最大深度误差
+    # Reject features with large depth variance
+    # 拒绝深度方差大的特征
+    Vis/MaxDepthError: "0.1"
+    
+    # ==========================================================================
+    # RANSAC Parameters / RANSAC 参数
+    # For outlier rejection / 用于异常值剔除
+    # ==========================================================================
+    
+    # RANSAC Iterations / RANSAC 迭代次数
+    Vis/Iterations: "300"
+    
+    # RANSAC Inlier Distance / RANSAC 内点距离
+    Vis/InlierDistance: "0.02"    # 2cm threshold
+    
+    # PnP Estimation Method / PnP 估计方法
+    # 1=Iterative, 2=EPNP, 3=P3P, 4=DLS, 5=UPNP
+    Vis/PnPFlags: "2"             # EPNP - good balance
+    
+    # PnP Reprojection Error / PnP 重投影误差
+    Vis/PnPReprojError: "2.0"     # Pixel error threshold
+    
+    # ==========================================================================
+    # Bundle Adjustment / 捆绑调整
+    # For F2M strategy refinement / 用于F2M策略优化
+    # ==========================================================================
+    
+    # Local Bundle Adjustment / 局部捆绑调整
+    Odom/F2MScanMaxSize: "3"      # Max scans in local map
+    OdomF2M/BundleAdjustment: "1" # Enable bundle adjustment
+    OdomF2M/MaxSize: "3000"       # Max features in local map
+    
+    # ==========================================================================
+    # Output Configuration / 输出配置
+    # ==========================================================================
+    
+    # Covariance Scaling / 协方差缩放
+    # Scale covariance for sensor fusion
+    # 为传感器融合缩放协方差
+    Odom/VarianceFromInliersCount: "true"  # Scale variance by inlier count
+    
+    # ==========================================================================
+    # Expected Update Rate / 预期更新频率
+    # Should match camera frame rate
+    # 应与相机帧率匹配
+    # ==========================================================================
+    expected_update_rate: 15.0    # Match camera rate (15 Hz in sim)
+    
+    # ==========================================================================
+    # Wait for Transform / 等待变换
+    # TF lookup timeout / TF 查找超时
+    # ==========================================================================
+    wait_for_transform: 0.2       # 200ms timeout for TF lookup
