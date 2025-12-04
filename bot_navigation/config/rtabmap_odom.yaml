@@ -68,19 +68,19 @@ rgbd_odometry:
     Vis/FeatureType: "2"          # Pure ORB - better for simulation
     
     # Maximum Features / 最大特征数
-    # Increased for better tracking in challenging conditions
-    # 增加以在挑战性条件下获得更好的跟踪
-    Vis/MaxFeatures: "1000"       # Increased for more robust tracking
+    # Increased significantly for better tracking during motion
+    # 大幅增加以在运动中获得更好的跟踪
+    Vis/MaxFeatures: "2000"       # Increased from 1000 to 2000 for more robust tracking
     
     # Minimum Inliers / 最小内点数
-    # Lowered to allow odometry even with fewer matches
-    # 降低以允许在匹配较少时也能进行里程计
-    Odom/MinInliers: "10"         # Further lowered for 60° FOV camera
+    # Further lowered to allow odometry even with very few matches
+    # 进一步降低以允许在匹配很少时也能进行里程计
+    Odom/MinInliers: "5"          # Reduced from 10 to 5 for more tolerance
     
     # Reset Count Down / 重置倒计时
-    # Increased tolerance before reset
-    # 增加重置前的容错
-    Odom/ResetCountdown: "5"      # More tolerance before reset
+    # Significantly increased tolerance before reset
+    # 大幅增加重置前的容错
+    Odom/ResetCountdown: "10"     # Increased from 5 to 10 for much more tolerance
     
     # ==========================================================================
     # Feature Detection Parameters / 特征检测参数
@@ -90,7 +90,7 @@ rgbd_odometry:
     # GFTT (Good Features To Track) Parameters
     # Shi-Tomasi corner detection parameters
     GFTT/MinDistance: "3"         # Reduced for more features / 减小以获得更多特征
-    GFTT/QualityLevel: "0.0005"   # Lower threshold = more features / 更低阈值 = 更多特征
+    GFTT/QualityLevel: "0.0001"   # Further lowered = even more features / 进一步降低 = 更多特征
     GFTT/BlockSize: "3"           # Block size for corner detection
     GFTT/UseHarrisDetector: "false"  # Use Shi-Tomasi instead of Harris
     
@@ -98,11 +98,11 @@ rgbd_odometry:
     # Optimized for simulated textured walls / 针对仿真纹理墙壁优化
     ORB/ScaleFactor: "1.2"        # Pyramid scale factor
     ORB/NLevels: "8"              # Pyramid levels
-    ORB/EdgeThreshold: "19"       # Reduced to detect features closer to edges
+    ORB/EdgeThreshold: "15"       # Reduced from 19 to detect more features near edges
     ORB/FirstLevel: "0"           # First pyramid level
     ORB/WTA_K: "2"                # Points for BRIEF descriptor
     ORB/PatchSize: "31"           # Patch size for oriented BRIEF
-    ORB/FastThreshold: "10"       # Lower threshold for more keypoints / 更低阈值以获得更多关键点
+    ORB/FastThreshold: "5"        # Reduced from 10 for more keypoints in low-texture areas
     
     # ==========================================================================
     # Depth Image Parameters / 深度图像参数
@@ -150,20 +150,22 @@ rgbd_odometry:
     # ==========================================================================
     # RANSAC Parameters / RANSAC 参数
     # For outlier rejection / 用于异常值剔除
+    # Relaxed for more tolerance during motion
+    # 放宽以在运动中获得更多容错
     # ==========================================================================
     
     # RANSAC Iterations / RANSAC 迭代次数
-    Vis/Iterations: "300"
+    Vis/Iterations: "500"         # Increased from 300 for better outlier rejection
     
     # RANSAC Inlier Distance / RANSAC 内点距离
-    Vis/InlierDistance: "0.02"    # 2cm threshold
+    Vis/InlierDistance: "0.05"    # Relaxed from 0.02 to 5cm threshold
     
     # PnP Estimation Method / PnP 估计方法
     # 1=Iterative, 2=EPNP, 3=P3P, 4=DLS, 5=UPNP
     Vis/PnPFlags: "2"             # EPNP - good balance
     
     # PnP Reprojection Error / PnP 重投影误差
-    Vis/PnPReprojError: "2.0"     # Pixel error threshold
+    Vis/PnPReprojError: "4.0"     # Relaxed from 2.0 to 4.0 pixel error threshold
     
     # ==========================================================================
     # Bundle Adjustment / 捆绑调整

@@ -141,6 +141,8 @@ ekf_filter_node:
     # ==========================================================================
     # Odometry Source 0: Wheel Odometry (from Gazebo planar_move)
     # 里程计源 0: 轮式里程计（来自 Gazebo planar_move）
+    # PRIMARY source - highly trusted for position and velocity
+    # 主要数据源 - 位置和速度高度可信
     # ==========================================================================
     
     # Input Topic / 输入话题
@@ -149,12 +151,12 @@ ekf_filter_node:
     # Configuration Matrix / 配置矩阵
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
     # true = use this measurement, false = ignore
-    # Wheel odometry: Trust x, y positions and vx, vy velocities
-    # 轮式里程计：信任 x, y 位置和 vx, vy 速度
-    # Do NOT use yaw from wheel odom - it drifts significantly on omnidirectional robots
-    # 不使用轮式里程计的 yaw - 在全向机器人上漂移严重
-    odom0_config: [true,  true,  false, false, false, false,
-                   true,  true,  false, false, false, false,
+    # Wheel odometry: Trust x, y, yaw positions and vx, vy, vyaw velocities
+    # 轮式里程计：信任 x, y, yaw 位置和 vx, vy, vyaw 速度
+    # Now also using yaw as backup when visual odometry fails
+    # 现在也使用 yaw 作为视觉里程计失败时的备份
+    odom0_config: [true,  true,  false, false, false, true,
+                   true,  true,  false, false, false, true,
                    false, false, false]
     
     # Queue Size / 队列大小
@@ -175,12 +177,16 @@ ekf_filter_node:
     # Pose/Twist Rejection Threshold / 位姿/扭曲拒绝阈值
     # Mahalanobis distance threshold for outlier rejection
     # 马氏距离阈值用于异常值拒绝
-    odom0_pose_rejection_threshold: 5.0
-    odom0_twist_rejection_threshold: 3.0
+    # Lowered to accept more wheel odom data as primary source
+    # 降低以接受更多轮式里程计数据作为主要源
+    odom0_pose_rejection_threshold: 10.0
+    odom0_twist_rejection_threshold: 5.0
     
     # ==========================================================================
     # Odometry Source 1: Visual Odometry (from RTAB-Map rgbd_odometry)
     # 里程计源 1: 视觉里程计（来自 RTAB-Map rgbd_odometry）
+    # SECONDARY source - used for rotation refinement when available
+    # 辅助数据源 - 在可用时用于旋转精化
     # ==========================================================================
     
     # Input Topic / 输入话题
@@ -211,10 +217,10 @@ ekf_filter_node:
     odom1_relative: false
     
     # Rejection Thresholds / 拒绝阈值
-    # Higher threshold for visual odom as it can have occasional outliers
-    # 对视觉里程计使用更高的阈值，因为它可能有偶发异常值
-    odom1_pose_rejection_threshold: 10.0
-    odom1_twist_rejection_threshold: 5.0
+    # STRICTER thresholds to filter out visual odom outliers when tracking is unstable
+    # 更严格的阈值以过滤跟踪不稳定时的视觉里程计异常值
+    odom1_pose_rejection_threshold: 3.0
+    odom1_twist_rejection_threshold: 2.0
     
     # ==========================================================================
     # Debug Configuration / 调试配置

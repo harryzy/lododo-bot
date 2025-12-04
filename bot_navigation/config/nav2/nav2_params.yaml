@@ -158,14 +158,15 @@ controller_server:
       # 调试 / Debug
       debug_trajectory_details: True
       
-      # 速度限制 / Velocity limits
-      min_vel_x: -0.15              # 允许后退 / Allow backward motion
-      max_vel_x: 0.20
-      min_vel_y: -0.15              # 全向运动 / Omnidirectional motion
-      max_vel_y: 0.15               # 全向运动 / Omnidirectional motion
-      max_vel_theta: 1.0
+      # 速度限制 / Velocity limits (降低以改善VIO跟踪)
+      # Reduced for better visual odometry tracking
+      min_vel_x: -0.08              # 允许后退 / Allow backward motion
+      max_vel_x: 0.10               # 降低: 0.20 -> 0.10
+      min_vel_y: -0.08              # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.08               # 降低: 0.15 -> 0.08
+      max_vel_theta: 0.5            # 降低: 1.0 -> 0.5 (角速度对VIO影响大)
       min_speed_xy: 0.0
-      max_speed_xy: 0.20
+      max_speed_xy: 0.10            # 降低: 0.20 -> 0.10
       min_speed_theta: 0.0
       
       # 加速度限制 / Acceleration limits
@@ -429,13 +430,15 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     
-    # 速度限制 / Velocity limits
-    max_velocity: [0.20, 0.15, 1.0]      # [x, y, theta] 全向运动 / omnidirectional
-    min_velocity: [-0.15, -0.15, -1.0]   # [x, y, theta]
+    # 速度限制 / Velocity limits (降低以改善VIO跟踪)
+    # Reduced for better visual odometry tracking
+    max_velocity: [0.10, 0.08, 0.5]      # [x, y, theta] 降低: [0.20,0.15,1.0] -> [0.10,0.08,0.5]
+    min_velocity: [-0.08, -0.08, -0.5]   # [x, y, theta]
     
-    # 加速度限制 / Acceleration limits
-    max_accel: [1.5, 1.5, 2.0]           # [x, y, theta]
-    max_decel: [-1.5, -1.5, -2.0]        # [x, y, theta]
+    # 加速度限制 / Acceleration limits (降低以减少运动模糊)
+    # Reduced to minimize motion blur
+    max_accel: [0.8, 0.8, 1.0]           # [x, y, theta] 降低: [1.5,1.5,2.0] -> [0.8,0.8,1.0]
+    max_decel: [-0.8, -0.8, -1.0]        # [x, y, theta]
     
     odom_topic: "odom"
     odom_duration: 0.1

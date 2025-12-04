@@ -83,7 +83,10 @@
   -->
   <gazebo reference="camera_link">
     <sensor name="camera" type="depth">
-      <update_rate>30</update_rate>
+      <!-- 降低帧率以减少时间戳重复问题 / Reduced frame rate to minimize timestamp duplication -->
+      <!-- 30Hz -> 15Hz: 给 RTABMAP 更多时间处理每一帧 -->
+      <!-- 30Hz -> 15Hz: gives RTABMAP more time to process each frame -->
+      <update_rate>15</update_rate>
       <camera name="camera">
         <horizontal_fov>1.047</horizontal_fov>
         <image>
