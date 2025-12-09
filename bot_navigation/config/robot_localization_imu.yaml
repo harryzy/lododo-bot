@@ -132,7 +132,7 @@ ekf_filter_node:
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.04,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.01,  0.0,   0.0,   0.0,   0.0,   0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.01,  0.0,   0.0,   0.0,   0.0,
-      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.02,  0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.03,  0.0,   0.0,   0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.01,  0.0,   0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.01,  0.0,
       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.015
@@ -151,10 +151,10 @@ ekf_filter_node:
     # Configuration Matrix / 配置矩阵
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
     # true = use this measurement, false = ignore
-    # Wheel odometry: Trust x, y positions and vx, vy velocities
-    # 轮式里程计：信任 x, y 位置和 vx, vy 速度
-    # Disable yaw from wheel odometry - use IMU instead for better accuracy
-    # 禁用轮式里程计的 yaw - 使用IMU获得更好的精度
+    # Wheel odometry: ONLY trust x, y positions and vx, vy velocities
+    # 轮式里程计：仅信任 x, y 位置和 vx, vy 线速度
+    # Disable yaw/vyaw - let IMU handle all rotation (best practice for real robot)
+    # 禁用 yaw/vyaw - 让IMU处理所有旋转（真机最佳实践，避免打滑导致的角度漂移）
     odom0_config: [true,  true,  false, false, false, false,
                    true,  true,  false, false, false, false,
                    false, false, false]
@@ -196,14 +196,16 @@ ekf_filter_node:
     imu0: /imu/data
     
     # Configuration Matrix / 配置矩阵
-    # IMU: ONLY use orientation (roll, pitch, yaw)
-    # IMU：仅使用方向（roll, pitch, yaw）
-    # Disable angular velocity - has bias causing drift
+    # IMU: Use orientation (roll, pitch, yaw) AND angular velocity (vyaw)
+    # IMU：使用方向（roll, pitch, yaw）和角速度（vyaw）
+    # Angular velocity (vyaw) is CRITICAL for rotation estimation
+    # 角速度（vyaw）对旋转估计至关重要
+    # This prevents wheel slip from causing yaw drift (real robot best practice)
+    # 这可以防止轮子打滑导致yaw漂移（真机最佳实践）
     # Disable linear acceleration - not reliable in simulation
-    # 禁用角速度 - 有偏移导致漂移
     # 禁用线性加速度 - 仿真中不可靠
     imu0_config: [false, false, false, true,  true,  true,
-                  false, false, false, false, false, false,
+                  false, false, false, false, false, true,
                   false, false, false]
     
     # Queue Size / 队列大小
@@ -226,7 +228,7 @@ ekf_filter_node:
     # Reasonable thresholds for IMU data
     # IMU数据的合理阈值
     imu0_pose_rejection_threshold: 0.8
-    imu0_twist_rejection_threshold: 0.8
+    imu0_twist_rejection_threshold: 2.0    # 放宽以接受角速度数据，真机可能需要进一步调整
     
     # ==========================================================================
     # Debug Configuration / 调试配置

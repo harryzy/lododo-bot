@@ -79,7 +79,7 @@ slam_toolbox:
     minimum_travel_distance: 0.2      # 保守值，避免计算过载
     
     # 最小旋转角度才更新（弧度）/ Minimum rotation for update (radians)
-    minimum_travel_heading: 0.2       # 保守值，避免计算过载
+    minimum_travel_heading: 0.3       # 增加到17度，减少旋转时SLAM更新频率，降低CPU负载
     
     # 扫描缓冲大小 / Scan buffer size
     scan_buffer_size: 10               # 保守值，减轻 SLAM 负载
