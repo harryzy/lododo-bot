@@ -196,12 +196,14 @@ ekf_filter_node:
     imu0: /imu/data
     
     # Configuration Matrix / 配置矩阵
-    # IMU: Use orientation (roll, pitch, yaw) and angular velocity
-    # IMU：使用方向（roll, pitch, yaw）和角速度
+    # IMU: ONLY use orientation (roll, pitch, yaw)
+    # IMU：仅使用方向（roll, pitch, yaw）
+    # Disable angular velocity - has bias causing drift
     # Disable linear acceleration - not reliable in simulation
+    # 禁用角速度 - 有偏移导致漂移
     # 禁用线性加速度 - 仿真中不可靠
     imu0_config: [false, false, false, true,  true,  true,
-                  false, false, false, true,  true,  true,
+                  false, false, false, false, false, false,
                   false, false, false]
     
     # Queue Size / 队列大小

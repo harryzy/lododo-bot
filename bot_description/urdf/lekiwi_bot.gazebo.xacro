@@ -71,6 +71,11 @@
       <covariance_y>0.0001</covariance_y>
       <covariance_yaw>0.01</covariance_yaw>
       
+      <!-- Velocity decay when no command / 无命令时速度衰减 -->
+      <!-- Timeout after which robot stops if no cmd_vel received -->
+      <!-- 接收不到cmd_vel命令后机器人停止的超时时间 -->
+      <cmd_timeout>0.5</cmd_timeout>
+      
     </plugin>
   </gazebo>
 
