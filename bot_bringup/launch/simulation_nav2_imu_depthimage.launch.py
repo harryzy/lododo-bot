@@ -118,6 +118,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     world = LaunchConfiguration('world')
     world_str = LaunchConfiguration('world').perform(context)
     slam = LaunchConfiguration('slam')
+    gui = LaunchConfiguration('gui')
+    gui_str = LaunchConfiguration('gui').perform(context)
     slam_str = LaunchConfiguration('slam').perform(context)
     use_rviz = LaunchConfiguration('use_rviz')
     use_rviz_str = LaunchConfiguration('use_rviz').perform(context)
@@ -206,11 +208,12 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         additional_env={'GAZEBO_MODEL_PATH': full_model_path}
     )
     
-    # Gazebo client / Gazebo 客户端
+    # Gazebo client / Gazebo 客户端 (conditional on gui parameter)
     gazebo_client = ExecuteProcess(
         cmd=['gzclient'],
         output='screen',
-        additional_env={'GAZEBO_MODEL_PATH': full_model_path}
+        additional_env={'GAZEBO_MODEL_PATH': full_model_path},
+        condition=IfCondition(gui)
     )
     
     # Robot state publisher / 机器人状态发布器
@@ -604,6 +607,12 @@ def generate_launch_description():
         description='Use simulation time / 使用仿真时间'
     )
     
+    declare_gui = DeclareLaunchArgument(
+        'gui',
+        default_value='false',
+        description='Launch Gazebo GUI (gzclient). Set false for headless mode to improve RTF / 启动 Gazebo GUI。设为 false 可提高 RTF'
+    )
+    
     declare_world = DeclareLaunchArgument(
         'world',
         default_value='navigation_5x5_rgbd.world',
@@ -646,6 +655,7 @@ def generate_launch_description():
     return LaunchDescription([
         # Argument declarations / 参数声明
         declare_use_sim_time,
+        declare_gui,
         declare_world,
         declare_slam,
         declare_map,
