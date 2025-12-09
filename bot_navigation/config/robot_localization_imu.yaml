@@ -1,0 +1,250 @@
+# ==============================================================================
+# Robot Localization EKF Configuration for IMU Mode / IMU模式机器人定位EKF配置
+# Extended Kalman Filter for fusing wheel odometry and IMU data
+# 扩展卡尔曼滤波器，用于融合轮式里程计和IMU数据
+# ==============================================================================
+
+ekf_filter_node:
+  ros__parameters:
+    # ==========================================================================
+    # Simulation Time / 仿真时间
+    # ==========================================================================
+    use_sim_time: true
+    
+    # ==========================================================================
+    # Frame Configuration / 坐标系配置
+    # ==========================================================================
+    
+    # World Fixed Frame / 世界固定坐标系
+    # Should be set to the frame your robot considers "fixed"
+    # 应设置为机器人认为"固定"的坐标系
+    world_frame: odom
+    
+    # Map Frame / 地图坐标系
+    # Only used if world_frame is set to map
+    # 仅在 world_frame 设为 map 时使用
+    map_frame: map
+    
+    # Odometry Frame / 里程计坐标系
+    # The frame attached to the odometry system
+    # 连接到里程计系统的坐标系
+    odom_frame: odom
+    
+    # Base Frame / 基座坐标系
+    # The robot's base_link frame
+    # 机器人的 base_link 坐标系
+    base_link_frame: base_link
+    
+    # ==========================================================================
+    # TF Configuration / TF 配置
+    # ==========================================================================
+    
+    # Publish TF Transform / 发布 TF 变换
+    # EKF will publish odom -> base_link
+    # EKF 将发布 odom -> base_link 变换
+    publish_tf: true
+    
+    # TF Timeout / TF 超时
+    # How long to wait for transforms
+    # 等待变换的时间
+    transform_timeout: 0.5
+    
+    # TF Time Offset / TF 时间偏移
+    # Time offset for transform lookups
+    # 变换查找的时间偏移
+    transform_time_offset: 0.0
+    
+    # ==========================================================================
+    # Filter Configuration / 滤波器配置
+    # ==========================================================================
+    
+    # Update Frequency / 更新频率
+    # How often the filter produces a new estimate
+    # 滤波器产生新估计的频率
+    frequency: 50.0
+    
+    # Sensor Timeout / 传感器超时
+    # If no data received for this duration, stop predicting
+    # 如果在此时间内未收到数据，停止预测
+    sensor_timeout: 0.2
+    
+    # Two-Dimensional Mode / 二维模式
+    # For ground robots, set to true
+    # 对于地面机器人，设为 true
+    two_d_mode: true
+    
+    # ==========================================================================
+    # State Prediction Configuration / 状态预测配置
+    # ==========================================================================
+    
+    # Predict to Current Time / 预测到当前时间
+    # Extrapolate state to current time
+    # 将状态外推到当前时间
+    predict_to_current_time: true
+    
+    # Smooth Lagged Data / 平滑延迟数据
+    # Use delayed measurements to improve estimates
+    # 使用延迟测量来改善估计
+    smooth_lagged_data: true
+    
+    # History Length / 历史长度
+    # Duration of measurement history for smoothing
+    # 用于平滑的测量历史持续时间
+    history_length: 0.5
+    
+    # ==========================================================================
+    # Initial State / 初始状态
+    # Initial covariance diagonal (uncertainty)
+    # 初始协方差对角线（不确定性）
+    # ==========================================================================
+    initial_estimate_covariance: [
+      1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9, 0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  1e-9
+    ]
+    
+    # ==========================================================================
+    # Process Noise Covariance / 过程噪声协方差
+    # Model uncertainty in robot motion
+    # 模型机器人运动的不确定性
+    # ==========================================================================
+    process_noise_covariance: [
+      0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.06,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,  0.03,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,  0.03,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,  0.06,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.025, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.025, 0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.04,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.01,  0.0,   0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.01,  0.0,   0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.02,  0.0,   0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.01,  0.0,   0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.01,  0.0,
+      0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,  0.015
+    ]
+    
+    # ==========================================================================
+    # Odometry Source 0: Wheel Odometry (from Gazebo planar_move)
+    # 里程计源 0: 轮式里程计（来自 Gazebo planar_move）
+    # PRIMARY source - highly trusted for position and velocity
+    # 主要数据源 - 位置和速度高度可信
+    # ==========================================================================
+    
+    # Input Topic / 输入话题
+    odom0: /odom
+    
+    # Configuration Matrix / 配置矩阵
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    # true = use this measurement, false = ignore
+    # Wheel odometry: Trust x, y positions and vx, vy velocities
+    # 轮式里程计：信任 x, y 位置和 vx, vy 速度
+    # Disable yaw from wheel odometry - use IMU instead for better accuracy
+    # 禁用轮式里程计的 yaw - 使用IMU获得更好的精度
+    odom0_config: [true,  true,  false, false, false, false,
+                   true,  true,  false, false, false, false,
+                   false, false, false]
+    
+    # IMPORTANT: Gazebo publishes wheel odometry data on /odom topic
+    # 重要：Gazebo在/odom话题上发布轮式里程计数据
+    # But EKF will publish the final odom->base_link TF transform
+    # 但EKF将发布最终的odom->base_link TF变换
+    
+    # Queue Size / 队列大小
+    # Must be large enough to handle sensor delays
+    # 必须足够大以处理传感器延迟
+    odom0_queue_size: 10
+    
+    # Differential Mode / 差分模式
+    # false = use absolute pose, true = use velocity/differential
+    # false = 使用绝对位姿, true = 使用速度/差分
+    odom0_differential: false
+    
+    # Relative Mode / 相对模式
+    # Use first measurement as origin
+    # 使用第一次测量作为原点
+    odom0_relative: false
+    
+    # Pose/Twist Rejection Threshold / 位姿/扭曲拒绝阈值
+    # Mahalanobis distance threshold for outlier rejection
+    # 马氏距离阈值用于异常值拒绝
+    odom0_pose_rejection_threshold: 5.0
+    odom0_twist_rejection_threshold: 5.0
+    
+    # ==========================================================================
+    # IMU Source 1: IMU Data (from Gazebo IMU plugin)
+    # IMU 源 1: IMU 数据（来自 Gazebo IMU 插件）
+    # PRIMARY source for orientation and angular velocity
+    # 主要数据源 - 方向和角速度
+    # ==========================================================================
+    
+    # Input Topic / 输入话题
+    imu0: /imu/data
+    
+    # Configuration Matrix / 配置矩阵
+    # IMU: Use orientation (roll, pitch, yaw) and angular velocity
+    # IMU：使用方向（roll, pitch, yaw）和角速度
+    # Disable linear acceleration - not reliable in simulation
+    # 禁用线性加速度 - 仿真中不可靠
+    imu0_config: [false, false, false, true,  true,  true,
+                  false, false, false, true,  true,  true,
+                  false, false, false]
+    
+    # Queue Size / 队列大小
+    imu0_queue_size: 10
+    
+    # Differential Mode / 差分模式
+    # false = use absolute orientation, true = use differential
+    # false = 使用绝对方向, true = 使用差分
+    imu0_differential: false
+    
+    # Relative Mode / 相对模式
+    imu0_relative: false
+    
+    # Remove Gravitational Acceleration / 移除重力加速度
+    # Important for IMU data processing
+    # 对IMU数据处理很重要
+    imu0_remove_gravitational_acceleration: true
+    
+    # Rejection Thresholds / 拒绝阈值
+    # Reasonable thresholds for IMU data
+    # IMU数据的合理阈值
+    imu0_pose_rejection_threshold: 0.8
+    imu0_twist_rejection_threshold: 0.8
+    
+    # ==========================================================================
+    # Debug Configuration / 调试配置
+    # ==========================================================================
+    
+    # Print Diagnostics / 打印诊断信息
+    print_diagnostics: true
+    
+    # Debug Mode / 调试模式
+    # Set to true for verbose output during development
+    # 开发期间设为 true 获取详细输出
+    debug: false
+    
+    # Publish Acceleration / 发布加速度
+    publish_acceleration: false
+    
+    # ==========================================================================
+    # Output Topic / 输出话题
+    # ==========================================================================
+    # Default output topic is /odometry/filtered
+    # Can be remapped in launch file to /odom for Nav2 compatibility
+    # 默认输出话题是 /odometry/filtered
+    # 可在启动文件中重映射到 /odom 以兼容 Nav2

@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!-- ====================================================================== -->
+    <!-- Gazebo Plugin Configuration for IMU Mode / IMU模式 Gazebo 插件配置      -->
+    <!-- ====================================================================== -->
+
+    <!-- 包含原始的Gazebo配置 -->
+    <xacro:include filename="$(find bot_description)/urdf/lekiwi_bot.gazebo.xacro" />
+
+    <!-- ====================================================================== -->
+    <!-- IMU Sensor Plugin / IMU 传感器插件                                      -->
+    <!-- ====================================================================== -->
+    <gazebo reference="imu_link">
+        <sensor name="imu_sensor" type="imu">
+            <always_on>true</always_on>
+            <update_rate>100</update_rate>
+            <plugin name="imu_plugin" filename="libgazebo_ros_imu_sensor.so">
+                <ros>
+                    <namespace>/</namespace>
+                    <remapping>~/out:=imu_plugin/out</remapping>
+                </ros>
+                <frame_name>imu_link</frame_name>
+                <initial_orientation_as_reference>false</initial_orientation_as_reference>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+</robot>

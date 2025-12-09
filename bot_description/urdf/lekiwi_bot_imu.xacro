@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 
+    LeKiwi机器人URDF文件 - 包含IMU传感器配置
+    基于原始lekiwi_bot.xacro，添加了IMU传感器
+-->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="LeKiwi">
+
+    <!-- 包含原始的机器人描述 -->
+    <xacro:include filename="$(find bot_description)/urdf/lekiwi_bot.xacro" />
+
+    <!-- ====================================================================== -->
+    <!-- IMU传感器配置 / IMU Sensor Configuration                              -->
+    <!-- ====================================================================== -->
+    
+    <!-- IMU传感器链接 / IMU Sensor Link -->
+    <link name="imu_link">
+        <!-- 添加最小惯性属性使Gazebo能识别此link -->
+        <inertial>
+            <mass value="0.001"/>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
+        </inertial>
+        <!-- 添加最小碰撞体积 -->
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.01 0.01 0.01"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <!-- base_link -> imu_link 关节 -->
+    <joint name="imu_joint" type="fixed">
+        <!-- 
+            IMU安装在机器人中心位置，靠近底板
+            这样可以获得较好的姿态估计效果
+        -->
+        <origin xyz="0 0 0.02" rpy="0 0 0" />
+        <parent link="base_link" />
+        <child link="imu_link" />
+    </joint>
+
+</robot>
