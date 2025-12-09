@@ -299,7 +299,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             
             # Scan configuration / 扫描配置
             'scan_height': 10,              # Number of pixel rows to use / 使用的像素行数
-            'scan_time': 0.033,             # Time between scans (seconds) / 扫描间隔（秒）
+            'scan_time': 0.04,              # Time between scans: 1/25Hz = 0.04s / 扫描间隔
             
             # Range limits / 范围限制
             'range_min': 0.05,              # Min range 5cm for close detection / 最小范围5cm用于近距离检测
@@ -594,7 +594,7 @@ def generate_launch_description():
     pkg_bot_navigation = get_package_share_directory('bot_navigation')
     
     # Default configuration files / 默认配置文件
-    default_rviz_config = os.path.join(pkg_bot_navigation, 'config', 'nav2.rviz')
+    default_rviz_config = os.path.join(pkg_bot_navigation, 'config', 'nav2_ros_dpimage.rviz')
     default_nav2_params = os.path.join(pkg_bot_navigation, 'config', 'nav2', 'nav2_params_imu.yaml')
     
     # ==========================================================================
@@ -609,7 +609,7 @@ def generate_launch_description():
     
     declare_gui = DeclareLaunchArgument(
         'gui',
-        default_value='false',
+        default_value='true',
         description='Launch Gazebo GUI (gzclient). Set false for headless mode to improve RTF / 启动 Gazebo GUI。设为 false 可提高 RTF'
     )
     

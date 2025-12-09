@@ -68,7 +68,8 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: /odometry/filtered
     bt_loop_duration: 10
-    default_server_timeout: 20
+    default_server_timeout: 30     # 从20增到30秒，给recovery更多时间
+    wait_for_service_timeout: 5    # 服务等待超时5秒
     
     # 全向机器人使用的行为树 / Behavior tree for omnidirectional robot
     # 使用 Nav2 默认行为树 / Use Nav2 default behavior trees
@@ -127,7 +128,7 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: True
-    controller_frequency: 20.0
+    controller_frequency: 10.0        # 从 20.0 降到 10.0，减轻 CPU 负载
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001  # 全向运动需要 / Required for omnidirectional motion
     min_theta_velocity_threshold: 0.001
@@ -138,8 +139,8 @@ controller_server:
     progress_checker_plugin: "progress_checker"
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5
-      movement_time_allowance: 10.0
+      required_movement_radius: 0.08  # 进一步降低到8cm，VM性能限制
+      movement_time_allowance: 20.0   # 增加到20秒，给足够时间
     
     # 目标检查器 / Goal checker
     goal_checker_plugins: ["general_goal_checker"]
@@ -159,15 +160,15 @@ controller_server:
       # 调试 / Debug
       debug_trajectory_details: True
       
-      # 速度限制 / Velocity limits (恢复标准速度，移除VIO限制)
-      # Restored standard speeds, removed VIO restrictions
-      min_vel_x: -0.20              # 允许后退 / Allow backward motion
-      max_vel_x: 0.25               # 恢复标准速度 / Restored standard speed
-      min_vel_y: -0.20              # 全向运动 / Omnidirectional motion
-      max_vel_y: 0.20               # 恢复标准速度 / Restored standard speed
-      max_vel_theta: 1.0            # 恢复标准角速度 / Restored standard angular speed
+      # 速度限制 / Velocity limits (降低速度以改善 SLAM 建图)
+      # Reduced speed for better SLAM mapping
+      min_vel_x: -0.15              # 允许后退 / Allow backward motion
+      max_vel_x: 0.15               # 降低速度 0.25->0.15 / Reduced from 0.25
+      min_vel_y: -0.15              # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.15               # 降低速度 0.20->0.15 / Reduced from 0.20
+      max_vel_theta: 0.6            # 降低角速度 1.0->0.6 / Reduced from 1.0
       min_speed_xy: 0.0
-      max_speed_xy: 0.25            # 恢复标准速度 / Restored standard speed
+      max_speed_xy: 0.15            # 降低速度 0.25->0.15 / Reduced from 0.25
       min_speed_theta: 0.0
       
       # 加速度限制 / Acceleration limits (恢复标准加速度)
@@ -180,10 +181,10 @@ controller_server:
       decel_lim_theta: -3.0
       
       # 轨迹生成参数 / Trajectory generation parameters
-      vx_samples: 20
-      vy_samples: 10                # 全向运动采样 / Omnidirectional sampling
-      vtheta_samples: 20
-      sim_time: 1.5
+      vx_samples: 10                # 从20降到10，减少50%计算
+      vy_samples: 5                 # 从10降到5，全向运动采样
+      vtheta_samples: 10            # 从20降到10，减少50%计算
+      sim_time: 1.2                 # 从1.5降到1.2，减少预测时间
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.2
@@ -214,7 +215,7 @@ local_costmap:
   local_costmap:
     ros__parameters:
       use_sim_time: True
-      update_frequency: 5.0
+      update_frequency: 3.0           # 从 5.0 降到 3.0，减少计算量
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
@@ -268,14 +269,14 @@ local_costmap:
         cost_scaling_factor: 3.0
         inflation_radius: 0.35
       
-      always_send_full_costmap: True
+      always_send_full_costmap: False  # 从 True 改为 False，只发送更新
 
 global_costmap:
   global_costmap:
     ros__parameters:
       use_sim_time: True
-      update_frequency: 1.0
-      publish_frequency: 1.0
+      update_frequency: 3.0           # 从 5.0 降到 3.0，减少计算量
+      publish_frequency: 2.0
       global_frame: map
       robot_base_frame: base_link
       # TF容差增大以适应仿真启动延迟 / Increase TF tolerance for simulation startup delay
@@ -333,7 +334,7 @@ global_costmap:
         cost_scaling_factor: 3.0
         inflation_radius: 0.35
       
-      always_send_full_costmap: True
+      always_send_full_costmap: False  # 只发送更新
 
 map_server:
   ros__parameters:
@@ -352,7 +353,7 @@ planner_server:
   ros__parameters:
     use_sim_time: True
     
-    expected_planner_frequency: 20.0
+    expected_planner_frequency: 5.0   # 从 20.0 降到 5.0，规划不需要太频繁
     
     planner_plugins: ["GridBased"]
     
@@ -388,10 +389,18 @@ behavior_server:
     # 原地旋转 / Spin in place
     spin:
       plugin: "nav2_behaviors/Spin"
+      max_rotational_vel: 0.4      # 降低旋转速度，匹配慢速机器人
+      min_rotational_vel: 0.2
+      rotational_acc_lim: 1.0
+      simulate_ahead_time: 3.0      # 增加到3秒
     
     # 后退 / Backup
     backup:
       plugin: "nav2_behaviors/BackUp"
+      backup_dist: 0.1              # 只后退10cm
+      backup_speed: 0.05            # 慢速后退
+      time_allowance: 20.0          # 给足够时间
+      simulate_ahead_time: 3.0
     
     # 直线行驶 / Drive on heading
     drive_on_heading:

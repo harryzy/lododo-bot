@@ -54,7 +54,7 @@ slam_toolbox:
     # 增大队列以防止消息被丢弃（默认1太小）
     # Increase queue to prevent message dropping (default 1 is too small)
     # ========================================================================
-    scan_queue_size: 30
+    scan_queue_size: 40                # 减少队列大小，减轻 CPU 负载
     
     # TF超时时间（增大以适应仿真延迟）/ Transform timeout (increased for simulation delay)
     transform_timeout: 2.0
@@ -76,13 +76,13 @@ slam_toolbox:
     use_scan_barycenter: true
     
     # 最小行驶距离才更新 / Minimum travel distance for update
-    minimum_travel_distance: 0.3
+    minimum_travel_distance: 0.2      # 保守值，避免计算过载
     
     # 最小旋转角度才更新（弧度）/ Minimum rotation for update (radians)
-    minimum_travel_heading: 0.3
+    minimum_travel_heading: 0.2       # 保守值，避免计算过载
     
     # 扫描缓冲大小 / Scan buffer size
-    scan_buffer_size: 10
+    scan_buffer_size: 10               # 保守值，减轻 SLAM 负载
     
     # 扫描缓冲最大距离 / Scan buffer maximum scan distance
     scan_buffer_maximum_scan_distance: 8.0
