@@ -22,11 +22,14 @@
     <!-- Physics Configuration / 物理配置                                    -->
     <!-- Optimized for stable robot simulation                              -->
     <!-- 优化机器人仿真稳定性                                                -->
+    <!-- Performance optimized: 降低更新频率以提高 RTF                        -->
     <!-- ================================================================== -->
     <physics type="ode">
-      <max_step_size>0.001</max_step_size>
+      <!-- 从 0.001 增加到 0.005：降低计算负载 / Increase from 0.001 to 0.005 -->
+      <max_step_size>0.005</max_step_size>
       <real_time_factor>1</real_time_factor>
-      <real_time_update_rate>1000</real_time_update_rate>
+      <!-- 从 1000Hz 降到 200Hz：大幅减少计算量 / Reduce from 1000Hz to 200Hz -->
+      <real_time_update_rate>200</real_time_update_rate>
       <gravity>0 0 -9.8</gravity>
       <ode>
         <solver>
