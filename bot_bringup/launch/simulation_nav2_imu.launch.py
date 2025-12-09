@@ -129,7 +129,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # World File Resolution / 世界文件解析
     # ==========================================================================
     if not world_str or world_str == '':
-        world_file = os.path.join(pkg_bot_gazebo, 'worlds', 'textured_test.world')
+        world_file = os.path.join(pkg_bot_gazebo, 'worlds', 'navigation_5x5_rgbd.world')
     elif not os.path.isabs(world_str):
         world_file = os.path.join(pkg_bot_gazebo, 'worlds', world_str)
     else:
@@ -494,7 +494,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         LogInfo(msg='Starting IMU Navigation Simulation'),
         LogInfo(msg='  (Wheel Odometry + IMU Fusion)'),
         LogInfo(msg='  (Event-Driven Startup Sequence)'),
-        LogInfo(msg=f'  World: {world_str or "textured_test.world"}'),
+        LogInfo(msg=f'  World: {world_str or "navigation_5x5_rgbd.world"}'),
         LogInfo(msg=f'  SLAM Mode: {slam_str}'),
         LogInfo(msg=f'  RViz: {use_rviz_str}'),
         LogInfo(msg='========================================'),
@@ -548,8 +548,8 @@ def generate_launch_description():
     
     declare_world = DeclareLaunchArgument(
         'world',
-        default_value='textured_test.world',
-        description='Gazebo world file (default: textured_test.world) / Gazebo 世界文件'
+        default_value='navigation_5x5_rgbd.world',
+        description='Gazebo world file (default: navigation_5x5_rgbd.world) / Gazebo 世界文件'
     )
     
     declare_slam = DeclareLaunchArgument(
