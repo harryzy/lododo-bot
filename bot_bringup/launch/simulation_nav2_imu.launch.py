@@ -287,6 +287,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # ==========================================================================
     
     # Robot localization EKF for wheel + IMU fusion / 机器人定位 EKF（轮式+IMU融合）
+    # Output: /odometry/filtered (default, no remapping needed)
+    # 输出：/odometry/filtered（默认输出，无需remapping）
     ekf_filter = Node(
         package='robot_localization',
         executable='ekf_node',
@@ -295,9 +297,6 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         parameters=[
             ekf_config,
             {'use_sim_time': use_sim_time_str == 'true'}
-        ],
-        remappings=[
-            ('odometry/filtered', '/odom'),
         ],
     )
     
