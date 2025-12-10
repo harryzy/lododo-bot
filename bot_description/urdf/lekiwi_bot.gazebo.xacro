@@ -88,9 +88,10 @@
   -->
   <gazebo reference="camera_link">
     <sensor name="camera" type="depth">
-      <!-- 提高帧率以改善 SLAM 建图 / Increase frame rate for better SLAM -->
-      <!-- 15Hz -> 20Hz: 提供更密集的深度数据 / Provide denser depth data -->
-      <update_rate>25</update_rate>
+      <!-- 降低帧率以提升稳定性 / Reduce frame rate for better stability -->
+      <!-- 25Hz -> 15Hz: 降低 Gazebo 渲染负载,避免卡顿 -->
+      <!-- Reduce Gazebo rendering load to prevent freezing -->
+      <update_rate>15</update_rate>
       <camera name="camera">
         <horizontal_fov>1.047</horizontal_fov>
         <image>
@@ -121,6 +122,13 @@
         <min_depth>0.05</min_depth>
         <!-- 最大深度距离 / Maximum depth distance -->
         <max_depth>8.0</max_depth>
+        
+        <!-- ============================================================ -->
+        <!-- 性能优化：禁用不需要的话题发布 / Performance: Disable unused topics -->
+        <!-- 点云计算非常消耗资源，禁用可显著提升 RTF -->
+        <!-- Point cloud computation is very expensive, disabling improves RTF significantly -->
+        <!-- ============================================================ -->
+        <pointCloudCutoff>0.0</pointCloudCutoff>  <!-- 禁用点云发布 / Disable point cloud -->
       </plugin>
     </sensor>
   </gazebo>

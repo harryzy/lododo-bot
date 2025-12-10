@@ -51,16 +51,16 @@ slam_toolbox:
 
     # ========================================================================
     # 扫描消息队列大小和TF配置 / Scan queue size and TF configuration
-    # 增大队列以防止消息被丢弃（默认1太小）
-    # Increase queue to prevent message dropping (default 1 is too small)
+    # 增大队列以防止消息被丢弃，适应15Hz低频率相机
+    # Increase queue to prevent message dropping for 15Hz low-rate camera
     # ========================================================================
-    scan_queue_size: 40                # 减少队列大小，减轻 CPU 负载
+    scan_queue_size: 50                # 增大队列缓冲不稳定的相机输出
     
     # TF超时时间（增大以适应仿真延迟）/ Transform timeout (increased for simulation delay)
-    transform_timeout: 2.0
+    transform_timeout: 5.0             # 从2.0增加到5.0，容忍更大的TF延迟
     
     # TF缓冲持续时间 / TF buffer duration
-    tf_buffer_duration: 60.0
+    tf_buffer_duration: 120.0          # 从60增加到120秒，保存更长的TF历史
     
     # ========================================================================
     # 求解器参数 / Solver parameters
@@ -82,7 +82,7 @@ slam_toolbox:
     minimum_travel_heading: 0.26
     
     # 扫描缓冲大小 / Scan buffer size
-    scan_buffer_size: 15               # 10→15，增加缓冲提高匹配稳定性
+    scan_buffer_size: 10
     
     # 扫描缓冲最大距离 / Scan buffer maximum scan distance
     scan_buffer_maximum_scan_distance: 8.0
@@ -180,13 +180,16 @@ slam_toolbox:
     min_laser_range: 0.05
     
     # 最小时间间隔 / Minimum time interval between scans
-    minimum_time_interval: 0.5
+    # 增大间隔匹配15Hz相机 (0.1→0.15, 允许跳过1-2帧)
+    # Increase interval to match 15Hz camera (allow skipping 1-2 frames)
+    minimum_time_interval: 0.15
     
     # 地图更新间隔 / Map update interval
     map_update_interval: 5.0
     
     # 发布周期 / Transform publish period
-    transform_publish_period: 0.05
+    # 降低发布频率避免时间戳跳变 (0.05→0.1)
+    transform_publish_period: 0.1
     
     # 节流扫描 / Throttle scans
     throttle_scans: 1

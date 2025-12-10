@@ -219,7 +219,7 @@ local_costmap:
   local_costmap:
     ros__parameters:
       use_sim_time: True
-      update_frequency: 3.0           # 从 5.0 降到 3.0，减少计算量
+      update_frequency: 3.0
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
@@ -282,7 +282,7 @@ global_costmap:
   global_costmap:
     ros__parameters:
       use_sim_time: True
-      update_frequency: 3.0           # 从 5.0 降到 3.0，减少计算量
+      update_frequency: 3.0
       publish_frequency: 2.0
       global_frame: map
       robot_base_frame: base_link
@@ -466,87 +466,9 @@ velocity_smoother:
     deadband_velocity: [0.0, 0.0, 0.0]
 
 # ==============================================================================
-# Slam Toolbox 参数配置 for IMU Mode / IMU模式 Slam Toolbox 参数配置
+# 注意 / Note:
+# SLAM Toolbox 的参数配置已移至专用文件 slam_toolbox_imu_official.yaml
+# 避免重复定义和参数覆盖问题
+# SLAM Toolbox parameters are now in dedicated file slam_toolbox_imu_official.yaml
+# to avoid duplicate definitions and parameter override issues
 # ==============================================================================
-slam_toolbox:
-  ros__parameters:
-    # 使用仿真时间 / Use simulation time
-    use_sim_time: true
-    
-    # 坐标系配置 / Frame configuration
-    odom_frame: odom
-    map_frame: map
-    base_frame: base_link
-    
-    # 激光雷达话题 / Laser scan topic
-    # 使用 RELIABLE QoS 版本 / Use RELIABLE QoS version
-    scan_topic: /scan
-
-    # 运行模式 / Mode
-    mode: mapping    # 调试日志 / Debug logging
-    debug_logging: false
-    
-    # 节流扫描 / Throttle scans
-    throttle_scans: 1
-    
-    # ==========================================================================
-    # 扫描消息队列大小 / Scan message queue size
-    # 增大队列以防止消息被丢弃（默认1太小）
-    # Increase queue to prevent message dropping (default 1 is too small)
-    # ==========================================================================
-    scan_queue_size: 30
-    
-    # TF超时时间（增大以适应仿真延迟）/ Transform timeout (increased for simulation delay)
-    transform_timeout: 2.0
-    
-    # TF缓冲持续时间 / TF buffer duration
-    tf_buffer_duration: 60.0
-    
-    # 地图更新间隔 / Map update interval
-    map_update_interval: 5.0
-    
-    # 发布周期 / Transform publish period
-    transform_publish_period: 0.05
-    
-    # 分辨率 / Resolution
-    resolution: 0.05
-    
-    # 最大激光距离 / Maximum laser range
-    max_laser_range: 8.0
-    
-    # 最小行驶距离才更新 / Minimum travel distance for update
-    minimum_travel_distance: 0.3
-    
-    # 最小旋转角度才更新 / Minimum rotation for update
-    minimum_travel_heading: 0.3
-    
-    # 扫描缓冲大小 / Scan buffer size
-    scan_buffer_size: 10
-    
-    # 扫描缓冲最大距离 / Scan buffer maximum distance
-    scan_buffer_maximum_scan_distance: 8.0
-    
-    # 闭环检测 / Loop closure
-    do_loop_closing: true
-    loop_search_maximum_distance: 3.0
-    
-    # 求解器参数 / Solver parameters
-    use_scan_matching: true
-    use_scan_barycenter: true
-    
-    # 相关搜索空间 / Correlation search space
-    correlation_search_space_dimension: 0.5
-    correlation_search_space_resolution: 0.01
-    correlation_search_space_smear_deviation: 0.1
-    
-    # 闭环搜索空间 / Loop search space
-    loop_search_space_dimension: 8.0
-    loop_search_space_resolution: 0.05
-    loop_search_space_smear_deviation: 0.03
-    
-    # 距离和角度惩罚 / Distance and angle penalties
-    distance_variance_penalty: 0.5
-    angle_variance_penalty: 1.0
-    
-    # Ceres求解器堆栈大小 / Stack size for ceres solver
-    stack_size_to_use: 40000000
