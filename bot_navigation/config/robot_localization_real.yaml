@@ -1,7 +1,81 @@
 # ==============================================================================
-# Robot Localization EKF Configuration for IMU Mode / IMU模式机器人定位EKF配置
-# Extended Kalman Filter for fusing wheel odometry and IMU data
-# 扩展卡尔曼滤波器，用于融合轮式里程计和IMU数据
+# Robot Localization EKF Configuration for REAL ROBOT
+# 真机环境专用的机器人定位EKF配置
+# ==============================================================================
+#
+# ⚠️  WARNING: THIS IS REAL ROBOT CONFIGURATION!
+# ⚠️  警告：此配置用于真实机器人！
+#
+# FOR SIMULATION USE: robot_localization_sim.yaml
+# 仿真请使用：robot_localization_sim.yaml
+#
+# ==============================================================================
+# 真机三轮全向轮机器人 / Real Three-Wheel Omnidirectional Robot
+# ==============================================================================
+#
+# REAL ROBOT STRATEGY / 真机策略：
+# - Use IMU for yaw/vyaw (gyroscope is NOT affected by wheel slip)
+# - Wheel odometry ONLY for x, y, vx, vy (linear measurements)
+# - 使用 IMU 的 yaw/vyaw（陀螺仪不受打滑影响）
+# - 轮式里程计只用于 x, y, vx, vy（线性测量）
+#
+# WHY IMU IS CRITICAL FOR REAL ROBOT / 为什么 IMU 对真机至关重要：
+#
+# 1. Three Omni-Wheel Slip Problem / 三轮全向轮打滑问题：
+#    - During rotation, each wheel slips differently
+#    - 旋转时每个轮子打滑程度不同
+#    - Angular velocity calculation: w = (v1+v2+v3)/(3*R)
+#    - 角速度计算：w = (v1+v2+v3)/(3*R)
+#    - Any wheel slip corrupts the entire calculation
+#    - 任何轮子打滑都会破坏整个计算
+#    - Error accumulation: 20-50° per 360° rotation
+#    - 误差累积：每360度旋转20-50度
+#
+# 2. Ground Friction Variation / 地面摩擦力变化：
+#    - Carpet ↔ Tile transitions cause sudden slip
+#    - 地毯↔瓷砖过渡导致突然打滑
+#    - Wheel odometry yaw will jump unexpectedly
+#    - 轮式里程计 yaw 会意外跳变
+#    - IMU measures actual rotation regardless of friction
+#    - IMU 测量实际旋转，不受摩擦力影响
+#
+# 3. Wheel Suspension / 轮子悬空：
+#    - Wheel may lose ground contact temporarily
+#    - 轮子可能短暂失去地面接触
+#    - Odometry continues to accumulate incorrectly
+#    - 里程计继续错误累加
+#    - IMU still measures correct rotation
+#    - IMU 仍然测量正确的旋转
+#
+# 4. Slope Navigation / 斜坡导航：
+#    - Gravity affects wheel speed measurement
+#    - 重力影响轮速测量
+#    - IMU gyroscope measures true angular velocity
+#    - IMU 陀螺仪测量真实角速度
+#
+# ==============================================================================
+# PRE-DEPLOYMENT CHECKLIST / 真机部署检查清单
+# ==============================================================================
+#
+# Before deploying to real robot, MUST complete:
+# 上真机前必须完成：
+#
+# [ ] IMU hardware connected and driver working
+#     IMU 硬件连接并驱动工作
+# [ ] IMU zero-bias calibration (10 min stationary)
+#     IMU 零偏标定（静止10分钟）
+# [ ] Rotation test: 360° × 3 times, error < 5°
+#     旋转测试：360度×3次，误差<5度
+# [ ] Adjust imu0_twist_rejection_threshold based on actual noise
+#     根据实际噪声调整 imu0_twist_rejection_threshold
+# [ ] Test straight line + rotation combined motion
+#     测试直线+旋转组合运动
+# [ ] Verify no odom drift during extended operation
+#     验证长时间运行无 odom 漂移
+#
+# ==============================================================================
+# Extended Kalman Filter for fusing wheel odometry and IMU data (REAL ROBOT)
+# 扩展卡尔曼滤波器，用于融合轮式里程计和IMU数据（真机）
 # ==============================================================================
 
 ekf_filter_node:
@@ -225,10 +299,21 @@ ekf_filter_node:
     imu0_remove_gravitational_acceleration: true
     
     # Rejection Thresholds / 拒绝阈值
-    # Very relaxed thresholds due to weak angular velocity signal in simulation
-    # 极度放宽的阈值，因为仿真中角速度信号很弱
-    imu0_pose_rejection_threshold: 1.5
-    imu0_twist_rejection_threshold: 5.0    # 极度放宽以接受微弱角速度信号
+    # 
+    # REAL ROBOT: Tuned for actual IMU noise characteristics
+    # 真机：根据实际 IMU 噪声特性调整
+    #
+    # These values need to be adjusted based on your specific IMU
+    # 这些值需要根据你的具体 IMU 调整
+    #
+    # Start with these values, then tune:
+    # 从这些值开始，然后调整：
+    # - If IMU data is rejected too often: increase thresholds
+    # - 如果 IMU 数据被拒绝太频繁：增加阈值
+    # - If robot motion is jerky: decrease thresholds
+    # - 如果机器人运动很突然：降低阈值
+    imu0_pose_rejection_threshold: 1.0       # 姿态阈值（真机调整）
+    imu0_twist_rejection_threshold: 2.0      # 角速度阈值（真机调整）
     
     # ==========================================================================
     # Debug Configuration / 调试配置

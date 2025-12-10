@@ -76,19 +76,19 @@ slam_toolbox:
     use_scan_barycenter: true
     
     # 最小行驶距离才更新 / Minimum travel distance for update
-    minimum_travel_distance: 0.2      # 保守值，避免计算过载
+    minimum_travel_distance: 0.15
     
     # 最小旋转角度才更新（弧度）/ Minimum rotation for update (radians)
-    minimum_travel_heading: 0.3       # 增加到17度，减少旋转时SLAM更新频率，降低CPU负载
+    minimum_travel_heading: 0.26
     
     # 扫描缓冲大小 / Scan buffer size
-    scan_buffer_size: 10               # 保守值，减轻 SLAM 负载
+    scan_buffer_size: 15               # 10→15，增加缓冲提高匹配稳定性
     
     # 扫描缓冲最大距离 / Scan buffer maximum scan distance
     scan_buffer_maximum_scan_distance: 8.0
     
     # 链接匹配最小响应 / Link match minimum response fine
-    link_match_minimum_response_fine: 0.1
+    link_match_minimum_response_fine: 0.05
     
     # 链接扫描最大距离 / Link scan maximum distance
     link_scan_maximum_distance: 1.5

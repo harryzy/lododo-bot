@@ -64,22 +64,130 @@ LeKiwi是一个基于ROS2 Humble的全向移动机器人平台，具备以下核
 - **接口**: USB 3.0
 - **ROS2驱动**: `astra_camera` (官方ROS2包)
 
-#### 软件里程计方案（无硬件IMU）
-由于树莓派4B没有内置IMU，我们采用以下融合方案：
+#### 里程计融合方案
 
-**方案A: 轮式里程计 + 视觉里程计融合（推荐）**
-- **轮式里程计**: 基于电机编码器反馈（ST3215支持位置读取）
-- **视觉里程计**: 使用`rtabmap_ros`的视觉里程计功能
-- **融合方式**: 通过`robot_localization`进行EKF融合
-- **精度**: 适中，成本低，无需额外硬件
+**当前采用：硬件IMU + 轮式里程计融合**
 
-**方案B: 添加硬件IMU（可选升级）**
-- **推荐型号**: MPU6050/MPU9250（I2C接口，￥10-30元）
-- **优势**: 提供实时姿态和角速度，提高里程计精度
-- **安装**: 连接树莓派GPIO I2C引脚
-- **驱动**: `mpu6050_driver` ROS2包
+由于三轮全向轮机器人的特殊性（旋转时三轮不同步打滑严重），现已配备硬件IMU：
+- **型号**: Gazebo IMU传感器（仿真）/ 真机待配置
+- **作用**: 提供准确的姿态(yaw)和角速度(vyaw)，避免轮式里程计角度漂移
+- **融合方式**: 通过`robot_localization` EKF融合
 
-**选择建议**: 先采用方案A进行开发测试，如果发现定位漂移严重，再升级到方案B。
+#### 2.2.1 配置策略：仿真 vs 真机
+
+**重要说明**: 由于仿真和真机的传感器特性差异，我们维护两套独立的EKF配置：
+
+##### **A. 仿真配置 (robot_localization_sim.yaml)**
+
+**特点**:
+- Gazebo提供完美准确的轮式里程计（无打滑、无噪声）
+- Gazebo IMU的角速度信号很弱（~10^-7量级）
+- **策略**: 使用轮式里程计的yaw/vyaw，忽略IMU角速度
+
+**配置**:
+```yaml
+ekf_filter_node:
+  ros__parameters:
+    # 轮式里程计：位置 + 线速度 + 角度 + 角速度
+    odom0_config: [true, true, false, false, false, true,   # 启用yaw
+                   true, true, false, false, false, true,   # 启用vyaw
+                   false, false, false]
+    
+    # IMU：只用姿态作为参考，不用角速度
+    imu0_config: [false, false, false, true, true, false,   # yaw禁用
+                  false, false, false, false, false, false, # vyaw禁用
+                  false, false, false]
+```
+
+**优点**:
+- ✅ 利用Gazebo完美里程计，定位准确
+- ✅ 开发迭代快速，易于调试
+- ⚠️ 仅适用于仿真环境
+
+---
+
+##### **B. 真机配置 (robot_localization_real.yaml)**
+
+**特点**:
+- 真机轮式里程计有打滑、地面不平等问题
+- 三轮全向轮旋转时打滑不一致，yaw漂移严重
+- IMU陀螺仪提供准确的角速度，不受打滑影响
+- **策略**: 轮式里程计只用位置和线速度，IMU负责所有旋转信息
+
+**配置**:
+```yaml
+ekf_filter_node:
+  ros__parameters:
+    # 轮式里程计：只用位置 + 线速度（不用角度）
+    odom0_config: [true, true, false, false, false, false,  # 禁用yaw
+                   true, true, false, false, false, false,  # 禁用vyaw
+                   false, false, false]
+    
+    # IMU：姿态 + 角速度（核心传感器）
+    imu0_config: [false, false, false, true, true, true,    # 启用yaw
+                  false, false, false, false, false, true,  # 启用vyaw
+                  false, false, false]
+    
+    # 真机需要调整的参数
+    imu0_twist_rejection_threshold: 2.0  # 根据实际IMU噪声调整
+    frequency: 50.0
+```
+
+**为什么真机必须用IMU角速度？**
+
+| 场景 | 轮式里程计 | IMU陀螺仪 |
+|------|----------|---------|
+| 原地旋转360° | 误差20-50度（打滑） | 误差<5度 ✅ |
+| 地毯/瓷砖切换 | 突然打滑，yaw跳变 | 不受影响 ✅ |
+| 轮子悬空 | 继续累加错误角度 | 测量实际旋转 ✅ |
+| 斜坡行驶 | 重力影响轮速 | 测量真实角速度 ✅ |
+
+**三轮全向轮的特殊问题**:
+```
+旋转运动学: w = (v1 + v2 + v3) / (3 * R)
+
+问题：任何一个轮子打滑 → 角速度计算错误
+      三个轮子同时贡献 → 误差放大3倍
+      
+解决：IMU直接测量实际旋转角速度，绕过轮速计算
+```
+
+---
+
+##### **C. 配置文件组织**
+
+```
+bot_navigation/config/
+├── robot_localization_sim.yaml      # 仿真用（轮式yaw）
+├── robot_localization_real.yaml     # 真机用（IMU yaw）
+├── nav2_params_imu.yaml             # 通用导航参数
+└── slam_toolbox_imu_official.yaml   # 通用SLAM参数
+```
+
+**Launch文件策略**:
+- 当前开发阶段只使用仿真配置
+- 真机launch文件将在真机开发阶段创建
+- 通过不同的launch文件加载对应的配置
+
+---
+
+##### **D. 真机部署检查清单**
+
+上真机前必须完成：
+
+- [ ] 切换到 `robot_localization_real.yaml`
+- [ ] IMU硬件连接和驱动测试
+- [ ] IMU零偏标定（静止10分钟记录）
+- [ ] 旋转360度×3次，验证角度累积误差<5度
+- [ ] 调整 `imu0_twist_rejection_threshold` 参数
+- [ ] 测试直线+旋转组合运动，确认odom不漂移
+- [ ] 在代码中添加注释区分仿真/真机配置
+
+---
+
+**历史方案（已废弃）**:
+- ~~方案A: 纯视觉里程计融合~~ - FOV太窄，特征点不足
+- ~~方案B: 纯轮式里程计~~ - 三轮全向打滑严重，无法满足真机需求
 
 ### 2.3 视觉里程计集成方案（VIO）
 

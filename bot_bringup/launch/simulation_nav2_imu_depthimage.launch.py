@@ -139,7 +139,9 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # ==========================================================================
     # Configuration Files / 配置文件
     # ==========================================================================
-    ekf_config = os.path.join(pkg_bot_navigation, 'config', 'robot_localization_imu.yaml')
+    # EKF配置文件路径 / EKF configuration file path
+    # 使用仿真专用配置 / Use simulation-specific configuration
+    ekf_config = os.path.join(pkg_bot_navigation, 'config', 'robot_localization_sim.yaml')
     # Use slam_toolbox config that subscribes to /scan (not /scan_reliable)
     # 使用订阅 /scan 话题的 slam_toolbox 配置（而非 /scan_reliable）
     slam_config = os.path.join(pkg_bot_navigation, 'config', 'slam_toolbox_imu_official.yaml')

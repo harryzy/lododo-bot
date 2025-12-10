@@ -3,7 +3,9 @@ Panels:
     Help Height: 0
     Name: Displays
     Property Tree Widget:
-      Expanded: ~
+      Expanded:
+        - /TF1
+        - /TF1/Frames1
       Splitter Ratio: 0.5
     Tree Height: 240
   - Class: rviz_common/Selection
@@ -45,74 +47,74 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         4-Omni-Directional-Wheel_Single_Body-v1:
-          Value: true
+          Value: false
         4-Omni-Directional-Wheel_Single_Body-v1-1:
-          Value: true
+          Value: false
         4-Omni-Directional-Wheel_Single_Body-v1-2:
-          Value: true
+          Value: false
         94868A713_NO-THREADS_Female-Threaded-Hex-Standoff:
-          Value: true
+          Value: false
         94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-1:
-          Value: true
+          Value: false
         94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-2:
-          Value: true
+          Value: false
         94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-3:
-          Value: true
+          Value: false
         94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-4:
-          Value: true
+          Value: false
         94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-5:
-          Value: true
+          Value: false
         All Enabled: false
         Battery---Battery-5.2-Ah-DC5521-Plug-v2:
-          Value: true
+          Value: false
         Bottom-V2-v3:
-          Value: true
+          Value: false
         Camera-Model-v3:
-          Value: true
+          Value: false
         Camera-Mount-v8:
-          Value: true
+          Value: false
         ST3215_Servo_Motor-v1:
-          Value: true
+          Value: false
         ST3215_Servo_Motor-v1-1:
-          Value: true
+          Value: false
         ST3215_Servo_Motor-v1-2:
-          Value: true
+          Value: false
         Top-V2-v2:
-          Value: true
+          Value: false
         base_link:
-          Value: true
+          Value: false
         base_plate_layer1-v5:
-          Value: true
+          Value: false
         base_plate_layer2-v3:
-          Value: true
+          Value: false
         camera_frame:
-          Value: true
+          Value: false
         camera_link:
           Value: true
         camera_optical_frame:
-          Value: true
+          Value: false
         drive_motor_mount-v11:
-          Value: true
+          Value: false
         drive_motor_mount-v11-1:
-          Value: true
+          Value: false
         drive_motor_mount-v11-2:
-          Value: true
+          Value: false
         imu_link:
-          Value: true
+          Value: false
         lipo_battery_mount-v3:
-          Value: true
+          Value: false
         map:
           Value: true
         odom:
           Value: true
         omni_wheel_mount-v5:
-          Value: true
+          Value: false
         omni_wheel_mount-v5-1:
-          Value: true
+          Value: false
         omni_wheel_mount-v5-2:
-          Value: true
+          Value: false
         servo_controller_mount-v3:
-          Value: true
+          Value: false
       Marker Scale: 0.30000001192092896
       Name: TF
       Show Arrows: true
@@ -561,7 +563,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 8
+      Distance: 5.262308120727539
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -595,5 +597,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1200
-  X: 498
-  Y: 143
+  X: 301
+  Y: 87

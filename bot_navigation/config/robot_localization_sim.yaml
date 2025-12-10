@@ -1,7 +1,43 @@
 # ==============================================================================
-# Robot Localization EKF Configuration for IMU Mode / IMU模式机器人定位EKF配置
-# Extended Kalman Filter for fusing wheel odometry and IMU data
-# 扩展卡尔曼滤波器，用于融合轮式里程计和IMU数据
+# Robot Localization EKF Configuration for SIMULATION ONLY
+# 仅用于仿真环境的机器人定位EKF配置
+# ==============================================================================
+# 
+# ⚠️  WARNING: THIS IS SIMULATION-ONLY CONFIGURATION!
+# ⚠️  警告：此配置仅用于仿真环境！
+#
+# REAL ROBOT MUST USE: robot_localization_real.yaml
+# 真机必须使用：robot_localization_real.yaml
+#
+# ==============================================================================
+# 仅用于 Gazebo 仿真环境 / For Gazebo Simulation Environment Only
+# ==============================================================================
+# 
+# SIMULATION STRATEGY / 仿真策略：
+# - Use wheel odometry for yaw/vyaw (Gazebo provides perfect odometry)
+# - IMU only for orientation reference (Gazebo IMU angular velocity is weak ~10^-7)
+# - 使用轮式里程计的 yaw/vyaw（Gazebo 提供完美的里程计）
+# - IMU 只用于姿态参考（Gazebo IMU 角速度很弱 ~10^-7）
+#
+# WHY THIS WORKS IN SIMULATION / 为什么仿真中这样可行：
+# 1. No wheel slip in Gazebo / Gazebo 中无打滑
+# 2. Perfect ground-truth odometry / 完美的 ground-truth 里程计
+# 3. No ground unevenness / 无地面不平
+# 4. Deterministic physics / 确定性物理模拟
+#
+# WHY THIS FAILS ON REAL ROBOT / 为什么真机不可行：
+# 1. Three omni-wheels slip differently during rotation
+#    三个全向轮在旋转时打滑程度不同
+# 2. Wheel odometry yaw drift: 20-50° per 360° rotation
+#    轮式里程计 yaw 漂移：每360度旋转误差20-50度
+# 3. Ground friction varies (carpet/tile transitions)
+#    地面摩擦力变化（地毯/瓷砖过渡）
+# 4. Wheel suspension can cause temporary loss of contact
+#    轮子悬空会造成短暂失去接触
+#
+# ==============================================================================
+# Extended Kalman Filter for fusing wheel odometry (with yaw) in simulation
+# 扩展卡尔曼滤波器，用于融合仿真中的轮式里程计（含 yaw）
 # ==============================================================================
 
 ekf_filter_node:
@@ -151,12 +187,13 @@ ekf_filter_node:
     # Configuration Matrix / 配置矩阵
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
     # true = use this measurement, false = ignore
-    # Wheel odometry: ONLY trust x, y positions and vx, vy velocities
-    # 轮式里程计：仅信任 x, y 位置和 vx, vy 线速度
-    # Disable yaw/vyaw - let IMU handle all rotation (best practice for real robot)
-    # 禁用 yaw/vyaw - 让IMU处理所有旋转（真机最佳实践，避免打滑导致的角度漂移）
-    odom0_config: [true,  true,  false, false, false, false,
-                   true,  true,  false, false, false, false,
+    # 
+    # SIMULATION: Use wheel odometry for ALL measurements including yaw/vyaw
+    # 仿真：使用轮式里程计的所有测量，包括 yaw/vyaw
+    # Gazebo provides perfect odometry without wheel slip
+    # Gazebo 提供完美的里程计，无打滑
+    odom0_config: [true,  true,  false, false, false, true,   # 位置 + yaw (仿真可用)
+                   true,  true,  false, false, false, true,   # 线速度 + vyaw (仿真可用)
                    false, false, false]
     
     # IMPORTANT: Gazebo publishes wheel odometry data on /odom topic
@@ -196,17 +233,21 @@ ekf_filter_node:
     imu0: /imu/data
     
     # Configuration Matrix / 配置矩阵
-    # IMU: Use orientation (roll, pitch, yaw) AND angular velocity (vyaw)
-    # IMU：使用方向（roll, pitch, yaw）和角速度（vyaw）
-    # Angular velocity (vyaw) is CRITICAL for rotation estimation
-    # 角速度（vyaw）对旋转估计至关重要
-    # This prevents wheel slip from causing yaw drift (real robot best practice)
-    # 这可以防止轮子打滑导致yaw漂移（真机最佳实践）
-    # Disable linear acceleration - not reliable in simulation
-    # 禁用线性加速度 - 仿真中不可靠
-    imu0_config: [false, false, false, true,  true,  true,
-                  false, false, false, false, false, true,
-                  false, false, false]
+    # 
+    # SIMULATION HYBRID STRATEGY / 仿真混合策略：
+    # - Wheel odom: x, y, vx, vy, yaw, vyaw (主要运动信息)
+    # - IMU: roll, pitch, yaw (静态姿态参考，提供额外约束)
+    # 
+    # Why hybrid approach? / 为什么混合方法？
+    # - Wheel odom provides accurate motion (Gazebo ground truth)
+    # - 轮式里程计提供准确的运动（Gazebo ground truth）
+    # - IMU provides static orientation constraint (helps SLAM)
+    # - IMU提供静态姿态约束（帮助SLAM）
+    # - Both yaw sources can cross-validate
+    # - 两个yaw源可以互相验证
+    imu0_config: [false, false, false, true,  true,  true,   # 启用姿态（roll, pitch, yaw）
+                  false, false, false, false, false, false,  # 禁用角速度（太弱）
+                  false, false, false]                       # 禁用加速度
     
     # Queue Size / 队列大小
     imu0_queue_size: 10
@@ -225,10 +266,16 @@ ekf_filter_node:
     imu0_remove_gravitational_acceleration: true
     
     # Rejection Thresholds / 拒绝阈值
-    # Very relaxed thresholds due to weak angular velocity signal in simulation
-    # 极度放宽的阈值，因为仿真中角速度信号很弱
-    imu0_pose_rejection_threshold: 1.5
-    imu0_twist_rejection_threshold: 5.0    # 极度放宽以接受微弱角速度信号
+    # 
+    # SIMULATION: Relaxed thresholds since IMU is auxiliary
+    # 仿真：放宽阈值，因为IMU是辅助作用
+    #
+    # IMU provides static orientation reference to help SLAM
+    # IMU提供静态姿态参考以帮助SLAM
+    # Wheel odom still dominates for motion
+    # 轮式里程计仍然主导运动
+    imu0_pose_rejection_threshold: 2.0       # 放宽姿态阈值（辅助作用）
+    imu0_twist_rejection_threshold: 10.0     # 角速度几乎不用
     
     # ==========================================================================
     # Debug Configuration / 调试配置

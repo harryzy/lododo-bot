@@ -137,18 +137,22 @@ controller_server:
     
     # 进度检查 / Progress checker
     progress_checker_plugin: "progress_checker"
+    # Progress Checker - 使用PoseProgressChecker支持旋转检测
+    # Use PoseProgressChecker to detect BOTH linear and angular movement
+    # 使用PoseProgressChecker同时检测线性和角度运动
     progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.08  # 进一步降低到8cm，VM性能限制
-      movement_time_allowance: 20.0   # 增加到20秒，给足够时间
+      plugin: "nav2_controller::PoseProgressChecker"
+      required_movement_radius: 0.05   # 线性位移5cm
+      required_movement_angle: 0.087   # 或角度变化5度(0.087弧度)，满足一个即可
+      movement_time_allowance: 25.0    # 25秒内至少满足一个条件
     
     # 目标检查器 / Goal checker
     goal_checker_plugins: ["general_goal_checker"]
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.15        # 位置容差 / Position tolerance
-      yaw_goal_tolerance: 0.25       # 角度容差 / Angle tolerance
+      xy_goal_tolerance: 0.20        # 增加位置容差到20cm
+      yaw_goal_tolerance: 0.35       # 增加角度容差到约20度
     
     # 控制器插件 / Controller plugins
     controller_plugins: ["FollowPath"]
@@ -160,15 +164,15 @@ controller_server:
       # 调试 / Debug
       debug_trajectory_details: True
       
-      # 速度限制 / Velocity limits (降低速度以改善 SLAM 建图)
-      # Reduced speed for better SLAM mapping
-      min_vel_x: -0.15              # 允许后退 / Allow backward motion
-      max_vel_x: 0.15               # 降低速度 0.25->0.15 / Reduced from 0.25
-      min_vel_y: -0.15              # 全向运动 / Omnidirectional motion
-      max_vel_y: 0.15               # 降低速度 0.20->0.15 / Reduced from 0.20
-      max_vel_theta: 0.6            # 降低角速度 1.0->0.6 / Reduced from 1.0
+      # 速度限制 / Velocity limits (适度提高，odom-map已经对齐很好)
+      # Moderately increased speed since odom-map alignment is good
+      min_vel_x: -0.12              # 允许后退 / Allow backward motion
+      max_vel_x: 0.12               # 从0.10提高到20%
+      min_vel_y: -0.12              # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.12               # 从0.10提高到20%
+      max_vel_theta: 0.5            # 从0.4提高到25%
       min_speed_xy: 0.0
-      max_speed_xy: 0.15            # 降低速度 0.25->0.15 / Reduced from 0.25
+      max_speed_xy: 0.12            # 保持一致
       min_speed_theta: 0.0
       
       # 加速度限制 / Acceleration limits (恢复标准加速度)
@@ -187,7 +191,7 @@ controller_server:
       sim_time: 1.2                 # 从1.5降到1.2，减少预测时间
       linear_granularity: 0.05
       angular_granularity: 0.025
-      transform_tolerance: 0.2
+      transform_tolerance: 0.5      # 从0.2增加到0.5，容忍更大的TF延迟
       
       # 短距离容差 / Short distance tolerance
       xy_goal_tolerance: 0.15
@@ -228,7 +232,8 @@ local_costmap:
       transform_tolerance: 10.0
       
       # 机器人半径 / Robot radius (for circular footprint)
-      robot_radius: 0.15
+      # 增大以确保安全边界 (0.15→0.20m)
+      robot_radius: 0.20
       
       # 或使用多边形足迹 / Or use polygon footprint
       # footprint: "[[0.12, 0.0], [0.06, 0.104], [-0.06, 0.104], [-0.12, 0.0], [-0.06, -0.104], [0.06, -0.104]]"
@@ -248,8 +253,8 @@ local_costmap:
         
         observation_sources: scan
         scan:
-          # 使用 RELIABLE QoS 版本 / Use RELIABLE QoS version
-          topic: /scan_reliable
+          # 使用官方depthimage_to_laserscan的/scan话题
+          topic: /scan
           # 传感器坐标系 / Sensor frame (LaserScan is in base_link frame)
           sensor_frame: base_link
           max_obstacle_height: 2.0
@@ -266,8 +271,10 @@ local_costmap:
       # 膨胀层 / Inflation layer
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # 降低成本缩放因子，增大高成本区域
+        cost_scaling_factor: 5.0
+        # 膨胀半径设为0.25m，机器人距离障碍物约5-10cm (0.25 - 0.20 = 0.05m)
+        inflation_radius: 0.25
       
       always_send_full_costmap: False  # 从 True 改为 False，只发送更新
 
@@ -284,7 +291,8 @@ global_costmap:
       transform_tolerance: 10.0
       
       # 机器人半径 / Robot radius
-      robot_radius: 0.15
+      # 增大以确保安全边界 (0.15→0.20m)
+      robot_radius: 0.20
       
       resolution: 0.05
       track_unknown_space: true
@@ -308,8 +316,8 @@ global_costmap:
         # 增加观测源的TF容差 / Increase observation source TF tolerance
         observation_sources: scan
         scan:
-          # 使用 RELIABLE QoS 版本 / Use RELIABLE QoS version
-          topic: /scan_reliable
+          # 使用官方depthimage_to_laserscan的/scan话题
+          topic: /scan
           # 传感器坐标系 / Sensor frame (LaserScan is in base_link frame)
           sensor_frame: base_link
           # 观测保留时间 / Observation keep time (seconds)
@@ -331,8 +339,10 @@ global_costmap:
       # 膨胀层 / Inflation layer
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # 降低成本缩放因子，增大高成本区域
+        cost_scaling_factor: 5.0
+        # 膨胀半径设为0.25m，机器人距离障碍物约5-10cm (0.25 - 0.20 = 0.05m)
+        inflation_radius: 0.25
       
       always_send_full_costmap: False  # 只发送更新
 
@@ -389,18 +399,18 @@ behavior_server:
     # 原地旋转 / Spin in place
     spin:
       plugin: "nav2_behaviors/Spin"
-      max_rotational_vel: 0.4      # 降低旋转速度，匹配慢速机器人
-      min_rotational_vel: 0.2
-      rotational_acc_lim: 1.0
-      simulate_ahead_time: 3.0      # 增加到3秒
+      max_rotational_vel: 0.35     # 适当提高，因为Progress Checker现在可以检测旋转
+      min_rotational_vel: 0.15
+      rotational_acc_lim: 0.8
+      simulate_ahead_time: 3.0      # 恢复到3秒，不需要过长
     
     # 后退 / Backup
     backup:
       plugin: "nav2_behaviors/BackUp"
-      backup_dist: 0.1              # 只后退10cm
-      backup_speed: 0.05            # 慢速后退
-      time_allowance: 20.0          # 给足够时间
-      simulate_ahead_time: 3.0
+      backup_dist: 0.10             # 恢复到10cm
+      backup_speed: 0.04            # 适当提高
+      time_allowance: 20.0          # 减少到20秒
+      simulate_ahead_time: 3.0      # 恢复到3秒
     
     # 直线行驶 / Drive on heading
     drive_on_heading:
@@ -470,7 +480,7 @@ slam_toolbox:
     
     # 激光雷达话题 / Laser scan topic
     # 使用 RELIABLE QoS 版本 / Use RELIABLE QoS version
-    scan_topic: /scan_reliable
+    scan_topic: /scan
 
     # 运行模式 / Mode
     mode: mapping    # 调试日志 / Debug logging
