@@ -110,25 +110,20 @@
         </clip>
       </camera>
       
+      <!-- ============================================================ -->
+      <!-- 使用标准相机插件并禁用点云 -->
+      <!-- Use standard camera plugin and disable point cloud -->
+      <!-- ROS2 Humble: 使用负值禁用点云发布 -->
+      <!-- ============================================================ -->
       <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
         <camera_name>camera</camera_name>
         <frame_name>camera_optical_frame</frame_name>
-        <!-- hack_baseline: 模拟立体相机基线，影响最小检测距离 -->
-        <!-- hack_baseline: simulates stereo camera baseline, affects min detection range -->
-        <!-- 原值0.07(7cm)最小检测~40cm，改为0.02(2cm)可检测~10cm -->
-        <!-- Original 0.07(7cm) min ~40cm, changed to 0.02(2cm) for ~10cm min -->
         <hack_baseline>0.02</hack_baseline>
-        <!-- 最小深度距离 / Minimum depth distance -->
         <min_depth>0.05</min_depth>
-        <!-- 最大深度距离 / Maximum depth distance -->
         <max_depth>8.0</max_depth>
         
-        <!-- ============================================================ -->
-        <!-- 性能优化：禁用不需要的话题发布 / Performance: Disable unused topics -->
-        <!-- 点云计算非常消耗资源，禁用可显著提升 RTF -->
-        <!-- Point cloud computation is very expensive, disabling improves RTF significantly -->
-        <!-- ============================================================ -->
-        <pointCloudCutoff>0.0</pointCloudCutoff>  <!-- 禁用点云发布 / Disable point cloud -->
+        <!-- 禁用点云发布:设置负值 / Disable point cloud: set negative value -->
+        <pointCloudCutoff>-1.0</pointCloudCutoff>
       </plugin>
     </sensor>
   </gazebo>
