@@ -300,12 +300,14 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             'use_sim_time': use_sim_time_str == 'true',
             
             # Scan configuration / 扫描配置
-            'scan_height': 10,              # Number of pixel rows to use / 使用的像素行数
-            'scan_time': 0.1,               # Time between scans: 1/10Hz = 0.1s / 扫描间隔(匹配相机10Hz)
+            # 增大scan_height以平滑深度数据中的nan值
+            # Increase scan_height to smooth out nan values in depth data
+            'scan_height': 20,              # 使用更多像素行平滑数据 / Use more pixel rows for smoothing
+            'scan_time': 0.1,               # 降低频率到10Hz以匹配SLAM处理能力 / Reduce to 10Hz to match SLAM
             
             # Range limits / 范围限制
-            'range_min': 0.05,              # Min range 5cm for close detection / 最小范围5cm用于近距离检测
-            'range_max': 8.0,               # Max range 8m / 最大范围8米
+            'range_min': 0.10,              # 提高最小距离过滤近距离噪声 / Increase min to filter close noise
+            'range_max': 6.0,               # 降低最大距离减少远距离nan / Reduce max to avoid far nan values
             
             # Output frame / 输出坐标系
             # CRITICAL: Parameter name is 'output_frame', NOT 'output_frame_id'

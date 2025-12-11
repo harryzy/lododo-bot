@@ -451,15 +451,15 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     
-    # 速度限制 / Velocity limits (恢复标准速度，移除VIO限制)
-    # Restored standard speeds, removed VIO restrictions
-    max_velocity: [0.25, 0.20, 1.0]        # [x, y, theta] 恢复标准速度 / Restored standard speeds
-    min_velocity: [-0.20, -0.20, -1.0]   # [x, y, theta]
+    # 速度限制 / Velocity limits (提高速度以加快导航测试)
+    # Increased velocity for faster navigation testing
+    max_velocity: [0.35, 0.30, 2.0]      # [x, y, theta] 匹配Gazebo限制 / Match Gazebo limits
+    min_velocity: [-0.30, -0.30, -2.0]   # [x, y, theta]
     
-    # 加速度限制 / Acceleration limits (恢复标准加速度)
-    # Restored standard acceleration
-    max_accel: [2.5, 2.5, 3.0]           # [x, y, theta] 恢复标准加速度 / Restored standard acceleration
-    max_decel: [-2.5, -2.5, -3.0]        # [x, y, theta]
+    # 加速度限制 / Acceleration limits (提高以匹配速度)
+    # Increased to match velocity
+    max_accel: [3.0, 3.0, 4.0]           # [x, y, theta] 提高加速度 / Increased acceleration
+    max_decel: [-3.0, -3.0, -4.0]        # [x, y, theta]
     
     odom_topic: "/odometry/filtered"
     odom_duration: 0.1

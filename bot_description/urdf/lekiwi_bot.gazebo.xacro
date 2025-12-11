@@ -58,9 +58,10 @@
       <publish_odom_tf>$(arg publish_odom_tf)</publish_odom_tf>
       
       <!-- Velocity Limits / 速度限制 -->
-      <max_vel_x>0.20</max_vel_x>
-      <max_vel_y>0.20</max_vel_y>
-      <max_vel_yaw>1.5</max_vel_yaw>
+      <!-- 提高速度限制以加快导航测试 / Increase velocity for faster navigation -->
+      <max_vel_x>0.35</max_vel_x>
+      <max_vel_y>0.35</max_vel_y>
+      <max_vel_yaw>2.0</max_vel_yaw>
       
       <!-- 
         Covariance Configuration / 协方差配置
@@ -88,9 +89,9 @@
   -->
   <gazebo reference="camera_link">
     <sensor name="camera" type="depth">
-      <!-- 大幅降低更新率减少点云计算负载 / Drastically reduce update rate -->
-      <!-- 15Hz -> 10Hz: 降低整体渲染和点云计算频率 -->
-      <update_rate>10</update_rate>
+      <!-- 提高更新率以改善SLAM精度 / Increase update rate for better SLAM accuracy -->
+      <!-- 点云已优化,可以提高相机频率改善建图质量 -->
+      <update_rate>20</update_rate>
       <camera name="camera">
         <horizontal_fov>1.047</horizontal_fov>
         <image>
@@ -114,8 +115,10 @@
         <camera_name>camera</camera_name>
         <frame_name>camera_optical_frame</frame_name>
         <hack_baseline>0.02</hack_baseline>
-        <min_depth>0.01</min_depth>
-        <max_depth>8.0</max_depth>
+        <!-- 提高min_depth匹配depthimage_to_laserscan的range_min -->
+        <!-- Increase min_depth to match depthimage_to_laserscan range_min -->
+        <min_depth>0.10</min_depth>
+        <max_depth>6.0</max_depth>
         
         <!-- 关键优化:将cutoff设为极小值 / Key optimization: set cutoff to minimal value -->
         <!-- 只保留0.03米内的点(实际上几乎没有),避免靠墙时触发大量点云计算 -->

@@ -51,16 +51,14 @@ slam_toolbox:
 
     # ========================================================================
     # 扫描消息队列大小和TF配置 / Scan queue size and TF configuration
-    # 增大队列以防止消息被丢弃，适应15Hz低频率相机
-    # Increase queue to prevent message dropping for 15Hz low-rate camera
     # ========================================================================
-    scan_queue_size: 50                # 增大队列缓冲不稳定的相机输出
+    scan_queue_size: 10                # 合理缓冲,配合throttle_scans使用
     
-    # TF超时时间（增大以适应仿真延迟）/ Transform timeout (increased for simulation delay)
-    transform_timeout: 5.0             # 从2.0增加到5.0，容忍更大的TF延迟
+    # TF超时时间 / Transform timeout
+    transform_timeout: 2.0             # 默认值2秒
     
     # TF缓冲持续时间 / TF buffer duration
-    tf_buffer_duration: 120.0          # 从60增加到120秒，保存更长的TF历史
+    tf_buffer_duration: 30.0           # 默认值,保持30秒TF历史
     
     # ========================================================================
     # 求解器参数 / Solver parameters
@@ -76,10 +74,14 @@ slam_toolbox:
     use_scan_barycenter: true
     
     # 最小行驶距离才更新 / Minimum travel distance for update
-    minimum_travel_distance: 0.15
+    # 降到5mm测试TF频率上限
+    # Reduce to 5mm to test TF frequency limit
+    minimum_travel_distance: 0.005
     
     # 最小旋转角度才更新（弧度）/ Minimum rotation for update (radians)
-    minimum_travel_heading: 0.26
+    # 降到0.005rad(约0.3度)测试频率上限
+    # Reduce to 0.005rad (~0.3deg) to test frequency limit
+    minimum_travel_heading: 0.005
     
     # 扫描缓冲大小 / Scan buffer size
     scan_buffer_size: 10
@@ -122,6 +124,8 @@ slam_toolbox:
     correlation_search_space_resolution: 0.01
     
     # 相关搜索空间涂抹偏差 / Correlation search space smear deviation
+    # 设为最大合法值0.1以提高匹配容错性 (范围: 0.005-0.1)
+    # Set to maximum legal value 0.1 for better match tolerance (range: 0.005-0.1)
     correlation_search_space_smear_deviation: 0.1
     
     # ========================================================================
@@ -142,10 +146,12 @@ slam_toolbox:
     # ========================================================================
     
     # 距离方差惩罚 / Distance variance penalty
-    distance_variance_penalty: 0.5
+    # 提高到1.5,强烈信任IMU+EKF的odometry,scan质量不好时尤其重要
+    distance_variance_penalty: 1.5
     
     # 角度方差惩罚 / Angle variance penalty
-    angle_variance_penalty: 1.0
+    # 提高到2.0,强烈信任IMU的角度数据
+    angle_variance_penalty: 2.0
     
     # 精细搜索角度偏移 / Fine search angle offset
     fine_search_angle_offset: 0.00349
@@ -160,7 +166,8 @@ slam_toolbox:
     minimum_angle_penalty: 0.9
     
     # 最小距离惩罚 / Minimum distance penalty
-    minimum_distance_penalty: 0.5
+    # 提高到1.0,强制SLAM主要依赖odometry而非不稳定的scan
+    minimum_distance_penalty: 1.0
     
     # 使用响应扩展 / Use response expansion
     use_response_expansion: true
@@ -175,24 +182,26 @@ slam_toolbox:
     # 最大激光距离 / Maximum laser range
     max_laser_range: 8.0
     
-    # 最小激光距离（与官方 depthimage_to_laserscan 的 range_min 匹配）
-    # Minimum laser range (match official depthimage_to_laserscan range_min)
+    # 最小激光距离 / Minimum laser range
     min_laser_range: 0.05
     
     # 最小时间间隔 / Minimum time interval between scans
-    # 增大间隔匹配15Hz相机 (0.1→0.15, 允许跳过1-2帧)
-    # Increase interval to match 15Hz camera (allow skipping 1-2 frames)
-    minimum_time_interval: 0.15
+    # 降到0.005s(理论200Hz上限)测试实际频率
+    # Reduce to 0.005s (theoretical 200Hz) to test actual frequency
+    minimum_time_interval: 0.005
     
     # 地图更新间隔 / Map update interval
     map_update_interval: 5.0
     
     # 发布周期 / Transform publish period
-    # 降低发布频率避免时间戳跳变 (0.05→0.1)
-    transform_publish_period: 0.1
+    # 这是真正的TF发布频率限制! 0.02=50Hz, 0.033=30Hz
+    # This is the real TF publishing rate limit! 0.02=50Hz, 0.033=30Hz
+    transform_publish_period: 0.02
     
     # 节流扫描 / Throttle scans
-    throttle_scans: 1
+    # 设为4:每4个scan处理1个(38Hz/4=9.5Hz),确保队列清空处理最新数据
+    # Set to 4: process 1 out of 4 scans (38Hz/4=9.5Hz), ensure queue clear for fresh data
+    throttle_scans: 4
     
     # ========================================================================
     # 堆栈大小（针对大地图）/ Stack size for large maps
