@@ -88,22 +88,18 @@
   -->
   <gazebo reference="camera_link">
     <sensor name="camera" type="depth">
-      <!-- 降低帧率以提升稳定性 / Reduce frame rate for better stability -->
-      <!-- 25Hz -> 15Hz: 降低 Gazebo 渲染负载,避免卡顿 -->
-      <!-- Reduce Gazebo rendering load to prevent freezing -->
-      <update_rate>15</update_rate>
+      <!-- 大幅降低更新率减少点云计算负载 / Drastically reduce update rate -->
+      <!-- 15Hz -> 10Hz: 降低整体渲染和点云计算频率 -->
+      <update_rate>10</update_rate>
       <camera name="camera">
         <horizontal_fov>1.047</horizontal_fov>
         <image>
-          <!-- 降低分辨率以提升性能 / Reduce resolution for better performance -->
-          <!-- 640x480 -> 320x240: 像素减少 75%，性能提升显著 -->
+          <!-- 保持较低分辨率减少点云点数 / Keep low resolution to reduce point count -->
           <width>320</width>
           <height>240</height>
           <format>R8G8B8</format>
         </image>
         <!-- 深度裁剪距离 / Depth clip distance -->
-        <!-- near: 最小检测距离，设为0.05m(5cm)以支持近距离操作 -->
-        <!-- near: minimum detection distance, set to 0.05m(5cm) for close-range manipulation -->
         <clip>
           <near>0.02</near>
           <far>8.0</far>
@@ -111,19 +107,20 @@
       </camera>
       
       <!-- ============================================================ -->
-      <!-- 使用标准相机插件并禁用点云 -->
-      <!-- Use standard camera plugin and disable point cloud -->
-      <!-- ROS2 Humble: 使用负值禁用点云发布 -->
+      <!-- 通过极端参数让点云计算开销最小化 -->
+      <!-- Minimize point cloud computation overhead with extreme parameters -->
       <!-- ============================================================ -->
       <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
         <camera_name>camera</camera_name>
         <frame_name>camera_optical_frame</frame_name>
         <hack_baseline>0.02</hack_baseline>
-        <min_depth>0.05</min_depth>
+        <min_depth>0.01</min_depth>
         <max_depth>8.0</max_depth>
         
-        <!-- 禁用点云发布:设置负值 / Disable point cloud: set negative value -->
-        <pointCloudCutoff>-1.0</pointCloudCutoff>
+        <!-- 关键优化:将cutoff设为极小值 / Key optimization: set cutoff to minimal value -->
+        <!-- 只保留0.03米内的点(实际上几乎没有),避免靠墙时触发大量点云计算 -->
+        <!-- Only keep points within 0.03m (virtually none), avoid massive point cloud when near walls -->
+        <pointCloudCutoff>0.01</pointCloudCutoff>
       </plugin>
     </sensor>
   </gazebo>

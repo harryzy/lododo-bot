@@ -301,7 +301,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             
             # Scan configuration / 扫描配置
             'scan_height': 10,              # Number of pixel rows to use / 使用的像素行数
-            'scan_time': 0.067,             # Time between scans: 1/15Hz = 0.067s / 扫描间隔(匹配相机15Hz)
+            'scan_time': 0.1,               # Time between scans: 1/10Hz = 0.1s / 扫描间隔(匹配相机10Hz)
             
             # Range limits / 范围限制
             'range_min': 0.05,              # Min range 5cm for close detection / 最小范围5cm用于近距离检测
