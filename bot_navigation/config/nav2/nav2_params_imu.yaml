@@ -164,15 +164,15 @@ controller_server:
       # 调试 / Debug
       debug_trajectory_details: True
       
-      # 速度限制 / Velocity limits (适度提高，odom-map已经对齐很好)
-      # Moderately increased speed since odom-map alignment is good
-      min_vel_x: -0.12              # 允许后退 / Allow backward motion
-      max_vel_x: 0.12               # 从0.10提高到20%
-      min_vel_y: -0.12              # 全向运动 / Omnidirectional motion
-      max_vel_y: 0.12               # 从0.10提高到20%
-      max_vel_theta: 0.5            # 从0.4提高到25%
+      # 速度限制 / Velocity limits (RTABMap稳定建图，提高速度)
+      # Increased speed with stable RTABMap mapping
+      min_vel_x: -0.22              # 允许后退 / Allow backward motion
+      max_vel_x: 0.22               # 提高到0.22m/s (比原来快83%)
+      min_vel_y: -0.22              # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.22               # 全向最大速度
+      max_vel_theta: 0.8            # 提高旋转速度到0.8rad/s
       min_speed_xy: 0.0
-      max_speed_xy: 0.12            # 保持一致
+      max_speed_xy: 0.22            # 保持一致
       min_speed_theta: 0.0
       
       # 加速度限制 / Acceleration limits (恢复标准加速度)
@@ -185,10 +185,11 @@ controller_server:
       decel_lim_theta: -3.0
       
       # 轨迹生成参数 / Trajectory generation parameters
-      vx_samples: 10                # 从20降到10，减少50%计算
-      vy_samples: 5                 # 从10降到5，全向运动采样
-      vtheta_samples: 10            # 从20降到10，减少50%计算
-      sim_time: 1.2                 # 从1.5降到1.2，减少预测时间
+      # 增加采样提高避障流畅度 / Increase samples for smoother obstacle avoidance
+      vx_samples: 15                # 增加到15，更细致的速度规划
+      vy_samples: 10                # 增加到10，全向运动需要更多采样
+      vtheta_samples: 15            # 增加到15，更流畅的旋转
+      sim_time: 1.0                 # 减少到1.0s，提高响应速度
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5      # 从0.2增加到0.5，容忍更大的TF延迟
@@ -204,13 +205,13 @@ controller_server:
       # 评价器 / Critics
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       
-      BaseObstacle.scale: 0.02
+      BaseObstacle.scale: 0.005     # 进一步降低到0.005，避免膨胀区速度驤降
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
       GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 32.0
-      GoalDist.scale: 24.0
+      PathDist.scale: 48.0          # 增加到48.0，更倾向跟随全局路径
+      GoalDist.scale: 36.0          # 保持36.0，积极向目标前进
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
@@ -286,9 +287,10 @@ local_costmap:
       # 膨胀层 / Inflation layer
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # 成本缩放因子: 越小,高成本区域越大,机器人离障碍物越远
-        # 设为3.0让机器人保持更安全的距离
-        cost_scaling_factor: 3.0
+        # 成本缩放因子: 设置为1.5，使膨胀区惩罚更温和
+        # 避免进入膨胀区后速度驤降太大
+        # Reduced to 1.5 for gentler penalty in inflation zone
+        cost_scaling_factor: 1.5
         # 膨胀半径设为0.32m,机器人边缘与障碍物边缘保持约15cm
         # inflation_radius = robot_radius + 安全距离
         # 0.32 = 0.17 + 0.15m 安全裕度
@@ -359,7 +361,7 @@ global_costmap:
       # 与局部代价地图相同：机器人半径(0.17m) + 安全距离(0.15m) = 0.32m
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
+        cost_scaling_factor: 1.5
         inflation_radius: 0.32
       
       always_send_full_costmap: False  # 只发送更新
@@ -469,15 +471,15 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     
-    # 速度限制 / Velocity limits (提高速度以加快导航测试)
-    # Increased velocity for faster navigation testing
-    max_velocity: [0.35, 0.30, 2.0]      # [x, y, theta] 匹配Gazebo限制 / Match Gazebo limits
-    min_velocity: [-0.30, -0.30, -2.0]   # [x, y, theta]
+    # 速度限制 / Velocity limits (匹配DWB控制器的新速度)
+    # Match DWB controller's new velocity limits
+    max_velocity: [0.22, 0.22, 0.8]      # [x, y, theta] 匹配DWB设置
+    min_velocity: [-0.22, -0.22, -0.8]   # [x, y, theta]
     
-    # 加速度限制 / Acceleration limits (提高以匹配速度)
-    # Increased to match velocity
-    max_accel: [3.0, 3.0, 4.0]           # [x, y, theta] 提高加速度 / Increased acceleration
-    max_decel: [-3.0, -3.0, -4.0]        # [x, y, theta]
+    # 加速度限制 / Acceleration limits (保持原有加速度)
+    # Keep existing acceleration limits
+    max_accel: [2.5, 2.5, 3.0]           # [x, y, theta] 匹配DWB
+    max_decel: [-2.5, -2.5, -3.0]        # [x, y, theta]
     
     odom_topic: "/odometry/filtered"
     odom_duration: 0.1
