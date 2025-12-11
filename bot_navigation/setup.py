@@ -23,8 +23,8 @@ setup(
         (os.path.join('share', package_name, 'config'), 
             glob(os.path.join('config', '*.yaml'))),
         # RViz 配置文件 / RViz config files
-        (os.path.join('share', package_name, 'config'), 
-            glob(os.path.join('config', '*.rviz'))),
+        (os.path.join('share', package_name, 'rviz'), 
+            glob(os.path.join('rviz', '*.rviz'))),
         # 地图文件 / Map files
         (os.path.join('share', package_name, 'maps'), 
             glob(os.path.join('maps', '*'))),

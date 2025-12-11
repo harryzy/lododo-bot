@@ -232,8 +232,8 @@ local_costmap:
       transform_tolerance: 10.0
       
       # 机器人半径 / Robot radius (for circular footprint)
-      # 增大以确保安全边界 (0.15→0.20m)
-      robot_radius: 0.20
+      # 设置为实际半径(约0.12m) + 安全裕度(0.05m) = 0.17m
+      robot_radius: 0.17
       
       # 或使用多边形足迹 / Or use polygon footprint
       # footprint: "[[0.12, 0.0], [0.06, 0.104], [-0.06, 0.104], [-0.12, 0.0], [-0.06, -0.104], [0.06, -0.104]]"
@@ -241,6 +241,8 @@ local_costmap:
       plugins: ["voxel_layer", "inflation_layer"]
       
       # 体素层 - 3D障碍物 / Voxel layer - 3D obstacles
+      # Uses segmented ground and obstacle point clouds from RTABMap
+      # 使用RTABMap分割的地面和障碍物点云
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -251,30 +253,46 @@ local_costmap:
         max_obstacle_height: 2.0
         mark_threshold: 0
         
-        observation_sources: scan
-        scan:
-          # 使用官方depthimage_to_laserscan的/scan话题
-          topic: /scan
-          # 传感器坐标系 / Sensor frame (LaserScan is in base_link frame)
-          sensor_frame: base_link
-          max_obstacle_height: 2.0
+        observation_sources: ground obstacles
+        
+        # Ground point cloud (clearing only, not marking)
+        # 地面点云（仅清除，不标记）
+        ground:
+          topic: /camera/ground
+          sensor_frame: camera_optical_frame
+          max_obstacle_height: 0.4
           clearing: True
-          marking: True
-          data_type: "LaserScan"
+          marking: False
+          data_type: "PointCloud2"
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-          # 处理无穷大值 / Handle infinite values
-          inf_is_valid: true
+        
+        # Obstacle point cloud (marking and clearing)
+        # 障碍物点云（标记和清除）
+        obstacles:
+          topic: /camera/obstacles
+          sensor_frame: camera_optical_frame
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "PointCloud2"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
       
       # 膨胀层 / Inflation layer
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # 降低成本缩放因子，增大高成本区域
-        cost_scaling_factor: 5.0
-        # 膨胀半径设为0.25m，机器人距离障碍物约5-10cm (0.25 - 0.20 = 0.05m)
-        inflation_radius: 0.25
+        # 成本缩放因子: 越小,高成本区域越大,机器人离障碍物越远
+        # 设为3.0让机器人保持更安全的距离
+        cost_scaling_factor: 3.0
+        # 膨胀半径设为0.32m,机器人边缘与障碍物边缘保持约15cm
+        # inflation_radius = robot_radius + 安全距离
+        # 0.32 = 0.17 + 0.15m 安全裕度
+        inflation_radius: 0.32
       
       always_send_full_costmap: False  # 从 True 改为 False，只发送更新
 
@@ -291,8 +309,8 @@ global_costmap:
       transform_tolerance: 10.0
       
       # 机器人半径 / Robot radius
-      # 增大以确保安全边界 (0.15→0.20m)
-      robot_radius: 0.20
+      # 全局代价地图使用相同的半径设置
+      robot_radius: 0.17
       
       resolution: 0.05
       track_unknown_space: true
@@ -310,25 +328,25 @@ global_costmap:
       plugins: ["obstacle_layer", "inflation_layer"]
       
       # 障碍物层 / Obstacle layer
+      # Uses segmented obstacle point cloud from RTABMap
+      # 使用RTABMap分割的障碍物点云
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        # 增加观测源的TF容差 / Increase observation source TF tolerance
-        observation_sources: scan
-        scan:
-          # 使用官方depthimage_to_laserscan的/scan话题
-          topic: /scan
-          # 传感器坐标系 / Sensor frame (LaserScan is in base_link frame)
-          sensor_frame: base_link
-          # 观测保留时间 / Observation keep time (seconds)
+        observation_sources: obstacles
+        
+        # Obstacle point cloud for global planning
+        # 障碍物点云用于全局规划
+        obstacles:
+          topic: /camera/obstacles
+          sensor_frame: camera_optical_frame
           observation_persistence: 0.0
-          # 预期更新率 / Expected update rate
           expected_update_rate: 0.0
           max_obstacle_height: 2.0
           min_obstacle_height: 0.0
           clearing: True
           marking: True
-          data_type: "LaserScan"
+          data_type: "PointCloud2"
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
@@ -337,12 +355,12 @@ global_costmap:
           inf_is_valid: true
       
       # 膨胀层 / Inflation layer
+      # Same as local_costmap: robot_radius (0.17m) + safety_distance (0.15m) = 0.32m
+      # 与局部代价地图相同：机器人半径(0.17m) + 安全距离(0.15m) = 0.32m
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # 降低成本缩放因子，增大高成本区域
-        cost_scaling_factor: 5.0
-        # 膨胀半径设为0.25m，机器人距离障碍物约5-10cm (0.25 - 0.20 = 0.05m)
-        inflation_radius: 0.25
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.32
       
       always_send_full_costmap: False  # 只发送更新
 

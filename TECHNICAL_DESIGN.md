@@ -656,29 +656,75 @@ sudo apt install -y \
 - `waypoint_follower`: 路点跟随
 - `lifecycle_manager`: 生命周期管理
 
-### 5.3 SLAM建图
+### 5.3 SLAM建图方案对比
 
-#### 2D SLAM - Slam Toolbox (推荐)
+#### 方案A: Depth-to-Laser + Slam Toolbox (当前方案)
 ```bash
 sudo apt install -y ros-humble-slam-toolbox
+sudo apt install -y ros-humble-depthimage-to-laserscan
 ```
-**优势**:
-- 专为ROS2优化
-- 支持在线建图和离线优化
-- 低资源占用，适合树莓派
-- 支持地图保存/加载
+**原理**:
+- 深度图像转换成2D激光扫描线 (depthimage_to_laserscan)
+- slam_toolbox进行2D scan matching
+- 只使用深度图中一条水平线的数据
 
-#### 3D SLAM - RTABMap
+**优势**:
+- 低资源占用，适合树莓派
+- 2D建图简单直观
+- Nav2集成成熟
+
+**劣势** ⚠️:
+- **信息利用率极低**: 320×240深度图只用20个像素
+- **特征匮乏**: 长走廊、空旷区域scan matching容易失败
+- **nan值干扰**: 深度相机nan/inf转换成激光产生噪声
+- **地图漂移**: scan质量差导致匹配不稳定
+- **丢失高度信息**: 无法区分桌子、墙上标记等
+
+**适用场景**: 资源受限、环境特征明显的场景
+
+#### 方案B: RGB-D Visual SLAM + RTABMap (推荐方案) ⭐
 ```bash
 sudo apt install -y \
     ros-humble-rtabmap-ros \
     ros-humble-rtabmap-util
 ```
+**原理**:
+- RGB图像提取视觉特征点(ORB/SURF)
+- 深度信息直接用于3D点测量
+- 视觉里程计 + 闭环检测 + Bundle Adjustment
+- 3D点云地图投影为2D占用栅格供Nav2使用
+
 **功能**:
-- RGB-D SLAM
-- 视觉里程计
-- 闭环检测
-- 3D点云地图
+- RGB-D SLAM (完整利用深度相机数据)
+- 视觉里程计 (Visual Odometry)
+- 强大的闭环检测 (Bag-of-Words图像检索)
+- 3D点云地图 + 2D栅格地图
+- 实时性能优化
+
+**优势** ✅:
+- **特征丰富**: 利用墙纹理、海报、门框等视觉特征
+- **闭环检测准确**: 视觉特征独特性强，回环识别可靠
+- **地图稳定**: 不依赖几何scan matching，抗漂移能力强
+- **3D感知**: 识别障碍物高度，桌子下可通行
+- **适合室内**: 室内纹理丰富，光照相对稳定
+- **ROS2原生支持**: 官方维护，Nav2集成成熟
+
+**性能对比**:
+| 指标 | Depth-to-Laser | RTABMap Visual SLAM |
+|------|---------------|---------------------|
+| 特征点数量 | ~20个点 | 500+特征点 |
+| 闭环检测 | 几何匹配(弱) | 视觉特征(强) |
+| 地图漂移 | 明显 | 极小 |
+| 长走廊性能 | 差 | 好 |
+| 计算资源 | 低 | 中等 |
+
+**推荐理由**:
+1. 真机只用深度相机，无激光雷达计划
+2. 室内环境特征丰富，适合视觉SLAM
+3. 地图质量和稳定性显著优于depth-to-laser
+4. 3D信息有助于更好的障碍物检测
+
+**适用场景**: 室内导航、深度相机平台、对地图质量要求高的场景
 
 #### 备用方案 - Cartographer
 ```bash

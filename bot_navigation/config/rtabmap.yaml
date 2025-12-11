@@ -1,0 +1,199 @@
+# ==============================================================================
+# RTABMap RGB-D Visual SLAM Configuration
+# RTABMap RGB-D 视觉SLAM配置
+# ==============================================================================
+#
+# Purpose / 用途:
+#   Visual SLAM using RGB-D camera for high-quality mapping
+#   使用RGB-D相机的视觉SLAM，实现高质量建图
+#
+# Advantages over depth-to-laser / 相比depth转laser的优势:
+#   - Rich visual features (500+ vs 20 points)
+#   - Strong loop closure detection (visual features vs geometry)
+#   - Stable mapping (no drift from poor scan matching)
+#   - 3D obstacle perception
+#
+# ==============================================================================
+
+rtabmap:
+  ros__parameters:
+    # ========================================================================
+    # Basic Configuration / 基础配置
+    # ========================================================================
+    
+    # Use simulation time / 使用仿真时间
+    use_sim_time: true
+    
+    # Frame IDs / 坐标系ID
+    frame_id: base_link              # Robot base frame / 机器人基座坐标系
+    odom_frame_id: odom              # Odometry frame / 里程计坐标系
+    map_frame_id: map                # Map frame / 地图坐标系
+    
+    # ========================================================================
+    # Topic Subscription / 话题订阅
+    # ========================================================================
+    
+    # Subscribe to RGB-D data / 订阅RGB-D数据
+    subscribe_rgb: true              # Subscribe to RGB image / 订阅RGB图像
+    subscribe_depth: true            # Subscribe to depth image / 订阅深度图像
+    subscribe_scan: false            # Don't use laser scan / 不使用激光扫描
+    subscribe_stereo: false          # Not using stereo camera / 不使用双目相机
+    
+    # Odometry source / 里程计来源
+    subscribe_odom_info: false       # Don't need odom info / 不需要里程计信息
+    
+    # ========================================================================
+    # RGB-D Parameters / RGB-D参数
+    # ========================================================================
+    
+    rgbd_cameras: 1                  # Number of RGB-D cameras / RGB-D相机数量
+    
+    # Synchronization / 同步
+    # Allow approximate time sync (Gazebo timestamps may not be exact)
+    # 允许近似时间同步(Gazebo时间戳可能不完全一致)
+    approx_sync: true
+    approx_sync_max_interval: 0.01   # Max 10ms difference / 最大10ms差异
+    
+    # Queue size / 队列大小
+    queue_size: 10                   # Reasonable buffer / 合理的缓冲
+    
+    # ========================================================================
+    # Visual Odometry / 视觉里程计
+    # ========================================================================
+    
+    # Estimation type / 估计类型
+    # 0=3D->3D (ICP), 1=3D->2D (PnP/EPNP), 2=2D->2D
+    # For RGB-D, use 1 (EPNP) which is more robust
+    # 对于RGB-D使用1(EPNP)更稳健
+    Vis/EstimationType: "1"
+    
+    # Feature detection / 特征检测
+    Vis/FeatureType: "6"             # 6=ORB, 0=SURF, 1=SIFT (ORB fastest)
+    Vis/MaxFeatures: "1500"          # Extract 1500 features per frame (increased) / 每帧提取1500个特征
+    Vis/MinInliers: "20"             # Minimum inliers for valid pose (more strict) / 有效位姿的最小内点数
+    
+    # Correspondence / 对应关系
+    Vis/CorNNDR: "0.8"               # Nearest-neighbor distance ratio / 最近邻距离比
+    Vis/CorGuessWinSize: "40"        # Correspondence window size / 对应窗口大小
+    
+    # Robustness / 鲁棒性
+    Vis/MaxDepth: "5.0"              # Max depth for features (reduced for better quality) / 特征最大深度
+    Vis/MinDepth: "0.2"              # Min depth for features (filter close noise) / 特征最小深度
+    Vis/RoiRatios: "0.0 0.0 0.0 0.0" # Use full image / 使用完整图像
+    
+    # Depth filtering / 深度过滤
+    Vis/DepthAsMask: "true"          # Use depth as mask for features / 使用深度作为特征掩码
+    
+    # ========================================================================
+    # Keypoint Detection / 关键点检测
+    # ========================================================================
+    
+    Kp/DetectorStrategy: "6"         # 6=ORB
+    Kp/MaxFeatures: "600"            # Features for loop closure (increased) / 闭环检测特征数
+    Kp/BadSignRatio: "0.4"           # Bad/good signature ratio threshold (more strict) / 坏/好签名比率阈值
+    
+    # ========================================================================
+    # Memory Management / 内存管理
+    # ========================================================================
+    
+    # Short-term memory / 短期记忆
+    Mem/STMSize: "30"                # Keep last 30 nodes in STM / 短期记忆保留30个节点
+    
+    # Incremental mode / 增量模式
+    Mem/IncrementalMemory: "true"    # Build map incrementally / 增量建图
+    
+    # Transfer to long-term memory / 转移到长期记忆
+    Mem/RehearsalSimilarity: "0.6"   # Similarity threshold for rehearsal / 重演相似度阈值
+    
+    # ========================================================================
+    # Loop Closure Detection / 闭环检测
+    # ========================================================================
+    
+    # Bag-of-Words / 词袋模型
+    Mem/BinDataKept: "true"          # Keep binary data for localization / 保留二进制数据用于定位
+    Mem/UseOdomFeatures: "false"     # Don't use odom for loop detection / 不用里程计做闭环
+    
+    # Loop closure thresholds / 闭环阈值
+    RGBD/LinearUpdate: "0.05"        # Min translation to add node (5cm, denser) / 添加节点的最小平移
+    RGBD/AngularUpdate: "0.05"       # Min rotation to add node (~3°, denser) / 添加节点的最小旋转
+    
+    # Proximity detection / 临近检测
+    RGBD/ProximityBySpace: "true"    # Use space proximity / 使用空间临近
+    RGBD/ProximityMaxGraphDepth: "50" # Max graph depth for proximity / 临近的最大图深度
+    RGBD/ProximityPathMaxNeighbors: "10" # Max neighbors in path / 路径最大邻居数
+    RGBD/ProximityAngle: "45"        # Max angle for proximity (deg) / 临近最大角度
+    
+    # Loop closure validation / 闭环验证
+    RGBD/LoopClosureReextractFeatures: "true" # Re-extract for better accuracy / 重新提取以提高精度
+    RGBD/OptimizeFromGraphEnd: "false" # Optimize from loop closure / 从闭环优化
+    
+    # ========================================================================
+    # Graph Optimization / 图优化
+    # ========================================================================
+    
+    # Optimizer / 优化器
+    Optimizer/Strategy: "1"          # 0=TORO, 1=g2o, 2=GTSAM (g2o recommended)
+    Optimizer/Iterations: "30"       # Optimization iterations (increased) / 优化迭代次数
+    Optimizer/Epsilon: "0.00001"     # Convergence threshold / 收敛阈值
+    
+    # Robust optimization / 鲁棒优化
+    Optimizer/Robust: "true"         # Use robust kernel for outlier rejection / 使用鲁棒核过滤异常值
+    Optimizer/VarianceIgnored: "false" # Use variance in optimization / 在优化中使用方差
+    
+    # ========================================================================
+    # 2D Grid Map Generation / 2D栅格地图生成
+    # ========================================================================
+    
+    # Grid parameters / 栅格参数
+    Grid/FromDepth: "false"          # Use 3D cloud, not just depth / 使用3D点云而非仅深度
+    Grid/CellSize: "0.05"            # 5cm cell size (same as Nav2) / 5cm栅格大小
+    
+    # Obstacle height filtering / 障碍物高度过滤
+    Grid/MaxObstacleHeight: "2.0"    # Max obstacle height (2m ceiling) / 最大障碍物高度
+    Grid/MinObstacleHeight: "0.1"    # Min obstacle height (10cm filter) / 最小障碍物高度
+    Grid/MaxGroundHeight: "0.05"     # Max ground height variation / 最大地面高度变化
+    
+    # Grid range / 栅格范围
+    Grid/RangeMax: "5.0"             # Max range for obstacles (reduced from 6.0) / 障碍物最大范围
+    Grid/RangeMin: "0.2"             # Min range (increased to filter close noise) / 最小范围
+    
+    # Empty space / 空白空间
+    Grid/RayTracing: "true"          # Ray tracing for empty space / 光线追踪标记空白
+    Grid/3D: "false"                 # Generate 2D map for Nav2 / 生成2D地图供Nav2使用
+    
+    # Noise filtering / 噪声过滤
+    Grid/NoiseFilteringRadius: "0.1" # Remove isolated points within 10cm / 移除10cm内的孤立点
+    Grid/NoiseFilteringMinNeighbors: "5" # Need 5 neighbors to keep point / 需要5个邻居才保留点
+    
+    # Footprint / 机器人足迹
+    Grid/FootprintRadius: "0.15"     # Robot footprint radius (15cm) / 机器人足迹半径
+    
+    # Occupancy / 占据概率
+    Grid/ClusterRadius: "0.1"        # Cluster nearby obstacles / 聚类附近障碍物
+    Grid/GroundIsObstacle: "false"   # Ground is not obstacle / 地面不是障碍物
+    
+    # ========================================================================
+    # Real-time Optimization / 实时性优化
+    # ========================================================================
+    
+    # Processing / 处理
+    Rtabmap/DetectionRate: "1.0"     # Process at 1Hz (balance quality vs speed) / 1Hz处理率
+    Rtabmap/TimeThr: "0"             # No time threshold / 无时间阈值
+    
+    # Memory limits / 内存限制
+    Rtabmap/MemoryThr: "0"           # No memory threshold (unlimited) / 无内存阈值
+    Rtabmap/MaxRetrieved: "2"        # Max nodes retrieved for loop closure / 闭环最大检索节点数
+    
+    # Mapping mode / 建图模式
+    Rtabmap/StartNewMapOnLoopClosure: "false" # Don't start new map on loop / 闭环时不新建地图
+    
+    # ========================================================================
+    # Logging / 日志
+    # ========================================================================
+    
+    publish_tf: true                 # Publish TF transforms / 发布TF变换
+    publish_stats: true              # Publish statistics / 发布统计信息
+    
+    # Database / 数据库
+    database_path: "~/.ros/rtabmap.db" # Database save path / 数据库保存路径
+    Db/Sql3InMemory: "true"          # Use in-memory DB (faster) / 使用内存数据库(更快)
