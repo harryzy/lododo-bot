@@ -71,9 +71,9 @@ bt_navigator:
     default_server_timeout: 30     # 从20增到30秒，给recovery更多时间
     wait_for_service_timeout: 5    # 服务等待超时5秒
     
-    # 全向机器人使用的行为树 / Behavior tree for omnidirectional robot
-    # 使用 Nav2 默认行为树 / Use Nav2 default behavior trees
-    default_nav_to_pose_bt_xml: /opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml
+    # 探索模式专用行为树 - 减少重试次数(2次)和recovery动作
+    # Exploration-specific behavior tree - reduced retries (2) and recovery actions
+    default_nav_to_pose_bt_xml: /home/hurry/lododo_bot/src/bot_navigation/config/nav2/exploration_bt.xml
     default_nav_through_poses_bt_xml: /opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml
     
     # 导航插件 / Navigation plugins
@@ -140,19 +140,20 @@ controller_server:
     # Progress Checker - 使用PoseProgressChecker支持旋转检测
     # Use PoseProgressChecker to detect BOTH linear and angular movement
     # 使用PoseProgressChecker同时检测线性和角度运动
+    # 探索模式：放宽限制，避免探索时频繁timeout
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker"
-      required_movement_radius: 0.05   # 线性位移5cm
-      required_movement_angle: 0.087   # 或角度变化5度(0.087弧度)，满足一个即可
-      movement_time_allowance: 25.0    # 25秒内至少满足一个条件
+      required_movement_radius: 0.10   # 线性位移10cm（探索模式放宽）
+      required_movement_angle: 0.174   # 或角度变化10度(0.174弧度)，满足一个即可
+      movement_time_allowance: 25.0    # 25秒内至少满足一个条件（加快失败速度）
     
     # 目标检查器 / Goal checker
     goal_checker_plugins: ["general_goal_checker"]
     general_goal_checker:
-      stateful: True
+      stateful: False               # 探索模式：关闭stateful，到达即成功，无需停止
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.20        # 增加位置容差到20cm
-      yaw_goal_tolerance: 0.35       # 增加角度容差到约20度
+      xy_goal_tolerance: 0.15       # 收紧到15cm，避免目标太近时"假成功"
+      yaw_goal_tolerance: 0.52      # 约30度（0.52弧度），探索模式放宽朝向要求
     
     # 控制器插件 / Controller plugins
     controller_plugins: ["FollowPath"]
@@ -171,7 +172,7 @@ controller_server:
       min_vel_y: -0.22              # 全向运动 / Omnidirectional motion
       max_vel_y: 0.22               # 全向最大速度
       max_vel_theta: 0.8            # 提高旋转速度到0.8rad/s
-      min_speed_xy: 0.0
+      min_speed_xy: 0.08            # 强制最小线速度0.08m/s，避免纯旋转（planar_move不支持）
       max_speed_xy: 0.22            # 保持一致
       min_speed_theta: 0.0
       
@@ -212,7 +213,7 @@ controller_server:
       GoalAlign.forward_point_distance: 0.1
       PathDist.scale: 48.0          # 增加到48.0，更倾向跟随全局路径
       GoalDist.scale: 36.0          # 保持36.0，积极向目标前进
-      RotateToGoal.scale: 32.0
+      RotateToGoal.scale: 8.0       # 大幅降低到8.0，避免原地旋转（planar_move不支持）
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
 

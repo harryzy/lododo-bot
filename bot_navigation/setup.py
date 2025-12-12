@@ -42,6 +42,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'exploration_mapper = bot_navigation.exploration_mapper:main',
         ],
     },
 )
