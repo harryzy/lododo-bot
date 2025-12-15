@@ -85,11 +85,30 @@ def launch_setup(context, *args, **kwargs):
         output='screen'
     )
     
+    # 延迟启动控制器管理器spawner / Delayed controller spawner
+    # 先启动joint_state_broadcaster / First start joint_state_broadcaster
+    joint_state_broadcaster_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
+        output='screen'
+    )
+    
+    # 然后启动omni_wheel_controller / Then start omni_wheel_controller
+    omni_wheel_controller_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['omni_wheel_controller', '--controller-manager', '/controller_manager'],
+        output='screen'
+    )
+    
     return [
         gazebo_server,
         gazebo_client,
         robot_state_publisher,
         spawn_robot,
+        joint_state_broadcaster_spawner,
+        omni_wheel_controller_spawner,
     ]
 
 

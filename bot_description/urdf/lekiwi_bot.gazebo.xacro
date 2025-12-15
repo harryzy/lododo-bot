@@ -6,19 +6,22 @@
   <!-- For LeKiwi 3-wheel omnidirectional robot simulation                    -->
   <!-- 用于 LeKiwi 三轮全向机器人的 Gazebo 仿真                                -->
   <!-- ====================================================================== -->
+  
+  <!-- Controller configuration file path / 控制器配置文件路径 -->
+  <xacro:arg name="controller_config_file" default="$(find bot_control)/config/omni_wheel_controller.yaml"/>
 
   <!-- ====================================================================== -->
   <!-- Xacro Arguments / Xacro 参数                                            -->
   <!-- ====================================================================== -->
   
   <!-- 
-    publish_odom_tf: Control whether Gazebo publishes odom->base_link TF
+    publish_odom_tf - Control whether Gazebo publishes odom->base_link TF
     发布里程计 TF：控制 Gazebo 是否发布 odom->base_link TF 变换
     
-    - true (default): Gazebo publishes TF, suitable for basic simulation
+    - true (default) - Gazebo publishes TF, suitable for basic simulation
     - true（默认）：Gazebo 发布 TF，适用于基本仿真
     
-    - false: Disable TF publishing, required when using external odometry fusion
+    - false - Disable TF publishing, required when using external odometry fusion
              (e.g., robot_localization EKF with visual odometry)
     - false：禁用 TF 发布，当使用外部里程计融合时需要
             （例如，robot_localization EKF 配合视觉里程计）
@@ -26,57 +29,16 @@
   <xacro:arg name="publish_odom_tf" default="true"/>
 
   <!-- ====================================================================== -->
-  <!-- Omnidirectional Wheel Motion Plugin (Planar Move)                      -->
-  <!-- 全向轮移动插件 (Planar Move)                                            -->
+  <!-- ros2_control Gazebo Plugin                                             -->
+  <!-- ros2_control Gazebo 插件                                                -->
+  <!-- Hardware-level wheel simulation replacing planar_move                  -->
+  <!-- 硬件级轮子仿真替代planar_move                                           -->
   <!-- ====================================================================== -->
   <gazebo>
-    <plugin name="omni_drive_controller" filename="libgazebo_ros_planar_move.so">
-      
-      <!-- Update Rate / 更新频率 -->
-      <update_rate>50.0</update_rate>
-      
-      <!-- Command Topic / 命令话题 -->
-      <command_topic>cmd_vel</command_topic>
-      
-      <!-- Odometry Topic / 里程计话题 -->
-      <odometry_topic>odom</odometry_topic>
-      
-      <!-- Frame Configuration / 坐标系配置 -->
-      <odometry_frame>odom</odometry_frame>
-      <robot_base_frame>base_link</robot_base_frame>
-      
-      <!-- 
-        Odometry Publishing Configuration / 里程计发布配置
-        
-        publish_odom: Always publish odometry messages
-        publish_odom_tf: Controlled by xacro arg for VIO compatibility
-        
-        publish_odom：始终发布里程计消息
-        publish_odom_tf：由 xacro 参数控制以兼容 VIO
-      -->
-      <publish_odom>true</publish_odom>
-      <publish_odom_tf>$(arg publish_odom_tf)</publish_odom_tf>
-      
-      <!-- Velocity Limits / 速度限制 -->
-      <!-- 提高速度限制以加快导航测试 / Increase velocity for faster navigation -->
-      <max_vel_x>0.35</max_vel_x>
-      <max_vel_y>0.35</max_vel_y>
-      <max_vel_yaw>2.0</max_vel_yaw>
-      
-      <!-- 
-        Covariance Configuration / 协方差配置
-        These values represent the uncertainty in wheel odometry
-        这些值表示轮式里程计的不确定性
-      -->
-      <covariance_x>0.0001</covariance_x>
-      <covariance_y>0.0001</covariance_y>
-      <covariance_yaw>0.01</covariance_yaw>
-      
-      <!-- Velocity decay when no command / 无命令时速度衰减 -->
-      <!-- Timeout after which robot stops if no cmd_vel received -->
-      <!-- 接收不到cmd_vel命令后机器人停止的超时时间 -->
-      <cmd_timeout>0.5</cmd_timeout>
-      
+    <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+      <!-- Controller configuration file -->
+      <!-- xacro will substitute $(arg xxx) before Gazebo sees it -->
+      <parameters>$(arg controller_config_file)</parameters>
     </plugin>
   </gazebo>
 
@@ -120,7 +82,7 @@
         <min_depth>0.10</min_depth>
         <max_depth>6.0</max_depth>
         
-        <!-- 关键优化:将cutoff设为极小值 / Key optimization: set cutoff to minimal value -->
+        <!-- 关键优化 将cutoff设为极小值 / Key optimization set cutoff to minimal value -->
         <!-- 只保留0.03米内的点(实际上几乎没有),避免靠墙时触发大量点云计算 -->
         <!-- Only keep points within 0.03m (virtually none), avoid massive point cloud when near walls -->
         <pointCloudCutoff>0.01</pointCloudCutoff>
@@ -142,34 +104,45 @@
     <material>Gazebo/White</material>
   </gazebo>
 
+  <!-- 左前轮物理属性 / Left Front Wheel Physics (suffix="") -->
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1">
     <material>Gazebo/Black</material>
-    <mu1>0.1</mu1>
-    <mu2>0.1</mu2>
+    <!-- mu1 lateral friction, mu2 rolling friction -->
+    <mu1>0.8</mu1>
+    <mu2>0.01</mu2>
+    <!-- slip1/slip2 - omnidirectional wheel behavior -->
+    <slip1>0.1</slip1>
+    <slip2>0.9</slip2>
     <kp>1000000.0</kp>
     <kd>100.0</kd>
     <minDepth>0.001</minDepth>
-    <maxVel>1.0</maxVel>
+    <maxVel>10.0</maxVel>
   </gazebo>
 
+  <!-- 右前轮物理属性 / Right Front Wheel Physics (suffix="-1") -->
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1-1">
     <material>Gazebo/Black</material>
-    <mu1>0.1</mu1>
-    <mu2>0.1</mu2>
+    <mu1>0.8</mu1>
+    <mu2>0.01</mu2>
+    <slip1>0.1</slip1>
+    <slip2>0.9</slip2>
     <kp>1000000.0</kp>
     <kd>100.0</kd>
     <minDepth>0.001</minDepth>
-    <maxVel>1.0</maxVel>
+    <maxVel>10.0</maxVel>
   </gazebo>
 
+  <!-- 后轮物理属性 / Rear Wheel Physics (suffix="-2") -->
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1-2">
     <material>Gazebo/Black</material>
-    <mu1>0.1</mu1>
-    <mu2>0.1</mu2>
+    <mu1>0.8</mu1>
+    <mu2>0.01</mu2>
+    <slip1>0.1</slip1>
+    <slip2>0.9</slip2>
     <kp>1000000.0</kp>
     <kd>100.0</kd>
     <minDepth>0.001</minDepth>
-    <maxVel>1.0</maxVel>
+    <maxVel>10.0</maxVel>
   </gazebo>
 
   <!-- 电池 -->

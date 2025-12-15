@@ -2,7 +2,7 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="LeKiwi">
 
     <!-- ====================================================================== -->
-    <!-- 第1部分: 常量与属性定义 / Part 1: Constants and Properties             -->
+    <!-- 第1部分- 常量与属性定义 / Part 1- Constants and Properties             -->
     <!-- ====================================================================== -->
     <material name="White">
         <color rgba="1 1 1 1" />
@@ -29,14 +29,14 @@
     <xacro:property name="mesh_scale" value="0.001 0.001 0.001" />
 
     <!-- ====================================================================== -->
-    <!-- 第2部分: 宏定义 / Part 2: Macro Definitions                            -->
+    <!-- 第2部分- 宏定义 / Part 2- Macro Definitions                            -->
     <!-- ====================================================================== -->
 
     <!-- 
         通用带惯性属性的 Link 宏 / Generic Link Macro with Inertial Properties
         用于创建包含惯性、视觉和碰撞属性的 link
         Used to create links with inertial, visual, and collision properties
-        参数 material_name: 材质颜色名称，默认为 White / Material color name, default is White
+        参数 material_name- 材质颜色名称，默认为 White / Material color name- default is White
     -->
     <xacro:macro name="mesh_link"
         params="name mesh_file 
@@ -91,8 +91,8 @@
 
     <!-- 
         轮组装配宏 / Wheel Assembly Macro
-        包含: 电机支架 -> 舵机 -> 轮毂 -> 全向轮
-        Contains: Motor Mount -> Servo Motor -> Wheel Mount -> Omni Wheel
+        包含- 电机支架 -> 舵机 -> 轮毂 -> 全向轮
+        Contains- Motor Mount -> Servo Motor -> Wheel Mount -> Omni Wheel
     -->
     <xacro:macro name="wheel_assembly"
         params="suffix
@@ -176,15 +176,17 @@
             material_name="Black" />
 
         <!-- 轮毂到全向轮的关节 / Joint from Wheel Mount to Omni Wheel -->
-        <joint name="omni_wheel_mount-v5${suffix}_to_wheel" type="fixed">
+        <joint name="omni_wheel_mount-v5${suffix}_to_wheel" type="continuous">
             <origin xyz="${wheel_joint_xyz}" rpy="${wheel_joint_rpy}" />
             <parent link="omni_wheel_mount-v5${suffix}" />
             <child link="4-Omni-Directional-Wheel_Single_Body-v1${suffix}" />
+            <axis xyz="${wheel_axis}" />
+            <dynamics damping="0.1" friction="0.1"/>
         </joint>
     </xacro:macro>
 
     <!-- ====================================================================== -->
-    <!-- 第3部分: 底盘基座 / Par    source ~/.bashrc    source ~/.bashrct 3: Chassis Base                               -->
+    <!-- 第3部分- 底盘基座 / Part 3- Chassis Base                               -->
     <!-- ====================================================================== -->
 
     <!-- 
@@ -213,11 +215,11 @@
     </joint>
 
     <!-- ====================================================================== -->
-    <!-- 第4部分: 轮组装配 (3组全向轮) / Part 4: Wheel Assemblies (3 Omni Wheels) -->
+    <!-- 第4部分- 轮组装配 (3组全向轮) / Part 4- Wheel Assemblies (3 Omni Wheels) -->
     <!-- ====================================================================== -->
 
     <!-- 
-        轮组1: 后轮 (Back Wheel) - suffix: -2
+        轮组1- 后轮 (Back Wheel) - suffix- -2
         base_plate_layer1 -> drive_motor_mount-2 -> servo_motor-2 -> wheel_mount-2 -> wheel-2
     -->
     <xacro:wheel_assembly suffix="-2"
@@ -269,7 +271,7 @@
         wheel_visual_rpy="${M_PI_2} ${DEG_15} 0" />
 
     <!-- 
-        轮组2: 右前轮 (Right Front Wheel) - suffix: -1
+        轮组2- 右前轮 (Right Front Wheel) - suffix- -1
         base_plate_layer1 -> drive_motor_mount-1 -> servo_motor-1 -> wheel_mount-1 -> wheel-1
     -->
     <xacro:wheel_assembly suffix="-1"
@@ -321,7 +323,7 @@
         wheel_visual_rpy="-${M_PI_6} -${M_PI_2} 0" />
 
     <!-- 
-        轮组3: 左前轮 (Left Front Wheel) - suffix: (empty)
+        轮组3- 左前轮 (Left Front Wheel) - suffix- (empty)
         base_plate_layer1 -> drive_motor_mount -> servo_motor -> wheel_mount -> wheel
     -->
     <xacro:wheel_assembly suffix=""
@@ -373,7 +375,7 @@
         wheel_visual_rpy="${M_PI_2} -${DEG_75} ${DEG_120}" />
 
     <!-- ====================================================================== -->
-    <!-- 第5部分: 电子元器件 / Part 5: Electronic Components                    -->
+    <!-- 第5部分- 电子元器件 / Part 5- Electronic Components                    -->
     <!-- ====================================================================== -->
 
     <!-- 舵机控制器支架 / Servo Controller Mount -->
@@ -434,7 +436,7 @@
     </joint>
 
     <!-- ====================================================================== -->
-    <!-- 第6部分: 相机系统 / Part 6: Camera System                              -->
+    <!-- 第6部分- 相机系统 / Part 6- Camera System                              -->
     <!-- ====================================================================== -->
 
     <!-- 相机支架 / Camera Mount -->
@@ -478,17 +480,17 @@
     <!-- 
         相机坐标系（双 Frame 结构）/ Camera Frames (Dual Frame Structure)
         
-        说明 / Description:
-        1. camera_link: Gazebo 传感器附着点，使用 Gazebo 相机约定
+        说明 / Description-
+        1. camera_link- Gazebo 传感器附着点，使用 Gazebo 相机约定
            - Gazebo 相机看向 +X 方向，图像上方是 +Z
            - 此 frame 与 base_link 方向相同，位于镜头前方
            
-        2. camera_optical_frame: ROS 光学坐标系约定
+        2. camera_optical_frame- ROS 光学坐标系约定
            - Z 轴是光轴（指向前方），Y 轴是图像下方，X 轴是图像右方
            - 用于点云、深度图像等 ROS 数据处理
     -->
     
-    <!-- camera_link: Gazebo 传感器使用此 frame -->
+    <!-- camera_link- Gazebo 传感器使用此 frame -->
     <link name="camera_link">
         <!-- 空 link，仅用作 Gazebo 传感器附着点 -->
     </link>
@@ -496,10 +498,10 @@
     <!-- Camera-Model-v3 -> camera_link -->
     <joint name="camera_link_joint" type="fixed">
         <!-- 
-            目标: camera_link 在 base_link 中位于 [0.146, 0, 0.038]，方向与 base_link 相同
+            目标- camera_link 在 base_link 中位于 [0.146, 0, 0.038]，方向与 base_link 相同
             这样 Gazebo 相机会看向机器人前方(+X)，横屏显示
             
-            计算: T_joint = T_base_cam_model^(-1) @ T_base_cam_link
+            计算- T_joint = T_base_cam_model^(-1) @ T_base_cam_link
             其中 T_base_cam_model 来自 tf2_echo
         -->
         <origin xyz="-0.002425 0.040000 -0.013788" rpy="${DEG_100} 0 ${M_PI_2}" />
@@ -507,7 +509,7 @@
         <child link="camera_link" />
     </joint>
     
-    <!-- camera_optical_frame: ROS 光学坐标系 -->
+    <!-- camera_optical_frame- ROS 光学坐标系 -->
     <link name="camera_optical_frame">
         <!-- 空 link，仅用作光学坐标系参考 -->
     </link>
@@ -517,15 +519,15 @@
         <!-- 
             标准的 Gazebo -> ROS 光学坐标系转换
             从 Gazebo 约定 (X前, Y左, Z上) 到 ROS 光学约定 (Z前, X右, Y下)
-            旋转: 先绕 Y 轴 -90° (X->Z)，再绕 X 轴 -90° (Y->-Z, Z->Y)
-            等效 RPY: [-π/2, 0, -π/2]
+            旋转- 先绕 Y 轴 -90° (X->Z)，再绕 X 轴 -90° (Y->-Z, Z->Y)
+            等效 RPY- [-π/2, 0, -π/2]
         -->
         <origin xyz="0 0 0" rpy="-${M_PI_2} 0 -${M_PI_2}" />
         <parent link="camera_link" />
         <child link="camera_optical_frame" />
     </joint>
     
-    <!-- 兼容性别名: camera_frame 指向 camera_optical_frame -->
+    <!-- 兼容性别名- camera_frame 指向 camera_optical_frame -->
     <link name="camera_frame">
         <!-- 保持向后兼容 -->
     </link>
@@ -537,7 +539,7 @@
     </joint>
 
     <!-- ====================================================================== -->
-    <!-- 第7部分: 支撑铜柱与第二层底板 / Part 7: Standoffs and Second Layer     -->
+    <!-- 第7部分- 支撑铜柱与第二层底板 / Part 7- Standoffs and Second Layer     -->
     <!-- ====================================================================== -->
 
     <!-- 
@@ -545,7 +547,7 @@
         连接底板第一层和第二层 / Connect base plate layer 1 and layer 2
     -->
 
-    <!-- 铜柱0: 中心 / Standoff 0: Center -->
+    <!-- 铜柱0- 中心 / Standoff 0- Center -->
     <xacro:hex_standoff suffix=""
         mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff.stl"
         parent_link="base_plate_layer1-v5"
@@ -554,7 +556,7 @@
         inertial_z="-0.02499999330297986"
         visual_z="-0.025" />
 
-    <!-- 铜柱1: 左侧 / Standoff 1: Left -->
+    <!-- 铜柱1- 左侧 / Standoff 1- Left -->
     <xacro:hex_standoff suffix="-1"
         mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-1.stl"
         parent_link="base_plate_layer1-v5"
@@ -563,7 +565,7 @@
         inertial_z="-0.02499999330297986"
         visual_z="-0.025" />
 
-    <!-- 铜柱2: 右侧 / Standoff 2: Right -->
+    <!-- 铜柱2- 右侧 / Standoff 2- Right -->
     <xacro:hex_standoff suffix="-2"
         mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-2.stl"
         parent_link="base_plate_layer1-v5"
@@ -572,7 +574,7 @@
         inertial_z="-0.02481596290467566"
         visual_z="-0.0248159696016958" />
 
-    <!-- 铜柱3: 左后 / Standoff 3: Left Rear -->
+    <!-- 铜柱3- 左后 / Standoff 3- Left Rear -->
     <xacro:hex_standoff suffix="-3"
         mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-3.stl"
         parent_link="base_plate_layer1-v5"
@@ -581,7 +583,7 @@
         inertial_z="-0.024999993302979855"
         visual_z="-0.025" />
 
-    <!-- 铜柱4: 右后 / Standoff 4: Right Rear -->
+    <!-- 铜柱4- 右后 / Standoff 4- Right Rear -->
     <xacro:hex_standoff suffix="-4"
         mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-4.stl"
         parent_link="base_plate_layer1-v5"
@@ -590,7 +592,7 @@
         inertial_z="-0.02499999330297986"
         visual_z="-0.025" />
 
-    <!-- 铜柱5: 前方 / Standoff 5: Front -->
+    <!-- 铜柱5- 前方 / Standoff 5- Front -->
     <xacro:hex_standoff suffix="-5"
         mesh_file="94868A713_NO-THREADS_Female-Threaded-Hex-Standoff-5.stl"
         parent_link="base_plate_layer1-v5"
@@ -619,7 +621,7 @@
     </joint>
 
     <!-- ====================================================================== -->
-    <!-- 第8部分: 顶部盖板 / Part 8: Top Covers                                 -->
+    <!-- 第8部分- 顶部盖板 / Part 8- Top Covers                                 -->
     <!-- ====================================================================== -->
 
     <!-- 底部盖板 / Bottom Cover -->
@@ -659,5 +661,45 @@
         <parent link="Bottom-V2-v3" />
         <child link="Top-V2-v2" />
     </joint>
+
+    <!-- ====================================================================== -->
+    <!-- ros2_control Configuration                                             -->
+    <!-- ====================================================================== -->
+    
+    <ros2_control name="GazeboSystem" type="system">
+        <hardware>
+            <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </hardware>
+        
+        <!-- Wheel 1 Rear -->
+        <joint name="omni_wheel_mount-v5-2_to_wheel">
+            <command_interface name="velocity">
+                <param name="min">-100</param>
+                <param name="max">100</param>
+            </command_interface>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        
+        <!-- Wheel 2 Right Front -->
+        <joint name="omni_wheel_mount-v5-1_to_wheel">
+            <command_interface name="velocity">
+                <param name="min">-100</param>
+                <param name="max">100</param>
+            </command_interface>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        
+        <!-- Wheel 3 Left Front -->
+        <joint name="omni_wheel_mount-v5_to_wheel">
+            <command_interface name="velocity">
+                <param name="min">-100</param>
+                <param name="max">100</param>
+            </command_interface>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+    </ros2_control>
 
 </robot>

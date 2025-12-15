@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+"""
+Omnidirectional Wheel Controller Node for LeKiwi Robot
+全向轮控制节点
+
+Functionality:
+1. Inverse Kinematics: cmd_vel → wheel velocities
+2. Forward Kinematics: wheel velocities → odometry
+3. Simulation/Real Robot Detection: Auto-adapt based on environment
+
+Author: LeKiwi Team
+Date: 2025-12-12
+"""
+
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64MultiArray
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
+import numpy as np
+import math
+
+
+class OmniControllerNode(Node):
+    """
+    Omnidirectional wheel controller for 3-wheel robot with ros2_control
+    """
+    
+    def __init__(self):
+        super().__init__('omni_controller_node')
+        
+        # ===================== Robot Parameters =====================
+        # ===================== WHEEL MAPPING (Code ↔ URDF ↔ Hardware) =====================
+        # This code defines wheels in order: [wheel1, wheel2, wheel3]
+        # 
+        # Mapping to URDF joint names and controller.yaml:
+        #   wheel1 → omni_wheel_mount-v5-2_to_wheel  (rear wheel, at robot back)
+        #   wheel2 → omni_wheel_mount-v5-1_to_wheel  (right front wheel)
+        #   wheel3 → omni_wheel_mount-v5_to_wheel    (left front wheel)
+        #
+        # Physical wheel rolling directions (from ROBOT_SPECS.md measurements):
+        #   wheel1 (rear):        θ1 = 90°  (points toward +Y in base_link)
+        #   wheel2 (right front): θ2 = 210° (points toward -X-Y in base_link)
+        #   wheel3 (left front):  θ3 = 330° (points toward +X-Y in base_link)
+        #
+        # URDF wheel rotation axes (from lekiwi_bot_sim.xacro):
+        #   wheel1 axis: (0, 0, -1.0)        → vertical (standard)
+        #   wheel2 axis: (0.866025, 0, 0.5)  → tilted 60° from vertical
+        #   wheel3 axis: (-0.866025, 0, 0.5) → tilted 60° from vertical
+        #
+        # IMPORTANT: Tilted wheels require velocity correction (see wheel_axis_correction below)
+        # ===================================================================================
+        
+        # Wheel radius (m)
+        self.R = 0.05
+        
+        # Distance from robot center to each wheel (m)
+        self.L1 = 0.105  # wheel1 (rear)
+        self.L2 = 0.085  # wheel2 (right front)
+        self.L3 = 0.085  # wheel3 (left front)
+        
+        # Wheel rolling direction angles (radians) - measured in base_link frame
+        self.theta1 = np.pi / 2        # wheel1: 90° (rear)
+        self.theta2 = 7 * np.pi / 6    # wheel2: 210° (right front)
+        self.theta3 = 11 * np.pi / 6   # wheel3: 330° (left front)
+        
+        # Jacobian matrix for inverse kinematics
+        # J * [vx, vy, omega_z]^T = [w1, w2, w3]^T
+        self.J = np.array([
+            [-np.sin(self.theta1), np.cos(self.theta1), self.L1],
+            [-np.sin(self.theta2), np.cos(self.theta2), self.L2],
+            [-np.sin(self.theta3), np.cos(self.theta3), self.L3],
+        ]) / self.R
+        
+        # Pseudo-inverse for forward kinematics
+        self.J_pinv = np.linalg.pinv(self.J)
+        
+        # ===================== Wheel Axis Correction =====================
+        # Tilted wheel axes cause joint velocity ≠ ground rolling velocity
+        # 
+        # From URDF (lekiwi_bot.xacro):
+        #   wheel1 (omni_wheel_mount-v5-2_to_wheel): axis=(0, 0, -1.0)        → |z|=1.0, sign=-1
+        #   wheel2 (omni_wheel_mount-v5-1_to_wheel): axis=(0.866025, 0, 0.5)  → |z|=0.5, sign=+1
+        #   wheel3 (omni_wheel_mount-v5_to_wheel):   axis=(-0.866025, 0, 0.5) → |z|=0.5, sign=+1
+        # 
+        # Speed scaling factor = |axis_z| (absolute value)
+        # Direction sign = sign(axis_z)
+        # Combined correction = axis_z (preserves both magnitude and sign)
+        # 
+        # - Forward kinematics:  multiply joint velocity by axis_z
+        # - Inverse kinematics:  divide desired velocity by axis_z
+        # 
+        # Example: 
+        #   - wheel1: axis_z=-1.0, so command +2 rad/s → send -2 rad/s to joint
+        #   - wheel2: axis_z=0.5, so command +2 rad/s → send +4 rad/s to joint
+        # FIXED: After correcting URDF wheel_axis definitions
+        # All wheels now have vertical (non-tilted) axes
+        # wheel1: axis=(0,0,1) in mount frame → X-axis rotation in baselink
+        # wheel2/3: axis=(-1,0,0) in mount frame → Y-axis rotation in baselink
+        # No correction needed for vertical axes
+        self.wheel_axis_correction = np.array([
+            1.0,   # wheel1 (rear): vertical axis, no correction
+            1.0,   # wheel2 (right front): vertical axis, no correction
+            1.0    # wheel3 (left front): vertical axis, no correction
+        ])
+        
+        # Debug: Print matrices
+        self.get_logger().info('=== Kinematics Matrices ===')
+        self.get_logger().info(f'J (inverse kinematics):\n{self.J}')
+        self.get_logger().info(f'J_pinv (forward kinematics):\n{self.J_pinv}')
+        self.get_logger().info(f'Wheel axis correction: {self.wheel_axis_correction}')
+        
+        # ===================== Odometry State =====================
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
+        self.last_time = self.get_clock().now()
+        
+        # ===================== Environment Detection =====================
+        # Check if running in simulation or real robot
+        # Note: use_sim_time is automatically declared by ROS2, don't declare again
+        try:
+            self.is_simulation = self.get_parameter('use_sim_time').value
+        except:
+            # If use_sim_time not set, assume real robot
+            self.is_simulation = False
+        
+        self.get_logger().info(f'Running in {"SIMULATION" if self.is_simulation else "REAL ROBOT"} mode')
+        
+        # ===================== Publishers & Subscribers =====================
+        
+        # Subscribe to cmd_vel (from Nav2, keyboard, etc.)
+        self.cmd_vel_sub = self.create_subscription(
+            Twist,
+            'cmd_vel',
+            self.cmd_vel_callback,
+            10
+        )
+        
+        # Publish wheel velocity commands to ros2_control
+        self.wheel_cmd_pub = self.create_publisher(
+            Float64MultiArray,
+            '/omni_wheel_controller/commands',
+            10
+        )
+        
+        # Subscribe to joint states (from ros2_control)
+        self.joint_state_sub = self.create_subscription(
+            JointState,
+            'joint_states',
+            self.joint_state_callback,
+            10
+        )
+        
+        # Publish odometry
+        self.odom_pub = self.create_publisher(
+            Odometry,
+            'wheel/odom',  # Renamed to indicate wheel-based odometry (not fused)
+            10
+        )
+        
+        # TF broadcaster for odom→base_link
+        self.tf_broadcaster = TransformBroadcaster(self)
+        
+        # Declare parameter for publishing TF (can be disabled for external localization)
+        # Default False: EKF should publish odom→base_link TF to avoid conflicts
+        self.declare_parameter('publish_odom_tf', False)
+        
+        self.get_logger().info('Omni Controller Node initialized')
+        self.get_logger().info(f'Wheel radius: {self.R} m')
+        self.get_logger().info(f'Rear wheel distance: {self.L1} m')
+        self.get_logger().info(f'Front wheel distance: {self.L2}, {self.L3} m')
+    
+    def cmd_vel_callback(self, msg: Twist):
+        """
+        Convert cmd_vel to wheel velocities using inverse kinematics
+        
+        cmd_vel (Twist) → [w1, w2, w3] (rad/s)
+        """
+        vx = msg.linear.x
+        vy = msg.linear.y
+        omega_z = msg.angular.z
+        
+        # Inverse kinematics: J * [vx, vy, omega_z]^T = [w1, w2, w3]^T
+        velocity_vector = np.array([vx, vy, omega_z])
+        wheel_speeds_ideal = self.J @ velocity_vector
+        
+        # Apply inverse axis correction: command must be amplified for tilted wheels
+        # and adjusted for axis direction
+        # If wheel is tilted 60° (z=0.5), need 2x angular velocity to achieve same ground speed
+        # wheel_axis_correction already includes sign (negative for inverted axes)
+        wheel_speeds = wheel_speeds_ideal / self.wheel_axis_correction
+        
+        # Publish to ros2_control
+        wheel_cmd_msg = Float64MultiArray()
+        wheel_cmd_msg.data = wheel_speeds.tolist()
+        self.wheel_cmd_pub.publish(wheel_cmd_msg)
+        
+        # Log for debugging
+        if abs(vx) > 0.01 or abs(vy) > 0.01 or abs(omega_z) > 0.01:
+            self.get_logger().info(
+                f'cmd_vel: vx={vx:.3f}, vy={vy:.3f}, omega={omega_z:.3f} → '
+                f'ideal=[{wheel_speeds_ideal[0]:.2f}, {wheel_speeds_ideal[1]:.2f}, {wheel_speeds_ideal[2]:.2f}] → '
+                f'corrected=[{wheel_speeds[0]:.2f}, {wheel_speeds[1]:.2f}, {wheel_speeds[2]:.2f}]',
+                throttle_duration_sec=1.0
+            )
+    
+    def joint_state_callback(self, msg: JointState):
+        """
+        Compute odometry from wheel velocities using forward kinematics
+        
+        [w1, w2, w3] (rad/s) → [vx, vy, omega_z] → update pose
+        """
+        # Extract wheel velocities from joint_states
+        # 
+        # URDF joint name → Code wheel mapping:
+        #   omni_wheel_mount-v5-2_to_wheel → wheel1 (rear)
+        #   omni_wheel_mount-v5-1_to_wheel → wheel2 (right front)
+        #   omni_wheel_mount-v5_to_wheel   → wheel3 (left front)
+        try:
+            rear_idx = msg.name.index('omni_wheel_mount-v5-2_to_wheel')   # → wheel1
+            right_idx = msg.name.index('omni_wheel_mount-v5-1_to_wheel')  # → wheel2
+            left_idx = msg.name.index('omni_wheel_mount-v5_to_wheel')     # → wheel3
+            
+            wheel_speeds_raw = np.array([
+                msg.velocity[rear_idx],   # wheel1 velocity
+                msg.velocity[right_idx],  # wheel2 velocity
+                msg.velocity[left_idx]    # wheel3 velocity
+            ])
+        except (ValueError, IndexError) as e:
+            self.get_logger().warn(f'Failed to extract wheel velocities: {e}', throttle_duration_sec=5.0)
+            return
+        
+        # Apply wheel axis correction for tilted wheels
+        # joint_states reports angular velocity around tilted axis
+        # Need to project to vertical axis for ground rolling velocity
+        # wheel_axis_correction already includes sign (negative for inverted axes)
+        wheel_speeds = wheel_speeds_raw * self.wheel_axis_correction
+        
+        # Forward kinematics: [vx, vy, omega_z] = J_pinv * [w1, w2, w3]
+        velocity = self.J_pinv @ wheel_speeds
+        vx, vy, omega_z = velocity[0], velocity[1], velocity[2]
+        
+        # Time update
+        current_time = self.get_clock().now()
+        dt = (current_time - self.last_time).nanoseconds / 1e9
+        self.last_time = current_time
+        
+        if dt > 0.2:  # Reset on large time gaps (e.g., first message)
+            dt = 0.0
+        
+        # Update pose (Euler integration)
+        # Velocity in base_link frame, transform to odom frame
+        delta_x = (vx * math.cos(self.theta) - vy * math.sin(self.theta)) * dt
+        delta_y = (vx * math.sin(self.theta) + vy * math.cos(self.theta)) * dt
+        delta_theta = omega_z * dt
+        
+        self.x += delta_x
+        self.y += delta_y
+        self.theta += delta_theta
+        
+        # Normalize theta to [-pi, pi]
+        self.theta = math.atan2(math.sin(self.theta), math.cos(self.theta))
+        
+        # Publish odometry
+        self.publish_odometry(current_time, vx, vy, omega_z)
+    
+    def publish_odometry(self, current_time, vx, vy, omega_z):
+        """
+        Publish odometry message and TF transform
+        """
+        # Create Odometry message
+        odom = Odometry()
+        odom.header.stamp = current_time.to_msg()
+        odom.header.frame_id = 'odom'
+        odom.child_frame_id = 'base_link'
+        
+        # Position
+        odom.pose.pose.position.x = self.x
+        odom.pose.pose.position.y = self.y
+        odom.pose.pose.position.z = 0.0
+        
+        # Orientation (quaternion from yaw)
+        odom.pose.pose.orientation.x = 0.0
+        odom.pose.pose.orientation.y = 0.0
+        odom.pose.pose.orientation.z = math.sin(self.theta / 2.0)
+        odom.pose.pose.orientation.w = math.cos(self.theta / 2.0)
+        
+        # Velocity (in base_link frame)
+        odom.twist.twist.linear.x = vx
+        odom.twist.twist.linear.y = vy
+        odom.twist.twist.linear.z = 0.0
+        odom.twist.twist.angular.x = 0.0
+        odom.twist.twist.angular.y = 0.0
+        odom.twist.twist.angular.z = omega_z
+        
+        # Covariance (uncertainty in odometry)
+        # Position covariance
+        odom.pose.covariance[0] = 0.001   # x (accurate from wheels)
+        odom.pose.covariance[7] = 0.001   # y (accurate from wheels)
+        odom.pose.covariance[35] = 0.5    # theta (UNRELIABLE! omnidirectional wheel slippage)
+        
+        # Velocity covariance
+        odom.twist.covariance[0] = 0.001  # vx (accurate from wheels)
+        odom.twist.covariance[7] = 0.001  # vy (accurate from wheels)
+        odom.twist.covariance[35] = 0.5   # omega_z (UNRELIABLE! use IMU instead)
+        
+        # Publish odometry message
+        self.odom_pub.publish(odom)
+        
+        # Publish TF transform (if enabled)
+        if self.get_parameter('publish_odom_tf').value:
+            tf = TransformStamped()
+            tf.header.stamp = current_time.to_msg()
+            tf.header.frame_id = 'odom'
+            tf.child_frame_id = 'base_link'
+            
+            tf.transform.translation.x = self.x
+            tf.transform.translation.y = self.y
+            tf.transform.translation.z = 0.0
+            
+            tf.transform.rotation.x = 0.0
+            tf.transform.rotation.y = 0.0
+            tf.transform.rotation.z = math.sin(self.theta / 2.0)
+            tf.transform.rotation.w = math.cos(self.theta / 2.0)
+            
+            self.tf_broadcaster.sendTransform(tf)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = OmniControllerNode()
+    
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

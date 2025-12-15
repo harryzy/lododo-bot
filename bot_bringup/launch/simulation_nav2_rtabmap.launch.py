@@ -21,14 +21,14 @@ Architecture / 架构:
     │        simulation_nav2_rtabmap.launch.py                      │
     │                                                               │
     │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐       │
-    │  │   Gazebo    │───▶│ Wheel+Vis   │───▶│    Nav2     │       │
-    │  │(wheel odom) │    │ +IMU (EKF)  │    │ (navigation)│       │
-    │  │ (no TF)     │    │             │    │             │       │
+    │  │  ros2_ctrl  │───▶│ Wheel+Vis   │───▶│    Nav2     │       │
+    │  │(wheel phys) │    │ +IMU (EKF)  │    │ (navigation)│       │
+    │  │             │    │             │    │             │       │
     │  └─────────────┘    └─────────────┘    └─────────────┘       │
     │         │                  │                  │               │
     │         ▼                  ▼                  ▼               │
     │   /camera/*           /odom (fused)      /cmd_vel            │
-    │   /odom (wheel)       odom->base_link    /map                │
+    │   /joint_states       odom->base_link    /map                │
     │   /imu/data           map->odom          /map_cloud          │
     │                                                               │
     │  ┌─────────────────────────────────────────┐                 │
@@ -45,9 +45,11 @@ Startup Sequence (Event-Driven) / 启动顺序（事件驱动）:
         - Spawn robot model
         - Event: OnProcessStart(spawn_robot) -> Phase 2
     
-    Phase 2: Robot Control
-        - Start omni_controller
-        - Event: OnProcessStart(omni_controller) -> Phase 3
+    Phase 2: Robot Control (ros2_control)
+        - Load joint_state_broadcaster
+        - Load omni_wheel_controller
+        - Start omni_controller_node (kinematics)
+        - Event: OnProcessStart(omni_controller_node) -> Phase 3
     
     Phase 3: Visual SLAM & Fusion
         - Start RTABMap (visual odom + SLAM)
@@ -159,12 +161,18 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # ==========================================================================
     urdf_file = os.path.join(pkg_bot_description, 'urdf', 'lekiwi_bot_imu_sim.xacro')
     
+    # Controller configuration file / 控制器配置文件
+    controller_config = os.path.join(pkg_bot_control, 'config', 'omni_wheel_controller.yaml')
+    
     # Process xacro with publish_odom_tf:=false (EKF will publish odom->base_link)
     # 处理 xacro，publish_odom_tf:=false（EKF 将发布 odom->base_link）
+    # Pass controller config file via xacro argument
+    # 通过 xacro 参数传递控制器配置文件路径
     robot_description_content = ParameterValue(
         Command([
             'xacro ', urdf_file,
-            ' publish_odom_tf:=false'  # Disable Gazebo odom TF
+            ' publish_odom_tf:=false',  # Disable Gazebo odom TF
+            ' controller_config_file:=', controller_config  # Pass controller config to xacro
         ]),
         value_type=str
     )
@@ -242,33 +250,62 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     )
     
     # ==========================================================================
-    # PHASE 2: Robot Control Nodes / 第二阶段：机器人控制节点
+    # PHASE 2: Robot Control with ros2_control / 第二阶段：基于ros2_control的机器人控制
     # ==========================================================================
     
-    # Omni-directional wheel controller / 全向轮控制器
-    omni_controller = Node(
+    # Load ros2_control controllers spawner (joint_state_broadcaster)
+    # 加载 ros2_control 控制器生成器（关节状态广播器）
+    load_joint_state_broadcaster = ExecuteProcess(
+        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
+             'joint_state_broadcaster'],
+        output='screen'
+    )
+    
+    # Load omni wheel velocity controller
+    # 加载全向轮速度控制器
+    load_omni_wheel_controller = ExecuteProcess(
+        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
+             'omni_wheel_controller'],
+        output='screen'
+    )
+    
+    # Omnidirectional wheel controller node (cmd_vel → wheel speeds, wheel speeds → odom)
+    # 全向轮控制节点（cmd_vel → 轮速，轮速 → 里程计）
+    # Publishes /wheel/odom (raw wheel odometry without TF)
+    # EKF will fuse /wheel/odom + /imu/data and publish odom→base_link TF
+    # 发布 /wheel/odom（原始轮子里程计，不发布TF）
+    # EKF 将融合 /wheel/odom + /imu/data 并发布 odom→base_link TF
+    omni_controller_node = Node(
         package='bot_control',
-        executable='omni_controller',
-        name='omni_controller',
+        executable='omni_controller_node',
+        name='omni_controller_node',
         output='screen',
         parameters=[{
             'use_sim_time': use_sim_time_str == 'true',
-            'wheel_radius': 0.05,
-            'rear_wheel_dist': 0.105,
-            'front_wheel_dist': 0.085,
-            'max_wheel_speed': 4.712,
-            'publish_rate': 50.0
+            'publish_odom_tf': False,  # Disable TF - let EKF publish it
         }]
     )
     
-    # Wheel joint publisher / 轮子关节发布器
-    wheel_joint_publisher = Node(
-        package='bot_control',
-        executable='wheel_joint_publisher',
-        name='wheel_joint_publisher',
+    # ==========================================================================
+    # PHASE 3: Sensor Data Processing / 第三阶段：传感器数据处理
+    # ==========================================================================
+    
+    # IMU data relay with QoS configuration / IMU 数据中继（配置QoS）
+    # Relay from sensor QoS (BEST_EFFORT) to reliable QoS for EKF
+    # 从传感器QoS（BEST_EFFORT）中继到可靠QoS供EKF使用
+    imu_relay = Node(
+        package='topic_tools',
+        executable='relay',
+        name='imu_relay',
         output='screen',
+        arguments=[
+            '/imu_plugin/out',
+            '/imu/data',
+        ],
         parameters=[{
-            'use_sim_time': use_sim_time_str == 'true'
+            'use_sim_time': use_sim_time_str == 'true',
+            'input_qos': 'SENSOR_DATA',  # Input: BEST_EFFORT from Gazebo
+            'output_qos': 'RELIABLE',     # Output: RELIABLE for EKF
         }]
     )
     
@@ -291,8 +328,11 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             ('rgb/camera_info', '/camera/camera_info'),
             ('depth/image', '/camera/depth/image_raw'),
             
-            # Odometry input (from wheel odom, before fusion) / 里程计输入（来自轮式里程计，融合前）
-            ('odom', '/odom'),
+            # Odometry input: Use raw wheel odom (unfused, before EKF)
+            # RTABMap performs visual SLAM using wheel odom as initial guess
+            # 里程计输入：使用原始轮子里程计（未融合，EKF之前）
+            # RTABMap 使用轮子里程计作为初始猜测执行视觉SLAM
+            ('odom', '/wheel/odom'),
             
             # Output occupancy grid for Nav2 / 输出占据栅格给 Nav2
             ('grid_map', '/map'),
@@ -375,17 +415,21 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # ==========================================================================
     
     # EKF localization node / EKF 定位节点
-    # Fuses wheel odometry + visual odometry + IMU
-    # 融合轮式里程计 + 视觉里程计 + IMU
+    # Fuses wheel odometry + IMU for robust state estimation
+    # 融合轮式里程计 + IMU 实现鲁棒状态估计
+    #
+    # Input: /wheel/odom (x, y, vx, vy) + /imu/data (yaw, vyaw)
+    # Output: /odometry/filtered (fused odometry)
+    # Publishes: odom→base_link TF (prevents wheel slip drift)
+    # 输入：/wheel/odom (x, y, vx, vy) + /imu/data (yaw, vyaw)
+    # 输出：/odometry/filtered（融合里程计）
+    # 发布：odom→base_link TF（防止轮子打滑漂移）
     ekf_filter = Node(
         package='robot_localization',
         executable='ekf_node',
         name='ekf_filter_node',
         output='screen',
         parameters=[ekf_config],
-        remappings=[
-            ('/odometry/filtered', '/odom_fused')  # Output fused odometry / 输出融合里程计
-        ]
     )
     
     # ==========================================================================
@@ -479,26 +523,28 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             target_action=spawn_robot,
             on_exit=[
                 LogInfo(msg='[Event] Robot spawned successfully!'),
-                LogInfo(msg='[Phase 2] Starting robot control nodes...'),
-                omni_controller,
-                wheel_joint_publisher,
+                LogInfo(msg='[Phase 2] Starting ros2_control controllers...'),
+                load_joint_state_broadcaster,
+                load_omni_wheel_controller,
+                omni_controller_node,
             ]
         )
     )
     
-    # Event: When omni_controller starts -> start Phase 3 (RTABMap SLAM & Obstacle Detection)
-    # 事件：当 omni_controller 启动后 -> 启动第三阶段（RTABMap SLAM 和障碍物检测）
+    # Event: When omni_controller_node starts -> start Phase 3 (Sensor Processing & SLAM)
+    # 事件：当 omni_controller_node 启动后 -> 启动第三阶段（传感器处理和SLAM）
     event_control_started = RegisterEventHandler(
         OnProcessStart(
-            target_action=omni_controller,
+            target_action=omni_controller_node,
             on_start=[
                 LogInfo(msg='[Event] Control nodes started!'),
-                LogInfo(msg='[Phase 3] Starting RTABMap Visual SLAM and obstacle detection...'),
-                rtabmap_slam,
-                rtabmap_viz,
-                point_cloud_xyz,
-                obstacles_detection,
-                ekf_filter,
+                LogInfo(msg='[Phase 3] Starting sensor processing, EKF fusion, and RTABMap SLAM...'),
+                imu_relay,           # IMU QoS relay for EKF
+                ekf_filter,          # EKF fusion (wheel odom + IMU)
+                rtabmap_slam,        # RTABMap visual SLAM
+                rtabmap_viz,         # RTABMap visualization
+                point_cloud_xyz,     # Depth to point cloud
+                obstacles_detection, # Point cloud segmentation
             ]
         )
     )
@@ -516,7 +562,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         )
     )
     
-    # Event: When EKF filter starts -> start Phase 5 (RViz)
+        # Event: When EKF filter starts -> start Phase 5 (RViz)
     # 事件：当 EKF 滤波器启动后 -> 启动第五阶段（RViz）
     # Note: We use EKF as trigger instead of nav2_bringup because IncludeLaunchDescription
     # doesn't emit OnProcessStart events
@@ -573,7 +619,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         event_robot_spawned,
         event_control_started,
         event_slam_started,
-        event_ekf_started,
+        event_ekf_started,  # Renamed from event_ekf_started
     ]
 
 

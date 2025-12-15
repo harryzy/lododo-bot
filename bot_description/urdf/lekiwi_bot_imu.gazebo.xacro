@@ -12,8 +12,8 @@
     <!-- IMU Sensor Plugin / IMU 传感器插件                                      -->
     <!-- ====================================================================== -->
     <!-- 
-        Issue: Gazebo IMU on imu_link with low mass causes unstable physics
-        Solution: Use gravity and orientation only, minimal noise
+        Issue - Gazebo IMU on imu_link with low mass causes unstable physics
+        Solution - Use gravity and orientation only, minimal noise
         问题：imu_link质量太小导致Gazebo IMU物理计算不稳定
         解决：只使用重力和方向，最小化噪声
     -->
@@ -23,6 +23,25 @@
             <always_on>true</always_on>
             <update_rate>100</update_rate>
             <visualize>false</visualize>
+            
+            <!-- IMU Noise Model / IMU 噪声模型 -->
+            <!-- Required by Gazebo to avoid "Get noise index not valid" errors -->
+            <!-- Gazebo 要求定义噪声模型以避免 "Get noise index not valid" 错误 -->
+            <imu>
+                <noise>
+                    <!-- Angular velocity noise (rad/s) / 角速度噪声 -->
+                    <type>gaussian</type>
+                    <rate>
+                        <mean>0.0</mean>
+                        <stddev>0.001</stddev>
+                    </rate>
+                    <!-- Linear acceleration noise (m/s^2) / 线性加速度噪声 -->
+                    <accel>
+                        <mean>0.0</mean>
+                        <stddev>0.01</stddev>
+                    </accel>
+                </noise>
+            </imu>
             
             <plugin name="imu_plugin" filename="libgazebo_ros_imu_sensor.so">
                 <ros>

@@ -48,14 +48,18 @@ ekf_filter_node:
     # Input Sources / 输入源
     # ========================================================================
     
-    # Wheel odometry (from omni_controller) / 轮式里程计
-    # 使用位置和速度，让EKF基于wheel odom积分
-    odom0: /odom
-    odom0_config: [true,  true,  false,    # x, y, z position: 使用wheel odom的xy位置
-                   false, false, true,     # roll, pitch, yaw: 使用yaw角度
-                   true,  true,  false,    # vx, vy, vz: 使用线速度
-                   false, false, true,     # vroll, vpitch, vyaw: 使用角速度
-                   false, false, false]    # ax, ay, az: 不使用加速度
+    # Wheel odometry (from omni_controller_node) / 轮式里程计
+    # ✅ USE: x, y positions (accurate from wheel encoders)
+    # ✅ USE: vx, vy velocities (accurate from wheel speeds)
+    # ❌ DISABLE: yaw, vyaw (UNRELIABLE due to omnidirectional wheel slippage)
+    # Strategy: Let IMU handle all rotation, wheels handle translation
+    # 策略：让IMU处理所有旋转，轮子处理平移
+    odom0: /wheel/odom
+    odom0_config: [true,  true,  false,    # x, y, z position: USE xy from wheels
+                   false, false, false,    # roll, pitch, yaw: DISABLE yaw (use IMU)
+                   true,  true,  false,    # vx, vy, vz: USE linear velocities
+                   false, false, false,    # vroll, vpitch, vyaw: DISABLE vyaw (use IMU)
+                   false, false, false]    # ax, ay, az: disable acceleration
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 10
@@ -75,16 +79,22 @@ ekf_filter_node:
     # odom1_queue_size: 10
     
     # IMU data (from Gazebo IMU plugin) / IMU数据
+    # ❌ DISABLE: x, y, z positions (IMU cannot measure position)
+    # ✅ USE: yaw orientation (accurate from gyroscope integration)
+    # ✅ USE: vyaw angular velocity (direct gyroscope measurement)
+    # ❌ DISABLE: acceleration (unreliable in simulation, noisy)
+    # Strategy: IMU is PRIMARY source for rotation (prevents wheel slip drift)
+    # 策略：IMU是旋转的主要数据源（防止轮子打滑漂移）
     imu0: /imu/data
-    imu0_config: [false, false, false,     # x, y, z: don't use IMU position
-                  false, false, true,      # roll, pitch, yaw: use yaw only (2D plane)
-                  false, false, false,     # vx, vy, vz
-                  false, false, true,      # vroll, vpitch, vyaw: use yaw rate
-                  true,  true,  false]     # ax, ay, az: use XY acceleration
+    imu0_config: [false, false, false,     # x, y, z: IMU cannot measure position
+                  false, false, true,      # roll, pitch, yaw: USE yaw (gyro)
+                  false, false, false,     # vx, vy, vz: IMU cannot measure velocity
+                  false, false, true,      # vroll, vpitch, vyaw: USE vyaw (gyro rate)
+                  false, false, false]     # ax, ay, az: DISABLE (unreliable in sim)
     imu0_differential: false
     imu0_relative: false
     imu0_queue_size: 10
-    imu0_remove_gravitational_acceleration: true  # Remove gravity from accel / 移除重力加速度
+    imu0_remove_gravitational_acceleration: true  # Remove gravity from accel
     
     # ========================================================================
     # Process Noise Covariance / 过程噪声协方差

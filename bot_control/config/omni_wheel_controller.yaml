@@ -1,0 +1,53 @@
+# ============================================================================
+# ros2_control Controller Configuration for LeKiwi Omnidirectional Robot
+# LeKiwi全向机器人的ros2_control控制器配置
+# ============================================================================
+# 
+# 用途 (Usage):
+#   - 定义ros2_control控制器的配置参数
+#   - 仿真和真机共用同一份配置文件
+#   - 硬件接口层通过URDF中的<hardware>标签区分
+#
+# 使用场景 (Use Cases):
+#   1. Gazebo仿真: 配合 gazebo_ros2_control/GazeboSystem
+#   2. 真实机器人: 配合 ST3215HardwareInterface (未来开发)
+#
+# 控制器类型 (Controller Types):
+#   - joint_state_broadcaster: 发布关节状态到/joint_states
+#   - omni_wheel_controller: 接收速度命令 /omni_wheel_controller/commands
+#
+# 更新日期: 2025-12-12
+# ============================================================================
+
+controller_manager:
+  ros__parameters:
+    update_rate: 50  # Hz
+
+    # List of controllers to load
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    omni_wheel_controller:
+      type: velocity_controllers/JointGroupVelocityController
+
+# Joint State Broadcaster - publishes joint states to /joint_states
+joint_state_broadcaster:
+  ros__parameters:
+    joints:
+      - omni_wheel_mount-v5-2_to_wheel  # Rear wheel
+      - omni_wheel_mount-v5-1_to_wheel  # Right front wheel
+      - omni_wheel_mount-v5_to_wheel    # Left front wheel
+
+# Velocity Controller - accepts velocity commands for all three wheels
+omni_wheel_controller:
+  ros__parameters:
+    joints:
+      - omni_wheel_mount-v5-2_to_wheel  # Rear wheel
+      - omni_wheel_mount-v5-1_to_wheel  # Right front wheel
+      - omni_wheel_mount-v5_to_wheel    # Left front wheel
+    
+    # Interface type
+    interface_name: velocity
+    
+    # Command interface will be: /omni_wheel_controller/commands (Float64MultiArray)
+    # Each element corresponds to the velocity of one wheel (rad/s)
