@@ -181,7 +181,7 @@
             <parent link="omni_wheel_mount-v5${suffix}" />
             <child link="4-Omni-Directional-Wheel_Single_Body-v1${suffix}" />
             <axis xyz="${wheel_axis}" />
-            <dynamics damping="0.1" friction="0.1"/>
+            <dynamics damping="0.001" friction="0.001"/>
         </joint>
     </xacro:macro>
 
@@ -250,7 +250,7 @@
         motor_visual_rpy="-${M_PI} -${M_PI_2} 0"
         wheel_revolute_xyz="0.01025 -0.0352 -0.03275"
         wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
-        wheel_axis="0 0 -1.0"
+        wheel_axis="0 1.0 0"
         wheel_mount_inertial_xyz="0 0 -0.005522899140934374"
         wheel_mount_inertial_rpy="0 0 0"
         wheel_mount_mass="0.1235708646349694"
@@ -302,7 +302,7 @@
         motor_visual_rpy="-${M_PI_2} ${M_PI_6} -${M_PI_2}"
         wheel_revolute_xyz="0.01025 0.04636234 -0.01480191"
         wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
-        wheel_axis="0.866025 0 0.5"
+        wheel_axis="-0.866025 0.5 0"
         wheel_mount_inertial_xyz="0.004782968825905343 0 0.0027614494161754166"
         wheel_mount_inertial_rpy="0 0 0"
         wheel_mount_mass="0.1235708646349694"
@@ -354,7 +354,7 @@
         motor_visual_rpy="${M_PI_2} ${M_PI_6} ${M_PI_2}"
         wheel_revolute_xyz="0.01025 -0.01076234 0.04685909"
         wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
-        wheel_axis="-0.866025 0 0.5"
+        wheel_axis="-0.866025 -0.5 0"
         wheel_mount_inertial_xyz="-0.00478297352513172 0 0.002761449724759064"
         wheel_mount_inertial_rpy="0 0 0"
         wheel_mount_mass="0.1235708646349694"

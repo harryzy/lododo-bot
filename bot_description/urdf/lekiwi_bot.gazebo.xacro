@@ -108,13 +108,13 @@
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1">
     <material>Gazebo/Black</material>
     <!-- mu1 lateral friction, mu2 rolling friction -->
-    <mu1>0.8</mu1>
-    <mu2>0.01</mu2>
+    <mu1>1.0</mu1>
+    <mu2>0.5</mu2>
     <!-- slip1/slip2 - omnidirectional wheel behavior -->
-    <slip1>0.1</slip1>
-    <slip2>0.9</slip2>
+    <slip1>0.5</slip1>
+    <slip2>0.5</slip2>
     <kp>1000000.0</kp>
-    <kd>100.0</kd>
+    <kd>10.0</kd>
     <minDepth>0.001</minDepth>
     <maxVel>10.0</maxVel>
   </gazebo>
@@ -122,12 +122,12 @@
   <!-- 右前轮物理属性 / Right Front Wheel Physics (suffix="-1") -->
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1-1">
     <material>Gazebo/Black</material>
-    <mu1>0.8</mu1>
-    <mu2>0.01</mu2>
-    <slip1>0.1</slip1>
-    <slip2>0.9</slip2>
+    <mu1>1.0</mu1>
+    <mu2>0.5</mu2>
+    <slip1>0.5</slip1>
+    <slip2>0.5</slip2>
     <kp>1000000.0</kp>
-    <kd>100.0</kd>
+    <kd>10.0</kd>
     <minDepth>0.001</minDepth>
     <maxVel>10.0</maxVel>
   </gazebo>
@@ -135,12 +135,12 @@
   <!-- 后轮物理属性 / Rear Wheel Physics (suffix="-2") -->
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1-2">
     <material>Gazebo/Black</material>
-    <mu1>0.8</mu1>
-    <mu2>0.01</mu2>
-    <slip1>0.1</slip1>
-    <slip2>0.9</slip2>
+    <mu1>1.0</mu1>
+    <mu2>0.5</mu2>
+    <slip1>0.5</slip1>
+    <slip2>0.5</slip2>
     <kp>1000000.0</kp>
-    <kd>100.0</kd>
+    <kd>10.0</kd>
     <minDepth>0.001</minDepth>
     <maxVel>10.0</maxVel>
   </gazebo>
