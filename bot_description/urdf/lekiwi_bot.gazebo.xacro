@@ -16,14 +16,14 @@
   
   <!-- 
     publish_odom_tf - Control whether Gazebo publishes odom->base_link TF
-    发布里程计 TF：控制 Gazebo 是否发布 odom->base_link TF 变换
+    发布里程计 TF-控制 Gazebo 是否发布 odom->base_link TF 变换
     
     - true (default) - Gazebo publishes TF, suitable for basic simulation
-    - true（默认）：Gazebo 发布 TF，适用于基本仿真
+    - true（默认）-Gazebo 发布 TF，适用于基本仿真
     
     - false - Disable TF publishing, required when using external odometry fusion
              (e.g., robot_localization EKF with visual odometry)
-    - false：禁用 TF 发布，当使用外部里程计融合时需要
+    - false-禁用 TF 发布，当使用外部里程计融合时需要
             （例如，robot_localization EKF 配合视觉里程计）
   -->
   <xacro:arg name="publish_odom_tf" default="true"/>
@@ -44,8 +44,8 @@
 
   <!-- RGB-D 相机插件 (模拟Astra Pro) -->
   <!-- 
-    重要说明：
-    - Gazebo 传感器附着在 camera_link（使用 Gazebo 相机约定：+X 看向前方）
+    重要说明-
+    - Gazebo 传感器附着在 camera_link（使用 Gazebo 相机约定-+X 看向前方）
     - frame_name 设置为 camera_optical_frame（符合 ROS 光学坐标系约定）
     - 这样 Gazebo 渲染正确，同时 ROS 消息使用正确的 frame
   -->
@@ -107,42 +107,39 @@
   <!-- 左前轮物理属性 / Left Front Wheel Physics (suffix="") -->
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1">
     <material>Gazebo/Black</material>
-    <!-- mu1 lateral friction, mu2 rolling friction -->
-    <mu1>1.0</mu1>
-    <mu2>0.5</mu2>
-    <!-- slip1/slip2 - omnidirectional wheel behavior -->
-    <slip1>0.5</slip1>
-    <slip2>0.5</slip2>
-    <kp>1000000.0</kp>
-    <kd>10.0</kd>
-    <minDepth>0.001</minDepth>
-    <maxVel>10.0</maxVel>
+    <!-- 全向轮关键参数：高滚动摩擦 + 极低侧向摩擦 -->
+    <mu1>2.0</mu1>      <!-- 滚动摩擦系数-提供足够抓地力（增加到2.0） -->
+    <mu2>0.0</mu2>      <!-- 侧向摩擦系数-设为0允许完全自由滑动 -->
+    <kp>10000000.0</kp> <!-- 接触刚度-提高10倍避免轮子下沉 -->
+    <kd>1.0</kd>        <!-- 接触阻尼-降低减少能量损失 -->
+    <minDepth>0.0001</minDepth>  <!-- 最小接触深度 -->
+    <maxVel>100.0</maxVel>
+    <!-- 添加滚动阻力参数 -->
+    <fdir1>1 0 0</fdir1>  <!-- 第一摩擦方向（滚动方向） -->
   </gazebo>
 
   <!-- 右前轮物理属性 / Right Front Wheel Physics (suffix="-1") -->
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1-1">
     <material>Gazebo/Black</material>
-    <mu1>1.0</mu1>
-    <mu2>0.5</mu2>
-    <slip1>0.5</slip1>
-    <slip2>0.5</slip2>
-    <kp>1000000.0</kp>
-    <kd>10.0</kd>
-    <minDepth>0.001</minDepth>
-    <maxVel>10.0</maxVel>
+    <mu1>2.0</mu1>
+    <mu2>0.0</mu2>
+    <kp>10000000.0</kp>
+    <kd>1.0</kd>
+    <minDepth>0.0001</minDepth>
+    <maxVel>100.0</maxVel>
+    <fdir1>1 0 0</fdir1>
   </gazebo>
 
   <!-- 后轮物理属性 / Rear Wheel Physics (suffix="-2") -->
   <gazebo reference="4-Omni-Directional-Wheel_Single_Body-v1-2">
     <material>Gazebo/Black</material>
-    <mu1>1.0</mu1>
-    <mu2>0.5</mu2>
-    <slip1>0.5</slip1>
-    <slip2>0.5</slip2>
-    <kp>1000000.0</kp>
-    <kd>10.0</kd>
-    <minDepth>0.001</minDepth>
-    <maxVel>10.0</maxVel>
+    <mu1>2.0</mu1>
+    <mu2>0.0</mu2>
+    <kp>10000000.0</kp>
+    <kd>1.0</kd>
+    <minDepth>0.0001</minDepth>
+    <maxVel>100.0</maxVel>
+    <fdir1>1 0 0</fdir1>
   </gazebo>
 
   <!-- 电池 -->

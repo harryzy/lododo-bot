@@ -84,18 +84,13 @@ def generate_launch_description():
     # ========================================================================
     
     # 全向轮控制器 / Omni-directional wheel controller
-    omni_controller = Node(
+    omni_controller_node = Node(
         package='bot_control',
-        executable='omni_controller',
-        name='omni_controller',
+        executable='omni_controller_node',
+        name='omni_controller_node',
         output='screen',
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'wheel_radius': 0.05,
-            'rear_wheel_dist': 0.105,
-            'front_wheel_dist': 0.085,
-            'max_wheel_speed': 4.712,
-            'publish_rate': 50.0
         }]
     )
     
@@ -136,7 +131,7 @@ def generate_launch_description():
         # 启动项 / Launch items
         gazebo_launch,
         perception_launch,
-        omni_controller,
+        omni_controller_node,
         wheel_joint_publisher,
         rviz,
     ])

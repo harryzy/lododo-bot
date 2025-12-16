@@ -250,8 +250,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # Omni-directional wheel controller / 全向轮控制器
     omni_controller = Node(
         package='bot_control',
-        executable='omni_controller',
-        name='omni_controller',
+        executable='omni_controller_node',
+        name='omni_controller_node',
         output='screen',
         parameters=[{
             'use_sim_time': use_sim_time_str == 'true',

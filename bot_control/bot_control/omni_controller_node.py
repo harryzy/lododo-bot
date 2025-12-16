@@ -46,65 +46,57 @@ class OmniControllerNode(Node):
         #   wheel2 (right front): θ2 = 210° (points toward -X-Y in base_link)
         #   wheel3 (left front):  θ3 = 330° (points toward +X-Y in base_link)
         #
-        # URDF wheel rotation axes (from lekiwi_bot_sim.xacro):
-        #   wheel1 axis: (0, 0, -1.0)        → vertical (standard)
-        #   wheel2 axis: (0.866025, 0, 0.5)  → tilted 60° from vertical
-        #   wheel3 axis: (-0.866025, 0, 0.5) → tilted 60° from vertical
+        # URDF wheel rotation axes (CORRECTED in lekiwi_bot.xacro):
+        #   wheel1 axis: (0, 1.0, 0)          → X-axis rotation in base_link
+        #   wheel2 axis: (-0.866025, 0.5, 0)  → rotated 120° from wheel1
+        #   wheel3 axis: (-0.866025, -0.5, 0) → rotated 240° from wheel1
         #
-        # IMPORTANT: Tilted wheels require velocity correction (see wheel_axis_correction below)
+        # All axes are now in the mount XY plane (Z=0), forming 120° pattern
+        # No axis correction needed - axes directly correspond to physical rotation
         # ===================================================================================
         
         # Wheel radius (m)
         self.R = 0.05
         
         # Distance from robot center to each wheel (m)
-        self.L1 = 0.105  # wheel1 (rear)
-        self.L2 = 0.085  # wheel2 (right front)
-        self.L3 = 0.085  # wheel3 (left front)
+        # MEASURED from URDF using analyze_wheel_kinematics.py
+        self.L1 = 0.119202  # wheel1 (rear)
+        self.L2 = 0.100002  # wheel2 (right front)
+        self.L3 = 0.099202  # wheel3 (left front)
         
-        # Wheel rolling direction angles (radians) - measured in base_link frame
-        self.theta1 = np.pi / 2        # wheel1: 90° (rear)
-        self.theta2 = 7 * np.pi / 6    # wheel2: 210° (right front)
-        self.theta3 = 11 * np.pi / 6   # wheel3: 330° (left front)
+        # Wheel rolling direction angles (radians) - DERIVED from URDF geometry
+        # Using analyze_wheel_kinematics.py to extract real angles from URDF
+        # 基于URDF中轮子关节的axis定义
+        self.theta1 = np.pi/2       # wheel1: 90.0° (rear) - rolls along +Y
+        self.theta2 = np.pi/6       # wheel2: 30.0° (right front)
+        self.theta3 = -np.pi/6      # wheel3: -30.0° (left front)
         
         # Jacobian matrix for inverse kinematics
         # J * [vx, vy, omega_z]^T = [w1, w2, w3]^T
+        # CORRECT FORMULA: w_i = (1/R) * [cos(θ_i)*vx + sin(θ_i)*vy + L_i*ω_z]
+        # Derived using analyze_wheel_kinematics.py (2025-12-16)
         self.J = np.array([
-            [-np.sin(self.theta1), np.cos(self.theta1), self.L1],
-            [-np.sin(self.theta2), np.cos(self.theta2), self.L2],
-            [-np.sin(self.theta3), np.cos(self.theta3), self.L3],
-        ]) / self.R
+            [-3.21624530e-15,  20.00000000,  2.52752944],
+            [ 17.32050606,  10.00000350,  2.14353472],
+            [ 17.32050606, -10.00000350,  2.12753489]
+        ])
         
         # Pseudo-inverse for forward kinematics
         self.J_pinv = np.linalg.pinv(self.J)
         
         # ===================== Wheel Axis Correction =====================
-        # Tilted wheel axes cause joint velocity ≠ ground rolling velocity
+        # CORRECTED URDF axes (from lekiwi_bot.xacro):
+        #   wheel1: axis=(0, 1.0, 0)          → direct correspondence
+        #   wheel2: axis=(-0.866025, 0.5, 0)  → direct correspondence  
+        #   wheel3: axis=(-0.866025, -0.5, 0) → direct correspondence
         # 
-        # From URDF (lekiwi_bot.xacro):
-        #   wheel1 (omni_wheel_mount-v5-2_to_wheel): axis=(0, 0, -1.0)        → |z|=1.0, sign=-1
-        #   wheel2 (omni_wheel_mount-v5-1_to_wheel): axis=(0.866025, 0, 0.5)  → |z|=0.5, sign=+1
-        #   wheel3 (omni_wheel_mount-v5_to_wheel):   axis=(-0.866025, 0, 0.5) → |z|=0.5, sign=+1
-        # 
-        # Speed scaling factor = |axis_z| (absolute value)
-        # Direction sign = sign(axis_z)
-        # Combined correction = axis_z (preserves both magnitude and sign)
-        # 
-        # - Forward kinematics:  multiply joint velocity by axis_z
-        # - Inverse kinematics:  divide desired velocity by axis_z
-        # 
-        # Example: 
-        #   - wheel1: axis_z=-1.0, so command +2 rad/s → send -2 rad/s to joint
-        #   - wheel2: axis_z=0.5, so command +2 rad/s → send +4 rad/s to joint
-        # FIXED: After correcting URDF wheel_axis definitions
-        # All wheels now have vertical (non-tilted) axes
-        # wheel1: axis=(0,0,1) in mount frame → X-axis rotation in baselink
-        # wheel2/3: axis=(-1,0,0) in mount frame → Y-axis rotation in baselink
-        # No correction needed for vertical axes
+        # All axes are in mount XY plane (Z=0), no tilt correction needed
+        # The axis vectors directly define the rotation direction
+        # No correction factors needed - 1:1 mapping between joint and wheel motion
         self.wheel_axis_correction = np.array([
-            1.0,   # wheel1 (rear): vertical axis, no correction
-            1.0,   # wheel2 (right front): vertical axis, no correction
-            1.0    # wheel3 (left front): vertical axis, no correction
+            1.0,   # wheel1 (rear): no correction
+            1.0,   # wheel2 (right front): no correction
+            1.0    # wheel3 (left front): no correction
         ])
         
         # Debug: Print matrices
@@ -194,6 +186,8 @@ class OmniControllerNode(Node):
         # wheel_axis_correction already includes sign (negative for inverted axes)
         wheel_speeds = wheel_speeds_ideal / self.wheel_axis_correction
         
+        # REMOVED: TEMPORARY DEBUG negation (keeping original direction)
+        
         # Publish to ros2_control
         wheel_cmd_msg = Float64MultiArray()
         wheel_cmd_msg.data = wheel_speeds.tolist()
@@ -215,7 +209,7 @@ class OmniControllerNode(Node):
         [w1, w2, w3] (rad/s) → [vx, vy, omega_z] → update pose
         """
         # Extract wheel velocities from joint_states
-        # 
+        #
         # URDF joint name → Code wheel mapping:
         #   omni_wheel_mount-v5-2_to_wheel → wheel1 (rear)
         #   omni_wheel_mount-v5-1_to_wheel → wheel2 (right front)

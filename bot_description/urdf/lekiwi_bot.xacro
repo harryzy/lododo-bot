@@ -158,6 +158,7 @@
             visual_xyz="${wheel_mount_visual_xyz}" visual_rpy="${wheel_mount_visual_rpy}" />
 
         <!-- 舵机到轮毂的旋转关节 / Revolute Joint from Servo to Wheel Mount -->
+        <!-- 固定关节 - 舵机只提供驱动力，不改变轮子方向 -->
         <joint name="ST3215_Servo_Motor-v1${suffix}_Revolute" type="fixed">
             <origin xyz="${wheel_revolute_xyz}" rpy="${wheel_revolute_rpy}" />
             <parent link="ST3215_Servo_Motor-v1${suffix}" />
@@ -176,6 +177,7 @@
             material_name="Black" />
 
         <!-- 轮毂到全向轮的关节 / Joint from Wheel Mount to Omni Wheel -->
+        <!-- 主动驱动关节 - 轮子滚动，方向由机械结构固定 -->
         <joint name="omni_wheel_mount-v5${suffix}_to_wheel" type="continuous">
             <origin xyz="${wheel_joint_xyz}" rpy="${wheel_joint_rpy}" />
             <parent link="omni_wheel_mount-v5${suffix}" />
@@ -671,6 +673,7 @@
             <plugin>gazebo_ros2_control/GazeboSystem</plugin>
         </hardware>
         
+        <!-- 轮子滚动关节 - 主动驱动 -->
         <!-- Wheel 1 Rear -->
         <joint name="omni_wheel_mount-v5-2_to_wheel">
             <command_interface name="velocity">

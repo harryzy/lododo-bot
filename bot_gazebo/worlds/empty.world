@@ -13,10 +13,31 @@
     </include>
 
     <!-- 物理引擎设置 -->
-    <physics name="default_physics" default="0" type="ode">
-      <max_step_size>0.001</max_step_size>
+    <physics type="bullet">
+      <!-- 步长 0.006：经过测试的稳定值 / Step 0.006 tested stable -->
+      <max_step_size>0.0075</max_step_size>
       <real_time_factor>1</real_time_factor>
-      <real_time_update_rate>1000</real_time_update_rate>
+      <!-- 150Hz：合理的更新频率 / Reasonable update rate -->
+      <real_time_update_rate>150</real_time_update_rate>
+      <gravity>0 0 -9.8</gravity>
+      <bullet>
+        <solver>
+          <!-- Sequential Impulse：Bullet 默认求解器，支持多线程 -->
+          <type>sequential_impulse</type>
+          <!-- 迭代次数：从 ODE 的 30 开始测试 -->
+          <iters>25</iters>
+          <!-- SOR 参数：Bullet 默认 1.0 -->
+          <sor>1.0</sor>
+        </solver>
+        <constraints>
+          <!-- CFM: Bullet 中的约束力混合参数 -->
+          <cfm>0.0001</cfm>
+          <!-- ERP: 误差修正参数，Bullet 默认 0.2 -->
+          <erp>0.2</erp>
+          <!-- Contact surface layer: 接触面厚度 -->
+          <contact_surface_layer>0.001</contact_surface_layer>
+        </constraints>
+      </bullet>
     </physics>
 
     <!-- 场景设置 -->
