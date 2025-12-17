@@ -166,15 +166,29 @@
         </joint>
 
         <!-- 全向轮 Link / Omni Wheel Link -->
-        <xacro:mesh_link
-            name="4-Omni-Directional-Wheel_Single_Body-v1${suffix}"
-            mesh_file="${wheel_mesh}"
-            inertial_xyz="${wheel_inertial_xyz}" inertial_rpy="${wheel_inertial_rpy}"
-            mass="${wheel_mass}"
-            ixx="${wheel_ixx}" iyy="${wheel_iyy}" izz="${wheel_izz}"
-            ixy="${wheel_ixy}" iyz="${wheel_iyz}" ixz="${wheel_ixz}"
-            visual_xyz="${wheel_visual_xyz}" visual_rpy="${wheel_visual_rpy}"
-            material_name="Black" />
+        <link name="4-Omni-Directional-Wheel_Single_Body-v1${suffix}">
+            <inertial>
+                <origin xyz="${wheel_inertial_xyz}" rpy="${wheel_inertial_rpy}" />
+                <mass value="${wheel_mass}" />
+                <inertia ixx="${wheel_ixx}" iyy="${wheel_iyy}" izz="${wheel_izz}"
+                    ixy="${wheel_ixy}" iyz="${wheel_iyz}" ixz="${wheel_ixz}" />
+            </inertial>
+            <visual name="4-Omni-Directional-Wheel_Single_Body-v1${suffix}_visual">
+                <origin xyz="${wheel_visual_xyz}" rpy="${wheel_visual_rpy}" />
+                <geometry>
+                    <mesh filename="${mesh_pkg}/${wheel_mesh}" scale="${mesh_scale}" />
+                </geometry>
+                <material name="Black" />
+            </visual>
+            <!-- 简化碰撞体：使用圆柱体代替复杂mesh，确保物理计算准确 -->
+            <collision name="4-Omni-Directional-Wheel_Single_Body-v1${suffix}_collision">
+                <origin xyz="0 0 0" rpy="0 0 0" />
+                <geometry>
+                    <!-- 轮子直径0.1m(半径0.05m)，宽度0.032m -->
+                    <cylinder radius="0.05" length="0.032"/>
+                </geometry>
+            </collision>
+        </link>
 
         <!-- 轮毂到全向轮的关节 / Joint from Wheel Mount to Omni Wheel -->
         <!-- 主动驱动关节 - 轮子滚动，方向由机械结构固定 -->
@@ -183,7 +197,8 @@
             <parent link="omni_wheel_mount-v5${suffix}" />
             <child link="4-Omni-Directional-Wheel_Single_Body-v1${suffix}" />
             <axis xyz="${wheel_axis}" />
-            <dynamics damping="0.001" friction="0.001"/>
+            <!-- 极低damping确保速度响应快速，摩擦力由碰撞体mu1/mu2控制 -->
+            <dynamics damping="0.25" friction="0.001"/>
         </joint>
     </xacro:macro>
 
@@ -252,7 +267,7 @@
         motor_visual_rpy="-${M_PI} -${M_PI_2} 0"
         wheel_revolute_xyz="0.01025 -0.0352 -0.03275"
         wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
-        wheel_axis="0 1.0 0"
+        wheel_axis="0 -1.0 0"
         wheel_mount_inertial_xyz="0 0 -0.005522899140934374"
         wheel_mount_inertial_rpy="0 0 0"
         wheel_mount_mass="0.1235708646349694"
@@ -304,7 +319,7 @@
         motor_visual_rpy="-${M_PI_2} ${M_PI_6} -${M_PI_2}"
         wheel_revolute_xyz="0.01025 0.04636234 -0.01480191"
         wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
-        wheel_axis="-0.866025 0.5 0"
+        wheel_axis="0.866025 -0.5 0"
         wheel_mount_inertial_xyz="0.004782968825905343 0 0.0027614494161754166"
         wheel_mount_inertial_rpy="0 0 0"
         wheel_mount_mass="0.1235708646349694"
@@ -356,7 +371,7 @@
         motor_visual_rpy="${M_PI_2} ${M_PI_6} ${M_PI_2}"
         wheel_revolute_xyz="0.01025 -0.01076234 0.04685909"
         wheel_revolute_rpy="-${M_PI_2} ${M_PI_2} 0"
-        wheel_axis="-0.866025 -0.5 0"
+        wheel_axis="0.866025 0.5 0"
         wheel_mount_inertial_xyz="-0.00478297352513172 0 0.002761449724759064"
         wheel_mount_inertial_rpy="0 0 0"
         wheel_mount_mass="0.1235708646349694"
@@ -673,7 +688,7 @@
             <plugin>gazebo_ros2_control/GazeboSystem</plugin>
         </hardware>
         
-        <!-- 轮子滚动关节 - 主动驱动 -->
+        <!-- 轮子滚动关节 - 主动驱动 (回退到Velocity Control) -->
         <!-- Wheel 1 Rear -->
         <joint name="omni_wheel_mount-v5-2_to_wheel">
             <command_interface name="velocity">
