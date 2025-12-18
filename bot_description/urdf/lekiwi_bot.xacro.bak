@@ -198,7 +198,7 @@
             <child link="4-Omni-Directional-Wheel_Single_Body-v1${suffix}" />
             <axis xyz="${wheel_axis}" />
             <!-- 极低damping确保速度响应快速，摩擦力由碰撞体mu1/mu2控制 -->
-            <dynamics damping="0.1" friction="0.01" />
+            <dynamics damping="0.12" friction="0.01" />
         </joint>
     </xacro:macro>
 

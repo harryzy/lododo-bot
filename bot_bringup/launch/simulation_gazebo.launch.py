@@ -84,6 +84,8 @@ def generate_launch_description():
     # ========================================================================
     
     # 全向轮控制器 / Omni-directional wheel controller
+    # 注意: ros2_control架构中joint_state_broadcaster会自动发布关节状态
+    # Note: In ros2_control architecture, joint_state_broadcaster handles joint states
     omni_controller_node = Node(
         package='bot_control',
         executable='omni_controller_node',
@@ -91,17 +93,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-        }]
-    )
-    
-    # 轮子关节状态发布器 / Wheel joint state publisher
-    wheel_joint_publisher = Node(
-        package='bot_control',
-        executable='wheel_joint_publisher',
-        name='wheel_joint_publisher',
-        output='screen',
-        parameters=[{
-            'use_sim_time': LaunchConfiguration('use_sim_time')
+            'publish_odom_tf': True,  # 发布odom->base_link TF
         }]
     )
     
@@ -132,6 +124,7 @@ def generate_launch_description():
         gazebo_launch,
         perception_launch,
         omni_controller_node,
-        wheel_joint_publisher,
+        # wheel_joint_publisher已移除 - ros2_control自动处理
+        # wheel_joint_publisher removed - handled by ros2_control
         rviz,
     ])
