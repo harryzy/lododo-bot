@@ -33,11 +33,15 @@
     </material>
     
     <material name="wheel_color">
-        <color rgba="0.1 0.1 0.1 1.0" />
+        <color rgba="0.3 0.3 0.3 1.0" />
     </material>
     
     <material name="wheel_stripe_color">
-        <color rgba="0.9 0.1 0.1 1.0" />  <!-- Red stripe for visibility -->
+        <color rgba="0.0 1.0 0.0 1.0" />  <!-- Bright green stripe for visibility -->
+    </material>
+    
+    <material name="stripe_test_color">
+        <color rgba="1.0 0.0 0.0 1.0" />  <!-- Red for testing -->
     </material>
 
     <!-- ====================================================================== -->
@@ -108,12 +112,37 @@
             </inertial>
             
             <!-- Visual representation -->
-            <visual>
+            <visual name="${prefix}_cylinder">
                 <origin xyz="0 0 0" rpy="${M_PI_2} 0 0" />
                 <geometry>
                     <cylinder radius="${wheel_radius}" length="${wheel_width}" />
                 </geometry>
-                <material name="wheel_color" />
+                <material name="wheel_color_${prefix}">
+                    <color rgba="0.3 0.3 0.3 1.0" />
+                </material>
+            </visual>
+
+            <!-- Face stripes for rotation visibility (green lines on the circular faces) -->
+            <!-- Wheel visual is rotated so the cylinder axis is along Y; place stripes at y = ±wheel_width/2 -->
+            <visual name="${prefix}_stripe_1">
+                <!-- push stripe slightly outside the face to avoid z-fighting -->
+                <origin xyz="0 ${wheel_width/2 + 0.001} 0" rpy="0 0 0" />
+                <geometry>
+                    <!-- Make it larger and more visible -->
+                    <box size="${wheel_radius*1.6} 0.003 ${wheel_radius*0.2}" />
+                </geometry>
+                <material name="stripe_green_${prefix}_1">
+                    <color rgba="0.0 1.0 0.0 1.0" />
+                </material>
+            </visual>
+            <visual name="${prefix}_stripe_2">
+                <origin xyz="0 ${-wheel_width/2 - 0.001} 0" rpy="0 0 0" />
+                <geometry>
+                    <box size="${wheel_radius*1.6} 0.003 ${wheel_radius*0.2}" />
+                </geometry>
+                <material name="stripe_green_${prefix}_2">
+                    <color rgba="0.0 1.0 0.0 1.0" />
+                </material>
             </visual>
             
             <!-- Collision body -->
@@ -148,7 +177,7 @@
                 rpy="0 0 ${M_PI*2/3 + M_PI_2}" />
         <parent link="simplified_base_link" />
         <child link="wheel_2_link" />
-        <axis xyz="1.0 0.0 0.0" />
+        <axis xyz="0.0 -1.0 0.0" />
         <dynamics damping="0.1" friction="0.01" />
     </joint>
     
@@ -158,7 +187,7 @@
                 rpy="0 0 ${-M_PI*2/3 + M_PI_2}" />
         <parent link="simplified_base_link" />
         <child link="wheel_3_link" />
-        <axis xyz="1.0 0.0 0.0" />
+        <axis xyz="0.0 -1.0 0.0" />
         <dynamics damping="0.1" friction="0.01" />
     </joint>
 
