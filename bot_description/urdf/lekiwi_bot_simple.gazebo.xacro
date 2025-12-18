@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    LeKiwi simplified robot Gazebo configuration
+    Contains physics parameters, sensor plugins and ros2_control interface
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="LeKiwiSimple">
+
+    <!-- Include main URDF -->
+    <xacro:include filename="$(find bot_description)/urdf/lekiwi_bot_simple.urdf.xacro" />
+
+    <!-- ====================================================================== -->
+    <!-- Gazebo physics parameters configuration                               -->
+    <!-- ====================================================================== -->
+    
+    <!-- Base Link Gazebo properties -->
+    <gazebo reference="simplified_base_link">
+        <material>Gazebo/White</material>
+        <mu1>0.3</mu1>
+        <mu2>0.3</mu2>
+        <kp>1000000</kp>
+        <kd>1.0</kd>
+    </gazebo>
+    
+    <!-- Wheel Gazebo properties (using combo 4 parameters) -->
+    <gazebo reference="wheel_1_link">
+        <material>Gazebo/DarkGrey</material>
+        <mu1>2.0</mu1>
+        <mu2>0.5</mu2>
+        <kp>100000</kp>
+        <kd>10.0</kd>
+    </gazebo>
+    
+    <gazebo reference="wheel_2_link">
+        <material>Gazebo/DarkGrey</material>
+        <mu1>2.0</mu1>
+        <mu2>0.5</mu2>
+        <kp>100000</kp>
+        <kd>10.0</kd>
+    </gazebo>
+    
+    <gazebo reference="wheel_3_link">
+        <material>Gazebo/DarkGrey</material>
+        <mu1>2.0</mu1>
+        <mu2>0.5</mu2>
+        <kp>100000</kp>
+        <kd>10.0</kd>
+        <fdir1>1 0 0</fdir1>
+        <minDepth>0.001</minDepth>
+        <maxVel>1.0</maxVel>
+    </gazebo>
+
+    <!-- ====================================================================== -->
+    <!-- ros2_control Gazebo plugin                                            -->
+    <!-- ====================================================================== -->
+    
+    <gazebo>
+        <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+            <robot_sim_type>gazebo_ros2_control/GazeboSystem</robot_sim_type>
+            <parameters>$(find bot_control)/config/simple_omni_controller.yaml</parameters>
+        </plugin>
+    </gazebo>
+
+    <!-- ====================================================================== -->
+    <!-- RealSense D435i depth camera plugin                                   -->
+    <!-- ====================================================================== -->
+    
+    <gazebo reference="camera_link">
+        <sensor name="camera" type="depth">
+            <update_rate>5</update_rate>
+            <camera>
+                <horizontal_fov>1.51844</horizontal_fov>  <!-- 87° -->
+                <image>
+                    <width>320</width>
+                    <height>240</height>
+                    <format>R8G8B8</format>
+                </image>
+                <clip>
+                    <near>0.1</near>
+                    <far>10.0</far>
+                </clip>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.007</stddev>
+                </noise>
+            </camera>
+            
+            <!-- Depth camera plugin -->
+            <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+                <ros>
+                    <namespace>/camera</namespace>
+                    <remapping>~/image_raw:=color/image_raw</remapping>
+                    <remapping>~/camera_info:=color/camera_info</remapping>
+                    <remapping>~/depth/image_raw:=depth/image_rect_raw</remapping>
+                    <remapping>~/depth/camera_info:=depth/camera_info</remapping>
+                    <remapping>~/points:=depth/points</remapping>
+                </ros>
+                
+                <!-- Frame ID settings -->
+                <camera_name>camera</camera_name>
+                <frame_name>camera_optical_frame</frame_name>
+                <hack_baseline>0.07</hack_baseline>
+                <min_depth>0.1</min_depth>
+                <max_depth>10.0</max_depth>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+    <!-- ====================================================================== -->
+    <!-- IMU sensor plugin                                                     -->
+    <!-- ====================================================================== -->
+    
+    <gazebo reference="imu_link">
+        <sensor name="imu_sensor" type="imu">
+            <always_on>true</always_on>
+            <update_rate>20</update_rate>
+            <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
+                <ros>
+                    <namespace>/imu</namespace>
+                    <remapping>~/out:=data</remapping>
+                </ros>
+                <initial_orientation_as_reference>false</initial_orientation_as_reference>
+                <frame_name>imu_link</frame_name>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+</robot>

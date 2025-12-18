@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    LeKiwi robot simplified URDF model
+    For physics simulation stability testing and nav2/SLAM development
+    
+    Design goals-
+    - Reduce collision detection complexity (single cylinder base)
+    - Keep precise positions of key components (wheels, camera, IMU)
+    - Ensure physical properties close to real robot
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="LeKiwiSimple">
+
+    <!-- ====================================================================== -->
+    <!-- Constants definition                                                   -->
+    <!-- ====================================================================== -->
+    
+    <xacro:property name="M_PI" value="3.141592653589793" />
+    <xacro:property name="M_PI_2" value="1.5707963267948966" />
+    
+    <!-- Base size parameters (user provided) -->
+    <xacro:property name="base_radius" value="0.105" />      <!-- diameter 21cm -->
+    <xacro:property name="base_height" value="0.06" />       <!-- height 6cm -->
+    <xacro:property name="base_mass" value="4.2" />          <!-- estimated total mass -->
+    
+    <!-- Wheel parameters (kept from original model) -->
+    <xacro:property name="wheel_radius" value="0.05" />      <!-- wheel radius 5cm -->
+    <xacro:property name="wheel_width" value="0.032" />      <!-- wheel width 3.2cm -->
+    <xacro:property name="wheel_mass" value="1.354" />       <!-- single wheel mass -->
+    
+    <!-- 材质定义 -->
+    <material name="base_color">
+        <color rgba="1.0 1.0 1.0 1.0"/>
+    </material>
+    
+    <material name="wheel_color">
+        <color rgba="0.1 0.1 0.1 1.0" />
+    </material>
+    
+    <material name="wheel_stripe_color">
+        <color rgba="0.9 0.1 0.1 1.0" />  <!-- Red stripe for visibility -->
+    </material>
+
+    <!-- ====================================================================== -->
+    <!-- Part 1 - Base Links                                                   -->
+    <!-- ====================================================================== -->
+    
+    <!-- Virtual root node (empty link for TF tree root) -->
+    <link name="base_link">
+        <!-- Empty link, no inertia, satisfies KDL requirement -->
+    </link>
+    
+    <!-- Simplified chassis (cylinder) -->
+    <link name="simplified_base_link">
+        <!-- Inertial properties -->
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <mass value="${base_mass}" />
+            <!-- Cylinder inertia tensor - Ixx = Iyy = m*(3r² + h²)/12, Izz = mr²/2 -->
+            <inertia 
+                ixx="${base_mass * (3*base_radius*base_radius + base_height*base_height) / 12.0}"
+                iyy="${base_mass * (3*base_radius*base_radius + base_height*base_height) / 12.0}"
+                izz="${base_mass * base_radius * base_radius / 2.0}"
+                ixy="0" iyz="0" ixz="0" />
+        </inertial>
+        
+        <!-- Visual representation -->
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <cylinder radius="${base_radius}" length="${base_height}" />
+            </geometry>
+            <material name="base_color" />
+        </visual>
+        
+        <!-- Collision body (same as visual) -->
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <cylinder radius="${base_radius}" length="${base_height}" />
+            </geometry>
+        </collision>
+    </link>
+    
+    <!-- base_link to simplified_base_link -->
+    <joint name="base_to_simplified_base_joint" type="fixed">
+        <origin xyz="0 0 0.03" rpy="0 0 0" />  <!-- base center 3cm above wheels -->
+        <parent link="base_link" />
+        <child link="simplified_base_link" />
+    </joint>
+
+    <!-- ====================================================================== -->
+    <!-- Part 2 - Wheels (3 omni wheels)                                       -->
+    <!-- ====================================================================== -->
+    
+    <!-- Wheel macro definition -->
+    <xacro:macro name="omni_wheel" params="prefix">
+        <link name="${prefix}_link">
+            <!-- Inertial properties (kept from original model) -->
+            <inertial>
+                <origin xyz="0 0 0" rpy="0 0 0" />
+                <mass value="${wheel_mass}" />
+                <!-- Cylinder inertia (wheel rotates around center axis) -->
+                <inertia 
+                    ixx="${wheel_mass * (3*wheel_radius*wheel_radius + wheel_width*wheel_width) / 12.0}"
+                    iyy="${wheel_mass * (3*wheel_radius*wheel_radius + wheel_width*wheel_width) / 12.0}"
+                    izz="${wheel_mass * wheel_radius * wheel_radius / 2.0}"
+                    ixy="0" iyz="0" ixz="0" />
+            </inertial>
+            
+            <!-- Visual representation -->
+            <visual>
+                <origin xyz="0 0 0" rpy="${M_PI_2} 0 0" />
+                <geometry>
+                    <cylinder radius="${wheel_radius}" length="${wheel_width}" />
+                </geometry>
+                <material name="wheel_color" />
+            </visual>
+            
+            <!-- Collision body -->
+            <collision>
+                <origin xyz="0 0 0" rpy="${M_PI_2} 0 0" />
+                <geometry>
+                    <cylinder radius="${wheel_radius}" length="${wheel_width}" />
+                </geometry>
+            </collision>
+        </link>
+    </xacro:macro>
+    
+    <!-- Create three wheels -->
+    <xacro:omni_wheel prefix="wheel_1" />
+    <xacro:omni_wheel prefix="wheel_2" />
+    <xacro:omni_wheel prefix="wheel_3" />
+    
+    <!-- Wheel 1 (rear) - based on calculation results -->
+    <!-- Rear wheel parallel to Y-axis, robot front is +X direction -->
+    <joint name="wheel_1_joint" type="continuous">
+        <origin xyz="-0.126375 -0.000610 -0.012140" 
+                rpy="0 0 ${M_PI_2}" />
+        <parent link="simplified_base_link" />
+        <child link="wheel_1_link" />
+        <axis xyz="0.0 -1.0 0.0" />
+        <dynamics damping="0.1" friction="0.01" />
+    </joint>
+    
+    <!-- Wheel 2 (right front) - based on calculation results -->
+    <joint name="wheel_2_joint" type="continuous">
+        <origin xyz="0.063 -0.109 -0.012140" 
+                rpy="0 0 ${M_PI*2/3 + M_PI_2}" />
+        <parent link="simplified_base_link" />
+        <child link="wheel_2_link" />
+        <axis xyz="1.0 0.0 0.0" />
+        <dynamics damping="0.1" friction="0.01" />
+    </joint>
+    
+    <!-- Wheel 3 (left front) - based on calculation results -->
+    <joint name="wheel_3_joint" type="continuous">
+        <origin xyz="0.063 0.109 -0.012140" 
+                rpy="0 0 ${-M_PI*2/3 + M_PI_2}" />
+        <parent link="simplified_base_link" />
+        <child link="wheel_3_link" />
+        <axis xyz="1.0 0.0 0.0" />
+        <dynamics damping="0.1" friction="0.01" />
+    </joint>
+
+    <!-- ====================================================================== -->
+    <!-- Part 3 - Depth Camera                                                 -->
+    <!-- ====================================================================== -->
+    
+    <!-- camera_link - Gazebo sensor attachment point -->
+    <link name="camera_link">
+        <inertial>
+            <mass value="0.001"/>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <box size="0.02 0.02 0.01" />
+            </geometry>
+            <material name="base_color" />
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <box size="0.02 0.02 0.01" />
+            </geometry>
+        </collision>
+    </link>
+    
+    <!-- simplified_base_link to camera_link (on top of base cylinder, front edge) -->
+    <joint name="camera_joint" type="fixed">
+        <origin xyz="0.105 0.0 0.03" 
+                rpy="0 0 0" />
+        <parent link="simplified_base_link" />
+        <child link="camera_link" />
+    </joint>
+    
+    <!-- camera_optical_frame - ROS standard optical coordinate system -->
+    <link name="camera_optical_frame">
+        <!-- Empty link for coordinate transformation -->
+    </link>
+    
+    <!-- camera_link to camera_optical_frame (standard transformation) -->
+    <joint name="camera_optical_frame_joint" type="fixed">
+        <origin xyz="0.02 0 0 " rpy="${-M_PI_2} 0 ${-M_PI_2}" />
+        <parent link="camera_link" />
+        <child link="camera_optical_frame" />
+    </joint>
+
+    <!-- ====================================================================== -->
+    <!-- Part 4 - IMU                                                          -->
+    <!-- ====================================================================== -->
+    
+    <!-- imu_link - based on lekiwi_bot_imu.xacro -->
+    <link name="imu_link">
+        <inertial>
+            <mass value="0.001"/>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
+        </inertial>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.01 0.01 0.01"/>
+            </geometry>
+        </collision>
+    </link>
+    
+    <!-- base_link to imu_link (consistent with original model) -->
+    <joint name="imu_joint" type="fixed">
+        <origin xyz="0 0 0.02" rpy="0 0 0" />
+        <parent link="base_link" />
+        <child link="imu_link" />
+    </joint>
+
+    <!-- ====================================================================== -->
+    <!-- ros2_control configuration                                            -->
+    <!-- ====================================================================== -->
+    
+    <ros2_control name="GazeboSystem" type="system">
+        <hardware>
+            <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </hardware>
+        
+        <!-- Wheel 1 -->
+        <joint name="wheel_1_joint">
+            <command_interface name="velocity">
+                <param name="min">-100</param>
+                <param name="max">100</param>
+            </command_interface>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        
+        <!-- Wheel 2 -->
+        <joint name="wheel_2_joint">
+            <command_interface name="velocity">
+                <param name="min">-100</param>
+                <param name="max">100</param>
+            </command_interface>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        
+        <!-- Wheel 3 -->
+        <joint name="wheel_3_joint">
+            <command_interface name="velocity">
+                <param name="min">-100</param>
+                <param name="max">100</param>
+            </command_interface>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+    </ros2_control>
+
+</robot>

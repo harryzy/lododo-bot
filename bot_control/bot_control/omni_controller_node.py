@@ -111,6 +111,25 @@ class OmniControllerNode(Node):
         self.theta = 0.0
         self.last_time = self.get_clock().now()
         
+        # ===================== Model Selection =====================
+        # Support both original complex model and simplified model
+        self.declare_parameter('use_simple_model', False)
+        self.use_simple_model = self.get_parameter('use_simple_model').value
+        
+        # Wheel joint names (model-dependent)
+        if self.use_simple_model:
+            self.wheel_joints = [
+                'wheel_1_joint',  # wheel1 (rear)
+                'wheel_2_joint',  # wheel2 (right front)
+                'wheel_3_joint'   # wheel3 (left front)
+            ]
+        else:
+            self.wheel_joints = [
+                'omni_wheel_mount-v5-2_to_wheel',  # wheel1 (rear)
+                'omni_wheel_mount-v5-1_to_wheel',  # wheel2 (right front)
+                'omni_wheel_mount-v5_to_wheel'     # wheel3 (left front)
+            ]
+        
         # ===================== Environment Detection =====================
         # Check if running in simulation or real robot
         # Note: use_sim_time is automatically declared by ROS2, don't declare again
@@ -121,6 +140,7 @@ class OmniControllerNode(Node):
             self.is_simulation = False
         
         self.get_logger().info(f'Running in {"SIMULATION" if self.is_simulation else "REAL ROBOT"} mode')
+        self.get_logger().info(f'Using {"SIMPLIFIED" if self.use_simple_model else "ORIGINAL"} model')
         
         # ===================== Publishers & Subscribers =====================
         
@@ -133,11 +153,14 @@ class OmniControllerNode(Node):
         )
         
         # Publish wheel velocity commands to ros2_control
+        # Topic name depends on model type
+        controller_topic = '/simple_omni_wheel_controller/commands' if self.use_simple_model else '/omni_wheel_controller/commands'
         self.wheel_cmd_pub = self.create_publisher(
             Float64MultiArray,
-            '/omni_wheel_controller/commands',
+            controller_topic,
             10
         )
+        self.get_logger().info(f'Publishing commands to: {controller_topic}')
         
         # Subscribe to joint states (from ros2_control)
         self.joint_state_sub = self.create_subscription(
@@ -162,6 +185,7 @@ class OmniControllerNode(Node):
         self.declare_parameter('publish_odom_tf', False)
         
         self.get_logger().info('Omni Controller Node initialized')
+        self.get_logger().info(f'Wheel joints: {self.wheel_joints}')
         self.get_logger().info(f'Wheel radius: {self.R} m')
         self.get_logger().info(f'Rear wheel distance: {self.L1} m')
         self.get_logger().info(f'Front wheel distance: {self.L2}, {self.L3} m')
@@ -209,20 +233,12 @@ class OmniControllerNode(Node):
         [w1, w2, w3] (rad/s) → [vx, vy, omega_z] → update pose
         """
         # Extract wheel velocities from joint_states
-        #
-        # URDF joint name → Code wheel mapping:
-        #   omni_wheel_mount-v5-2_to_wheel → wheel1 (rear)
-        #   omni_wheel_mount-v5-1_to_wheel → wheel2 (right front)
-        #   omni_wheel_mount-v5_to_wheel   → wheel3 (left front)
+        # Use model-dependent joint names
         try:
-            rear_idx = msg.name.index('omni_wheel_mount-v5-2_to_wheel')   # → wheel1
-            right_idx = msg.name.index('omni_wheel_mount-v5-1_to_wheel')  # → wheel2
-            left_idx = msg.name.index('omni_wheel_mount-v5_to_wheel')     # → wheel3
-            
             wheel_speeds_raw = np.array([
-                msg.velocity[rear_idx],   # wheel1 velocity
-                msg.velocity[right_idx],  # wheel2 velocity
-                msg.velocity[left_idx]    # wheel3 velocity
+                msg.velocity[msg.name.index(self.wheel_joints[0])],  # wheel1 (rear)
+                msg.velocity[msg.name.index(self.wheel_joints[1])],  # wheel2 (right front)
+                msg.velocity[msg.name.index(self.wheel_joints[2])]   # wheel3 (left front)
             ])
         except (ValueError, IndexError) as e:
             self.get_logger().warn(f'Failed to extract wheel velocities: {e}', throttle_duration_sec=5.0)
