@@ -111,37 +111,14 @@
                     ixy="0" iyz="0" ixz="0" />
             </inertial>
             
-            <!-- Visual representation -->
-            <visual name="${prefix}_cylinder">
+            <!-- Visual representation - only the wheel cylinder -->
+            <visual>
                 <origin xyz="0 0 0" rpy="${M_PI_2} 0 0" />
                 <geometry>
                     <cylinder radius="${wheel_radius}" length="${wheel_width}" />
                 </geometry>
                 <material name="wheel_color_${prefix}">
                     <color rgba="0.3 0.3 0.3 1.0" />
-                </material>
-            </visual>
-
-            <!-- Face stripes for rotation visibility (green lines on the circular faces) -->
-            <!-- Wheel visual is rotated so the cylinder axis is along Y; place stripes at y = ±wheel_width/2 -->
-            <visual name="${prefix}_stripe_1">
-                <!-- push stripe slightly outside the face to avoid z-fighting -->
-                <origin xyz="0 ${wheel_width/2 + 0.001} 0" rpy="0 0 0" />
-                <geometry>
-                    <!-- Make it larger and more visible -->
-                    <box size="${wheel_radius*1.6} 0.003 ${wheel_radius*0.2}" />
-                </geometry>
-                <material name="stripe_green_${prefix}_1">
-                    <color rgba="0.0 1.0 0.0 1.0" />
-                </material>
-            </visual>
-            <visual name="${prefix}_stripe_2">
-                <origin xyz="0 ${-wheel_width/2 - 0.001} 0" rpy="0 0 0" />
-                <geometry>
-                    <box size="${wheel_radius*1.6} 0.003 ${wheel_radius*0.2}" />
-                </geometry>
-                <material name="stripe_green_${prefix}_2">
-                    <color rgba="0.0 1.0 0.0 1.0" />
                 </material>
             </visual>
             
@@ -153,6 +130,54 @@
                 </geometry>
             </collision>
         </link>
+        
+        <!-- Stripe links - separate links for proper color display in RViz -->
+        <link name="${prefix}_stripe_1_link">
+            <inertial>
+                <mass value="0.001"/>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
+            </inertial>
+            <visual>
+                <origin xyz="0 0 0" rpy="0 0 0" />
+                <geometry>
+                    <box size="${wheel_radius*1.6} 0.003 ${wheel_radius*0.2}" />
+                </geometry>
+                <material name="stripe_green_${prefix}_1">
+                    <color rgba="0.0 1.0 0.0 1.0" />
+                </material>
+            </visual>
+        </link>
+        
+        <link name="${prefix}_stripe_2_link">
+            <inertial>
+                <mass value="0.001"/>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <inertia ixx="0.000001" ixy="0" ixz="0" iyy="0.000001" iyz="0" izz="0.000001"/>
+            </inertial>
+            <visual>
+                <origin xyz="0 0 0" rpy="0 0 0" />
+                <geometry>
+                    <box size="${wheel_radius*1.6} 0.003 ${wheel_radius*0.2}" />
+                </geometry>
+                <material name="stripe_green_${prefix}_2">
+                    <color rgba="0.0 1.0 0.0 1.0" />
+                </material>
+            </visual>
+        </link>
+        
+        <!-- Fixed joints to attach stripes to wheel -->
+        <joint name="${prefix}_stripe_1_joint" type="fixed">
+            <origin xyz="0 ${wheel_width/2 + 0.0015} 0" rpy="0 0 0" />
+            <parent link="${prefix}_link" />
+            <child link="${prefix}_stripe_1_link" />
+        </joint>
+        
+        <joint name="${prefix}_stripe_2_joint" type="fixed">
+            <origin xyz="0 ${-wheel_width/2 - 0.0015} 0" rpy="0 0 0" />
+            <parent link="${prefix}_link" />
+            <child link="${prefix}_stripe_2_link" />
+        </joint>
     </xacro:macro>
     
     <!-- Create three wheels -->
@@ -167,7 +192,7 @@
                 rpy="0 0 ${M_PI_2}" />
         <parent link="simplified_base_link" />
         <child link="wheel_1_link" />
-        <axis xyz="0.0 -1.0 0.0" />
+        <axis xyz="0.0 1.0 0.0" />
         <dynamics damping="0.1" friction="0.01" />
     </joint>
     
