@@ -305,6 +305,7 @@
             </command_interface>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
+            <param name="initial_position">0.0</param>
         </joint>
         
         <!-- Wheel 2 -->
@@ -315,6 +316,7 @@
             </command_interface>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
+            <param name="initial_position">0.0</param>
         </joint>
         
         <!-- Wheel 3 -->
@@ -325,6 +327,7 @@
             </command_interface>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
+            <param name="initial_position">0.0</param>
         </joint>
     </ros2_control>
 

@@ -30,33 +30,33 @@
     <!-- Wheel 1 (rear) - rolls perpendicular to rotation axis -->
     <gazebo reference="wheel_1_link">
         <material>Gazebo/DarkGrey</material>
-        <mu1>2.0</mu1>
-        <mu2>0.005</mu2>
+        <mu1>1.0</mu1>
+        <mu2>0.0001</mu2>
         <fdir1>0 1 0</fdir1>
-        <kp>100000</kp>
-        <kd>10.0</kd>
+        <kp>1000000</kp>
+        <kd>100.0</kd>
         <minDepth>0.001</minDepth>
     </gazebo>
     
     <!-- Wheel 2 (right front) - rolls perpendicular to rotation axis -->
     <gazebo reference="wheel_2_link">
         <material>Gazebo/DarkGrey</material>
-        <mu1>2.0</mu1>
-        <mu2>0.005</mu2>
+        <mu1>1.0</mu1>
+        <mu2>0.0001</mu2>
         <fdir1>0.866025 0.5 0</fdir1>
-        <kp>100000</kp>
-        <kd>10.0</kd>
+        <kp>1000000</kp>
+        <kd>100.0</kd>
         <minDepth>0.001</minDepth>
     </gazebo>
     
     <!-- Wheel 3 (left front) - rolls perpendicular to rotation axis -->
     <gazebo reference="wheel_3_link">
         <material>Gazebo/DarkGrey</material>
-        <mu1>2.0</mu1>
-        <mu2>0.005</mu2>
+        <mu1>1.0</mu1>
+        <mu2>0.0001</mu2>
         <fdir1>-0.866025 0.5 0</fdir1>
-        <kp>100000</kp>
-        <kd>10.0</kd>
+        <kp>1000000</kp>
+        <kd>100.0</kd>
         <minDepth>0.001</minDepth>
     </gazebo>
 

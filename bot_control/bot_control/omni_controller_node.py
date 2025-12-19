@@ -61,10 +61,12 @@ class OmniControllerNode(Node):
         
         # Distance from robot center to each wheel (m)
         # MEASURED from URDF using analyze_wheel_kinematics.py
-        self.L1 = 0.119202  # wheel1 (rear)
-        self.L2 = 0.100002  # wheel2 (right front)
-        self.L3 = 0.099202  # wheel3 (left front)
-        
+        # self.L1 = 0.119202  # wheel1 (rear)
+        # self.L2 = 0.100002  # wheel2 (right front)
+        # self.L3 = 0.099202  # wheel3 (left front)
+        self.L1 = 0.126377  # wheel1 (rear)
+        self.L2 = 0.125897  # wheel2 (right front)
+        self.L3 = 0.125897  # wheel3 (left front)
         # Wheel rolling direction angles (radians) - CORRECTED based on fdir1
         # Calculated from wheel rotation axis and rpy transformations
         # theta = angle of rolling direction from +X axis (counter-clockwise)
@@ -76,12 +78,16 @@ class OmniControllerNode(Node):
         # J * [vx, vy, omega_z]^T = [w1, w2, w3]^T
         # FORMULA: w_i = (1/R) * [cos(θ_i)*vx + sin(θ_i)*vy + L_i*ω_z]
         # Recalculated 2025-12-18 with correct theta3=150°
+        # self.J = np.array([
+        #     [ 0.0000000000,  20.0000000000,  2.38404000],
+        #     [ 17.3205060568,  10.0000034969,  2.00004000],
+        #     [-17.3205060568,  10.0000034969,  1.98404000]
+        # ])
         self.J = np.array([
-            [ 0.0000000000,  20.0000000000,  2.38404000],
-            [ 17.3205060568,  10.0000034969,  2.00004000],
-            [-17.3205060568,  10.0000034969,  1.98404000]
+            [ 0.0,         20.0,        2.52754 ],  
+            [ 17.32051,    10.0,        2.51794 ],  
+            [-17.32051,    10.0,        2.51794 ]   
         ])
-        
         # Pseudo-inverse for forward kinematics
         self.J_pinv = np.linalg.pinv(self.J)
         
@@ -140,8 +146,24 @@ class OmniControllerNode(Node):
             # If use_sim_time not set, assume real robot
             self.is_simulation = False
         
+        # ===================== Wheel Speed Compensation =====================
+        # Declare wheel correction parameters (adjustable per robot/environment)
+        # Default values for Gazebo simulation based on empirical testing
+        # For real robot, adjust these values to compensate for hardware differences
+        self.declare_parameter('wheel_correction.wheel_1', 1.0)
+        self.declare_parameter('wheel_correction.wheel_2', 0.94)  # Gazebo: reduce by 6%
+        self.declare_parameter('wheel_correction.wheel_3', 1.0)
+        
+        # Read correction factors
+        self.wheel_correction = np.array([
+            self.get_parameter('wheel_correction.wheel_1').value,
+            self.get_parameter('wheel_correction.wheel_2').value,
+            self.get_parameter('wheel_correction.wheel_3').value
+        ])
+        
         self.get_logger().info(f'Running in {"SIMULATION" if self.is_simulation else "REAL ROBOT"} mode')
         self.get_logger().info(f'Using {"SIMPLIFIED" if self.use_simple_model else "ORIGINAL"} model')
+        self.get_logger().info(f'Wheel correction factors: {self.wheel_correction}')
         
         # ===================== Publishers & Subscribers =====================
         
@@ -221,7 +243,11 @@ class OmniControllerNode(Node):
         # CRITICAL FIX: Negate all wheel speeds due to axis direction convention mismatch
         # The joint axis directions in URDF result in opposite rotation vs expected
         # This global negation corrects the 180° direction error observed in testing
-        wheel_speeds = -wheel_speeds
+        # wheel_speeds = -wheel_speeds
+        
+        # Apply wheel speed compensation (configurable via ROS2 parameters)
+        # Compensates for hardware differences or simulation artifacts
+        wheel_speeds = wheel_speeds * self.wheel_correction
         
         # Publish to ros2_control
         wheel_cmd_msg = Float64MultiArray()
@@ -231,7 +257,7 @@ class OmniControllerNode(Node):
         # Log for debugging
         if abs(vx) > 0.01 or abs(vy) > 0.01 or abs(omega_z) > 0.01:
             self.get_logger().info(
-                f'cmd_vel: vx={vx:.3f}, vy={vy:.3f}, omega={omega_z:.3f} → '
+                f'new cmd_vel: vx={vx:.3f}, vy={vy:.3f}, omega={omega_z:.3f} → '
                 f'ideal=[{wheel_speeds_ideal[0]:.2f}, {wheel_speeds_ideal[1]:.2f}, {wheel_speeds_ideal[2]:.2f}] → '
                 f'corrected=[{wheel_speeds[0]:.2f}, {wheel_speeds[1]:.2f}, {wheel_speeds[2]:.2f}]',
                 throttle_duration_sec=1.0

@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'wheel_joint_publisher = bot_control.wheel_joint_publisher:main',
             'omni_controller_node = bot_control.omni_controller_node:main',
+            'omni_controller_with_correction = bot_control.omni_controller_with_correction:main',
         ],
     },
 )
