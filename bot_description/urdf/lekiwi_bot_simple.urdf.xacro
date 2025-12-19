@@ -59,7 +59,7 @@
         <inertial>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <mass value="${base_mass}" />
-            <!-- Cylinder inertia tensor - Ixx = Iyy = m*(3r² + h²)/12, Izz = mr²/2 -->
+            <!-- Cylinder inertia tensor-->
             <inertia 
                 ixx="${base_mass * (3*base_radius*base_radius + base_height*base_height) / 12.0}"
                 iyy="${base_mass * (3*base_radius*base_radius + base_height*base_height) / 12.0}"

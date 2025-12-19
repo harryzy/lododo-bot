@@ -14,6 +14,7 @@ Date: 2025-12-12
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import JointState
@@ -64,21 +65,21 @@ class OmniControllerNode(Node):
         self.L2 = 0.100002  # wheel2 (right front)
         self.L3 = 0.099202  # wheel3 (left front)
         
-        # Wheel rolling direction angles (radians) - DERIVED from URDF geometry
-        # Using analyze_wheel_kinematics.py to extract real angles from URDF
-        # 基于URDF中轮子关节的axis定义
-        self.theta1 = np.pi/2       # wheel1: 90.0° (rear) - rolls along +Y
-        self.theta2 = np.pi/6       # wheel2: 30.0° (right front)
-        self.theta3 = -np.pi/6      # wheel3: -30.0° (left front)
+        # Wheel rolling direction angles (radians) - CORRECTED based on fdir1
+        # Calculated from wheel rotation axis and rpy transformations
+        # theta = angle of rolling direction from +X axis (counter-clockwise)
+        self.theta1 = np.pi/2           # wheel1: 90.0° (rear) - rolls along +Y
+        self.theta2 = np.pi/6           # wheel2: 30.0° (right front) - rolls 30° from +X
+        self.theta3 = 5*np.pi/6         # wheel3: 150.0° (left front) - rolls 150° from +X
         
         # Jacobian matrix for inverse kinematics
         # J * [vx, vy, omega_z]^T = [w1, w2, w3]^T
-        # CORRECT FORMULA: w_i = (1/R) * [cos(θ_i)*vx + sin(θ_i)*vy + L_i*ω_z]
-        # Derived using analyze_wheel_kinematics.py (2025-12-16)
+        # FORMULA: w_i = (1/R) * [cos(θ_i)*vx + sin(θ_i)*vy + L_i*ω_z]
+        # Recalculated 2025-12-18 with correct theta3=150°
         self.J = np.array([
-            [-3.21624530e-15,  20.00000000,  2.52752944],
-            [ 17.32050606,  10.00000350,  2.14353472],
-            [ 17.32050606, -10.00000350,  2.12753489]
+            [ 0.0000000000,  20.0000000000,  2.38404000],
+            [ 17.3205060568,  10.0000034969,  2.00004000],
+            [-17.3205060568,  10.0000034969,  1.98404000]
         ])
         
         # Pseudo-inverse for forward kinematics
@@ -144,12 +145,19 @@ class OmniControllerNode(Node):
         
         # ===================== Publishers & Subscribers =====================
         
+        # QoS profile for cmd_vel: RELIABLE + TRANSIENT_LOCAL to avoid losing first message
+        cmd_vel_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL
+        )
+        
         # Subscribe to cmd_vel (from Nav2, keyboard, etc.)
         self.cmd_vel_sub = self.create_subscription(
             Twist,
             'cmd_vel',
             self.cmd_vel_callback,
-            10
+            cmd_vel_qos
         )
         
         # Publish wheel velocity commands to ros2_control
@@ -210,7 +218,10 @@ class OmniControllerNode(Node):
         # wheel_axis_correction already includes sign (negative for inverted axes)
         wheel_speeds = wheel_speeds_ideal / self.wheel_axis_correction
         
-        # REMOVED: TEMPORARY DEBUG negation (keeping original direction)
+        # CRITICAL FIX: Negate all wheel speeds due to axis direction convention mismatch
+        # The joint axis directions in URDF result in opposite rotation vs expected
+        # This global negation corrects the 180° direction error observed in testing
+        wheel_speeds = -wheel_speeds
         
         # Publish to ros2_control
         wheel_cmd_msg = Float64MultiArray()
