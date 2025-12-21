@@ -277,7 +277,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         package='tf2_ros',
         executable='static_transform_publisher',
         name='static_map_to_odom_fallback',
-        arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
+        arguments=['--x', '0', '--y', '0', '--z', '0', '--roll', '0', '--pitch', '0', '--yaw', '0', '--frame-id', 'map', '--child-frame-id', 'odom'],
         parameters=[{
             'use_sim_time': use_sim_time_str == 'true',
         }]
@@ -306,8 +306,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             # RTABMap performs visual SLAM using wheel odom as initial guess
             # 里程计输入：使用原始轮子里程计（未融合，EKF之前）
             # RTABMap 使用轮子里程计作为初始猜测执行视觉SLAM
-            ('odom', '/wheel/odom'),
-            
+            #('odom', '/wheel/odom'),
+            ('odom', '/odometry/filtered'),  # Use fused odom for better results / 使用融合后的里程计以获得更好效果
             # Output occupancy grid for Nav2 / 输出占据栅格给 Nav2
             ('grid_map', '/map'),
         ],
@@ -374,6 +374,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             'use_sim_time': use_sim_time_str == 'true',
             'frame_id': 'base_link',
             'map_frame_id': 'map',
+            'wait_for_transform': 15.0,         # Wait up to 15s for TF / 等待15秒TF建立
             'Grid/MaxObstacleHeight': '2.0',    # Same as RTABMap / 与RTABMap相同
             'Grid/MinObstacleHeight': '0.1',    # Filter low obstacles / 过滤低障碍物
         }],
