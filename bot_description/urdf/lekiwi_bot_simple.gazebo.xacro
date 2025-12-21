@@ -30,7 +30,7 @@
     <!-- Wheel 1 (rear) - rolls perpendicular to rotation axis -->
     <gazebo reference="wheel_1_link">
         <material>Gazebo/DarkGrey</material>
-        <mu1>0.3</mu1>
+        <mu1>0.1</mu1>           <!-- 提高到0.8以支持0.1m/s低速运动 / Increased to 0.8 for 0.1m/s low-speed motion -->
         <mu2>0.0001</mu2>
         <fdir1>0 1 0</fdir1>
         <kp>1000000</kp>
@@ -41,7 +41,7 @@
     <!-- Wheel 2 (right front) - rolls perpendicular to rotation axis -->
     <gazebo reference="wheel_2_link">
         <material>Gazebo/DarkGrey</material>
-        <mu1>0.3</mu1>
+        <mu1>0.1</mu1>           <!-- 提高到0.8以支持0.1m/s低速运动 / Increased to 0.8 for 0.1m/s low-speed motion -->
         <mu2>0.0001</mu2>
         <fdir1>0.866025 0.5 0</fdir1>
         <kp>1000000</kp>
@@ -52,7 +52,7 @@
     <!-- Wheel 3 (left front) - rolls perpendicular to rotation axis -->
     <gazebo reference="wheel_3_link">
         <material>Gazebo/DarkGrey</material>
-        <mu1>0.3</mu1>
+        <mu1>0.1</mu1>           <!-- 提高到0.8以支持0.1m/s低速运动 / Increased to 0.8 for 0.1m/s low-speed motion -->
         <mu2>0.0001</mu2>
         <fdir1>-0.866025 0.5 0</fdir1>
         <kp>1000000</kp>
@@ -112,7 +112,49 @@
     <gazebo reference="imu_link">
         <sensor name="imu_sensor" type="imu">
             <always_on>true</always_on>
-            <update_rate>20</update_rate>
+            <update_rate>100</update_rate>
+            <imu>
+                <angular_velocity>
+                    <x>
+                        <noise type="gaussian">
+                            <mean>0.0</mean>
+                            <stddev>0.0002</stddev>
+                        </noise>
+                    </x>
+                    <y>
+                        <noise type="gaussian">
+                            <mean>0.0</mean>
+                            <stddev>0.0002</stddev>
+                        </noise>
+                    </y>
+                    <z>
+                        <noise type="gaussian">
+                            <mean>0.0</mean>
+                            <stddev>0.0002</stddev>
+                        </noise>
+                    </z>
+                </angular_velocity>
+                <linear_acceleration>
+                    <x>
+                        <noise type="gaussian">
+                            <mean>0.0</mean>
+                            <stddev>0.01</stddev>
+                        </noise>
+                    </x>
+                    <y>
+                        <noise type="gaussian">
+                            <mean>0.0</mean>
+                            <stddev>0.01</stddev>
+                        </noise>
+                    </y>
+                    <z>
+                        <noise type="gaussian">
+                            <mean>0.0</mean>
+                            <stddev>0.01</stddev>
+                        </noise>
+                    </z>
+                </linear_acceleration>
+            </imu>
             <plugin filename="libgazebo_ros_imu_sensor.so" name="imu_plugin">
                 <ros>
                     <namespace>/imu</namespace>

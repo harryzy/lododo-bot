@@ -165,25 +165,25 @@ controller_server:
       # 调试 / Debug
       debug_trajectory_details: True
       
-      # 速度限制 / Velocity limits (优化SLAM建图质量)
-      # Optimized for SLAM mapping quality with reduced friction
+      # 速度限制 / Velocity limits (降低速度减少IMU震荡)
+      # Reduced speed to minimize IMU oscillations
       min_vel_x: 0.0                # 允许从静止启动 / Allow starting from rest
-      max_vel_x: 0.22               # 0.22m/s最佳SLAM速度 / Optimal speed for SLAM
-      min_vel_y: -0.22              # 全向运动 / Omnidirectional motion
-      max_vel_y: 0.22               # 全向最大速度
-      max_vel_theta: 0.4            # 降低旋转速度 / Reduced rotation speed
+      max_vel_x: 0.10               # 降低到0.10m/s减少震荡 / Reduced to minimize oscillations
+      min_vel_y: -0.10              # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.10               # 全向最大速度降低
+      max_vel_theta: 0.25           # 降低旋转速度到0.25 / Further reduced rotation
       min_speed_xy: 0.0             # 允许慢速和停止 / Allow slow speeds and stopping
-      max_speed_xy: 0.22            # 保持一致
+      max_speed_xy: 0.10            # 保持一致
       min_speed_theta: 0.0
       
-      # 加速度限制 / Acceleration limits (恢复标准加速度)
-      # Restored standard acceleration
-      acc_lim_x: 2.5
-      acc_lim_y: 2.5                # 全向运动 / Omnidirectional motion
-      acc_lim_theta: 3.0
-      decel_lim_x: -2.5
-      decel_lim_y: -2.5             # 全向运动 / Omnidirectional motion
-      decel_lim_theta: -3.0
+      # 加速度限制 / Acceleration limits (降低加速度让运动更平稳)
+      # Reduced acceleration for smoother motion
+      acc_lim_x: 1.5                # 降低加速度减少冲击
+      acc_lim_y: 1.5                # 全向运动 / Omnidirectional motion
+      acc_lim_theta: 2.0            # 降低角加速度
+      decel_lim_x: -1.5             # 降低减速度
+      decel_lim_y: -1.5             # 全向运动 / Omnidirectional motion
+      decel_lim_theta: -2.0         # 降低角减速度
       
       # 轨迹生成参数 / Trajectory generation parameters
       # 增加采样提高避障流畅度 / Increase samples for smoother obstacle avoidance
@@ -472,15 +472,15 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     
-    # 速度限制 / Velocity limits (优化SLAM建图质量)
-    # Optimized for SLAM mapping quality
-    max_velocity: [0.22, 0.22, 0.4]      # [x, y, theta] 匹配DWB设置
-    min_velocity: [-0.22, -0.22, -0.4]   # [x, y, theta]
+    # 速度限制 / Velocity limits (降低速度减少IMU震荡)
+    # Reduced speed to minimize IMU oscillations
+    max_velocity: [0.10, 0.10, 0.25]     # [x, y, theta] 降低到0.1m/s
+    min_velocity: [-0.10, -0.10, -0.25]  # [x, y, theta]
     
-    # 加速度限制 / Acceleration limits (保持原有加速度)
-    # Keep existing acceleration limits
-    max_accel: [2.5, 2.5, 3.0]           # [x, y, theta] 匹配DWB
-    max_decel: [-2.5, -2.5, -3.0]        # [x, y, theta]
+    # 加速度限制 / Acceleration limits (降低加速度让运动更平稳)
+    # Reduced acceleration for smoother motion
+    max_accel: [1.5, 1.5, 2.0]           # [x, y, theta] 降低加速度
+    max_decel: [-1.5, -1.5, -2.0]        # [x, y, theta] 降低减速度
     
     odom_topic: "/odometry/filtered"
     odom_duration: 0.1
