@@ -204,6 +204,10 @@ class OmniControllerNode(Node):
         # TF broadcaster for odom→base_link
         self.tf_broadcaster = TransformBroadcaster(self)
         
+        # Declare parameter for publishing wheel odometry
+        # Default True for real robot, set False in simulation to use Ground Truth
+        self.declare_parameter('publish_wheel_odom', True)
+        
         # Declare parameter for publishing TF (can be disabled for external localization)
         # Default False: EKF should publish odom→base_link TF to avoid conflicts
         self.declare_parameter('publish_odom_tf', False)
@@ -213,6 +217,7 @@ class OmniControllerNode(Node):
         self.get_logger().info(f'Wheel radius: {self.R} m')
         self.get_logger().info(f'Rear wheel distance: {self.L1} m')
         self.get_logger().info(f'Front wheel distance: {self.L2}, {self.L3} m')
+        self.get_logger().info(f'Publish wheel odometry: {self.get_parameter("publish_wheel_odom").value}')
     
     def cmd_vel_callback(self, msg: Twist):
         """
@@ -351,8 +356,10 @@ class OmniControllerNode(Node):
         odom.twist.covariance[7] = 0.001  # vy (accurate from wheels)
         odom.twist.covariance[35] = 0.5   # omega_z (UNRELIABLE! use IMU instead)
         
-        # Publish odometry message
-        self.odom_pub.publish(odom)
+        # Publish odometry message (if enabled)
+        # In simulation, disable this to use Gazebo Ground Truth instead
+        if self.get_parameter('publish_wheel_odom').value:
+            self.odom_pub.publish(odom)
         
         # Publish TF transform (if enabled)
         if self.get_parameter('publish_odom_tf').value:

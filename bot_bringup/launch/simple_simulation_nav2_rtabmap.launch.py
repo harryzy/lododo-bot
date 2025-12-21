@@ -238,6 +238,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'use_simple_model': True,  # Use simplified model
+            'publish_wheel_odom': False,  # Disable wheel odom in simulation - use Gazebo Ground Truth
             'publish_odom_tf': False,  # Disable TF - let EKF publish it
             # Wheel correction factors (for real robot calibration)
             'wheel_correction.wheel_1': 1.0,

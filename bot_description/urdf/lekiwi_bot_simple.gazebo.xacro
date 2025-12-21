@@ -72,6 +72,24 @@
     </gazebo>
 
     <!-- ====================================================================== -->
+    <!-- Ground Truth Odometry Plugin (for simulation only)                    -->
+    <!-- Publishes perfect odometry from Gazebo physics engine                 -->
+    <!-- ====================================================================== -->
+    
+    <gazebo>
+        <plugin name="ground_truth_odom" filename="libgazebo_ros_p3d.so">
+            <ros>
+                <namespace>/</namespace>
+                <remapping>odom:=wheel/odom</remapping>
+            </ros>
+            <update_rate>100.0</update_rate>
+            <body_name>base_link</body_name>
+            <frame_name>odom</frame_name>
+            <gaussian_noise>0.0</gaussian_noise>
+        </plugin>
+    </gazebo>
+
+    <!-- ====================================================================== -->
     <!-- RealSense D435i depth camera plugin                                   -->
     <!-- ====================================================================== -->
     

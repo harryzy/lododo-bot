@@ -165,24 +165,24 @@ controller_server:
       # 调试 / Debug
       debug_trajectory_details: True
       
-      # 速度限制 / Velocity limits (降低速度减少IMU震荡)
-      # Reduced speed to minimize IMU oscillations
+      # 速度限制 / Velocity limits (Ground Truth里程计支持更高速度)
+      # Higher speed enabled with accurate Ground Truth odometry
       min_vel_x: 0.0                # 允许从静止启动 / Allow starting from rest
-      max_vel_x: 0.10               # 降低到0.10m/s减少震荡 / Reduced to minimize oscillations
-      min_vel_y: -0.10              # 全向运动 / Omnidirectional motion
-      max_vel_y: 0.10               # 全向最大速度降低
-      max_vel_theta: 0.25           # 降低旋转速度到0.25 / Further reduced rotation
+      max_vel_x: 0.30               # 提升到0.30m/s（Ground Truth精度保证） / Increased with accurate odometry
+      min_vel_y: -0.30              # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.30               # 全向最大速度提升
+      max_vel_theta: 0.5            # 提升旋转速度到0.5 / Increased rotation speed
       min_speed_xy: 0.0             # 允许慢速和停止 / Allow slow speeds and stopping
-      max_speed_xy: 0.10            # 保持一致
+      max_speed_xy: 0.30            # 保持一致
       min_speed_theta: 0.0
       
-      # 加速度限制 / Acceleration limits (降低加速度让运动更平稳)
-      # Reduced acceleration for smoother motion
-      acc_lim_x: 1.5                # 降低加速度减少冲击
-      acc_lim_y: 1.5                # 全向运动 / Omnidirectional motion
-      acc_lim_theta: 2.0            # 降低角加速度
-      decel_lim_x: -1.5             # 降低减速度
-      decel_lim_y: -1.5             # 全向运动 / Omnidirectional motion
+      # 加速度限制 / Acceleration limits (提升以支持更高速度)
+      # Increased acceleration for higher speed operation
+      acc_lim_x: 2.5                # 提升加速度支持0.3m/s
+      acc_lim_y: 2.5                # 全向运动 / Omnidirectional motion
+      acc_lim_theta: 3.0            # 提升角加速度
+      decel_lim_x: -2.5             # 提升减速度
+      decel_lim_y: -2.5             # 全向运动 / Omnidirectional motion
       decel_lim_theta: -2.0         # 降低角减速度
       
       # 轨迹生成参数 / Trajectory generation parameters
@@ -288,14 +288,14 @@ local_costmap:
       # 膨胀层 / Inflation layer
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # 成本缩放因子: 设置为1.5，使膨胀区惩罚更温和
-        # 避免进入膨胀区后速度驤降太大
-        # Reduced to 1.5 for gentler penalty in inflation zone
-        cost_scaling_factor: 1.5
-        # 膨胀半径设为0.32m,机器人边缘与障碍物边缘保持约15cm
+        # 成本缩放因子: 提高到3.0，使膨胀区惩罚更平缓，允许贴边行驶
+        # Higher value = gentler cost gradient, robot can get closer to obstacles
+        # cost_scaling_factor越大，代价衰减越慢，机器人越不惧怕膨胀区
+        cost_scaling_factor: 3.0
+        # 膨胀半径减小到0.22m，机器人可以更贴近障碍物
         # inflation_radius = robot_radius + 安全距离
-        # 0.32 = 0.17 + 0.15m 安全裕度
-        inflation_radius: 0.32
+        # 0.22 = 0.17 + 0.05m 更小的安全裕度，允许贴边
+        inflation_radius: 0.22
       
       always_send_full_costmap: False  # 从 True 改为 False，只发送更新
 
@@ -358,12 +358,12 @@ global_costmap:
           inf_is_valid: true
       
       # 膨胀层 / Inflation layer
-      # Same as local_costmap: robot_radius (0.17m) + safety_distance (0.15m) = 0.32m
-      # 与局部代价地图相同：机器人半径(0.17m) + 安全距离(0.15m) = 0.32m
+      # Reduced for closer navigation: robot_radius (0.17m) + safety_distance (0.05m) = 0.22m
+      # 减小以支持贴边导航：机器人半径(0.17m) + 安全距离(0.05m) = 0.22m
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 1.5
-        inflation_radius: 0.32
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.22
       
       always_send_full_costmap: False  # 只发送更新
 
@@ -472,15 +472,15 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     
-    # 速度限制 / Velocity limits (降低速度减少IMU震荡)
-    # Reduced speed to minimize IMU oscillations
-    max_velocity: [0.10, 0.10, 0.25]     # [x, y, theta] 降低到0.1m/s
-    min_velocity: [-0.10, -0.10, -0.25]  # [x, y, theta]
+    # 速度限制 / Velocity limits (Ground Truth里程计支持更高速度)
+    # Higher speed enabled with accurate Ground Truth odometry
+    max_velocity: [0.30, 0.30, 0.5]      # [x, y, theta] 提升到0.3m/s
+    min_velocity: [-0.30, -0.30, -0.5]   # [x, y, theta]
     
-    # 加速度限制 / Acceleration limits (降低加速度让运动更平稳)
-    # Reduced acceleration for smoother motion
-    max_accel: [1.5, 1.5, 2.0]           # [x, y, theta] 降低加速度
-    max_decel: [-1.5, -1.5, -2.0]        # [x, y, theta] 降低减速度
+    # 加速度限制 / Acceleration limits (提升以支持更高速度)
+    # Increased acceleration for higher speed operation
+    max_accel: [2.5, 2.5, 3.0]           # [x, y, theta] 提升加速度
+    max_decel: [-2.5, -2.5, -3.0]        # [x, y, theta] 提升减速度
     
     odom_topic: "/odometry/filtered"
     odom_duration: 0.1
