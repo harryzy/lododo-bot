@@ -165,15 +165,15 @@ controller_server:
       # 调试 / Debug
       debug_trajectory_details: True
       
-      # 速度限制 / Velocity limits (RTABMap稳定建图，提高速度)
-      # Increased speed with stable RTABMap mapping
-      min_vel_x: 0.5                # 强制最小前进速度0.5m/s（克服摩擦力）/ Force minimum forward speed to overcome friction
-      max_vel_x: 0.6                # 提高到0.6m/s (比原来快83%)
-      min_vel_y: -0.6               # 全向运动 / Omnidirectional motion
-      max_vel_y: 0.6                # 全向最大速度
-      max_vel_theta: 0.8            # 提高旋转速度到0.8rad/s
-      min_speed_xy: 0.5             # 配合min_vel_x，确保线速度≥0.5m/s / Enforce linear speed ≥0.5m/s
-      max_speed_xy: 0.6             # 保持一致
+      # 速度限制 / Velocity limits (优化SLAM建图质量)
+      # Optimized for SLAM mapping quality with reduced friction
+      min_vel_x: 0.0                # 允许从静止启动 / Allow starting from rest
+      max_vel_x: 0.22               # 0.22m/s最佳SLAM速度 / Optimal speed for SLAM
+      min_vel_y: -0.22              # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.22               # 全向最大速度
+      max_vel_theta: 0.4            # 降低旋转速度 / Reduced rotation speed
+      min_speed_xy: 0.0             # 允许慢速和停止 / Allow slow speeds and stopping
+      max_speed_xy: 0.22            # 保持一致
       min_speed_theta: 0.0
       
       # 加速度限制 / Acceleration limits (恢复标准加速度)
@@ -472,10 +472,10 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"
     
-    # 速度限制 / Velocity limits (匹配DWB控制器的新速度)
-    # Match DWB controller's new velocity limits
-    max_velocity: [0.6, 0.6, 0.8]        # [x, y, theta] 匹配DWB设置（提高到0.6克服摩擦力）
-    min_velocity: [-0.6, -0.6, -0.8]     # [x, y, theta]
+    # 速度限制 / Velocity limits (优化SLAM建图质量)
+    # Optimized for SLAM mapping quality
+    max_velocity: [0.22, 0.22, 0.4]      # [x, y, theta] 匹配DWB设置
+    min_velocity: [-0.22, -0.22, -0.4]   # [x, y, theta]
     
     # 加速度限制 / Acceleration limits (保持原有加速度)
     # Keep existing acceleration limits
