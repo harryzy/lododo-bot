@@ -167,19 +167,13 @@ class OmniControllerNode(Node):
         
         # ===================== Publishers & Subscribers =====================
         
-        # QoS profile for cmd_vel: RELIABLE + TRANSIENT_LOCAL to avoid losing first message
-        cmd_vel_qos = QoSProfile(
-            depth=10,
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL
-        )
-        
         # Subscribe to cmd_vel (from Nav2, keyboard, etc.)
+        # Use default QoS (RELIABLE + VOLATILE) for Nav2 compatibility
         self.cmd_vel_sub = self.create_subscription(
             Twist,
             'cmd_vel',
             self.cmd_vel_callback,
-            cmd_vel_qos
+            10  # Default QoS with depth 10
         )
         
         # Publish wheel velocity commands to ros2_control
@@ -301,9 +295,11 @@ class OmniControllerNode(Node):
         
         # Update pose (Euler integration)
         # Velocity in base_link frame, transform to odom frame
-        delta_x = (vx * math.cos(self.theta) - vy * math.sin(self.theta)) * dt
-        delta_y = (vx * math.sin(self.theta) + vy * math.cos(self.theta)) * dt
-        delta_theta = omega_z * dt
+        # CRITICAL FIX: Negate velocity for odometry integration
+        # Forward kinematics output has opposite sign convention
+        delta_x = (-vx * math.cos(self.theta) + vy * math.sin(self.theta)) * dt
+        delta_y = (-vx * math.sin(self.theta) - vy * math.cos(self.theta)) * dt
+        delta_theta = -omega_z * dt
         
         self.x += delta_x
         self.y += delta_y

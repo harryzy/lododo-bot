@@ -167,13 +167,13 @@ controller_server:
       
       # 速度限制 / Velocity limits (RTABMap稳定建图，提高速度)
       # Increased speed with stable RTABMap mapping
-      min_vel_x: -0.22              # 允许后退 / Allow backward motion
-      max_vel_x: 0.22               # 提高到0.22m/s (比原来快83%)
-      min_vel_y: -0.22              # 全向运动 / Omnidirectional motion
-      max_vel_y: 0.22               # 全向最大速度
+      min_vel_x: 0.5                # 强制最小前进速度0.5m/s（克服摩擦力）/ Force minimum forward speed to overcome friction
+      max_vel_x: 0.6                # 提高到0.6m/s (比原来快83%)
+      min_vel_y: -0.6               # 全向运动 / Omnidirectional motion
+      max_vel_y: 0.6                # 全向最大速度
       max_vel_theta: 0.8            # 提高旋转速度到0.8rad/s
-      min_speed_xy: 0.08            # 强制最小线速度0.08m/s，避免纯旋转（planar_move不支持）
-      max_speed_xy: 0.22            # 保持一致
+      min_speed_xy: 0.5             # 配合min_vel_x，确保线速度≥0.5m/s / Enforce linear speed ≥0.5m/s
+      max_speed_xy: 0.6             # 保持一致
       min_speed_theta: 0.0
       
       # 加速度限制 / Acceleration limits (恢复标准加速度)
@@ -474,8 +474,8 @@ velocity_smoother:
     
     # 速度限制 / Velocity limits (匹配DWB控制器的新速度)
     # Match DWB controller's new velocity limits
-    max_velocity: [0.22, 0.22, 0.8]      # [x, y, theta] 匹配DWB设置
-    min_velocity: [-0.22, -0.22, -0.8]   # [x, y, theta]
+    max_velocity: [0.6, 0.6, 0.8]        # [x, y, theta] 匹配DWB设置（提高到0.6克服摩擦力）
+    min_velocity: [-0.6, -0.6, -0.8]     # [x, y, theta]
     
     # 加速度限制 / Acceleration limits (保持原有加速度)
     # Keep existing acceleration limits
