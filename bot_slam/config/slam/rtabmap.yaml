@@ -103,7 +103,7 @@ rtabmap:
     Mem/IncrementalMemory: "true"    # Build map incrementally / 增量建图
     
     # Transfer to long-term memory / 转移到长期记忆
-    Mem/RehearsalSimilarity: "0.6"   # Similarity threshold for rehearsal / 重演相似度阈值
+    Mem/RehearsalSimilarity: "0.7"   # Similarity threshold for rehearsal (increased for stricter matching) / 重演相似度阈值（提高以更严格匹配）
     
     # ========================================================================
     # Loop Closure Detection / 闭环检测
@@ -112,10 +112,13 @@ rtabmap:
     # Bag-of-Words / 词袋模型
     Mem/BinDataKept: "true"          # Keep binary data for localization / 保留二进制数据用于定位
     Mem/UseOdomFeatures: "false"     # Don't use odom for loop detection / 不用里程计做闭环
+    Kp/IncrementalFlann: "true"      # Use incremental FLANN for better accuracy / 使用增量FLANN提高精度
     
     # Loop closure thresholds / 闭环阈值
     RGBD/LinearUpdate: "0.05"        # Min translation to add node (5cm, denser) / 添加节点的最小平移
     RGBD/AngularUpdate: "0.05"       # Min rotation to add node (~3°, denser) / 添加节点的最小旋转
+    Rtabmap/LoopThr: "0.15"          # Loop closure threshold (higher = stricter) / 闭环阈值（越高越严格）
+    Rtabmap/LoopRatio: "0.8"         # Loop closure ratio / 闭环比率
     
     # Proximity detection / 临近检测
     RGBD/ProximityBySpace: "true"    # Use space proximity / 使用空间临近
@@ -125,7 +128,8 @@ rtabmap:
     
     # Loop closure validation / 闭环验证
     RGBD/LoopClosureReextractFeatures: "true" # Re-extract for better accuracy / 重新提取以提高精度
-    RGBD/OptimizeFromGraphEnd: "false" # Optimize from loop closure / 从闭环优化
+    RGBD/OptimizeFromGraphEnd: "true" # Optimize from graph end to reduce drift / 从图末端优化减少漂移
+    RGBD/LoopClosureIdentityGuess: "false" # Don't assume identity for loop closure / 不假设闭环为恒等变换
     
     # ========================================================================
     # Graph Optimization / 图优化
@@ -133,12 +137,13 @@ rtabmap:
     
     # Optimizer / 优化器
     Optimizer/Strategy: "1"          # 0=TORO, 1=g2o, 2=GTSAM (g2o recommended)
-    Optimizer/Iterations: "30"       # Optimization iterations (increased) / 优化迭代次数
-    Optimizer/Epsilon: "0.00001"     # Convergence threshold / 收敛阈值
+    Optimizer/Iterations: "20"       # Optimization iterations (reduced for stability) / 优化迭代次数（减少以提高稳定性）
+    Optimizer/Epsilon: "0.0001"      # Convergence threshold (relaxed) / 收敛阈值（放宽）
     
     # Robust optimization / 鲁棒优化
     Optimizer/Robust: "true"         # Use robust kernel for outlier rejection / 使用鲁棒核过滤异常值
     Optimizer/VarianceIgnored: "false" # Use variance in optimization / 在优化中使用方差
+    Optimizer/GravitySigma: "0.3"    # Gravity constraint weight / 重力约束权重
     
     # ========================================================================
     # 2D Grid Map Generation / 2D栅格地图生成
@@ -177,7 +182,7 @@ rtabmap:
     # ========================================================================
     
     # Processing / 处理
-    Rtabmap/DetectionRate: "1.0"     # Process at 1Hz (balance quality vs speed) / 1Hz处理率
+    Rtabmap/DetectionRate: "0.5"     # 从1.0降到0.5Hz，减轻SLAM处理负载
     Rtabmap/TimeThr: "0"             # No time threshold / 无时间阈值
     
     # Memory limits / 内存限制

@@ -67,7 +67,7 @@ bt_navigator:
     global_frame: map
     robot_base_frame: base_link
     odom_topic: /odometry/filtered
-    bt_loop_duration: 10
+    bt_loop_duration: 20           # 从10增到20ms，降低BT tick rate到50Hz，减轻CPU负载
     default_server_timeout: 30     # 从20增到30秒，给recovery更多时间
     wait_for_service_timeout: 5    # 服务等待超时5秒
     
@@ -143,17 +143,17 @@ controller_server:
     # 探索模式：放宽限制，避免探索时频繁timeout
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker"
-      required_movement_radius: 0.10   # 线性位移10cm（探索模式放宽）
+      required_movement_radius: 0.12   # 线性位移12cm
       required_movement_angle: 0.174   # 或角度变化10度(0.174弧度)，满足一个即可
-      movement_time_allowance: 25.0    # 25秒内至少满足一个条件（加快失败速度）
+      movement_time_allowance: 20.0    # 20秒内需有进度，避免卡住太久
     
     # 目标检查器 / Goal checker
     goal_checker_plugins: ["general_goal_checker"]
     general_goal_checker:
       stateful: False               # 探索模式：关闭stateful，到达即成功，无需停止
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.15       # 收紧到15cm，避免目标太近时"假成功"
-      yaw_goal_tolerance: 0.52      # 约30度（0.52弧度），探索模式放宽朝向要求
+      xy_goal_tolerance: 0.30       # 位置容差30cm（放宽一倍，容忍旋转时的平移）
+      yaw_goal_tolerance: 0.52      # 角度容差30度（0.52弧度）
     
     # 控制器插件 / Controller plugins
     controller_plugins: ["FollowPath"]
@@ -167,11 +167,12 @@ controller_server:
       
       # 速度限制 / Velocity limits (Ground Truth里程计支持更高速度)
       # Higher speed enabled with accurate Ground Truth odometry
-      min_vel_x: 0.0                # 允许从静止启动 / Allow starting from rest
-      max_vel_x: 0.30               # 提升到0.30m/s（Ground Truth精度保证） / Increased with accurate odometry
-      min_vel_y: -0.30              # 全向运动 / Omnidirectional motion
+      # 注意：禁止后退因为摄像头FOV=60度仅朝前，后退会失去避障能力
+      min_vel_x: 0.0                # 不允许后退（摄像头在前，后退无视觉避障）
+      max_vel_x: 0.30               # 提升到0.30m/s（Ground Truth精度保证）
+      min_vel_y: -0.30              # 允许侧移（FOV可部分覆盖）
       max_vel_y: 0.30               # 全向最大速度提升
-      max_vel_theta: 0.5            # 提升旋转速度到0.5 / Increased rotation speed
+      max_vel_theta: 0.8            # 提升旋转速度到0.8rad/s，加快转向 / Faster rotation
       min_speed_xy: 0.0             # 允许慢速和停止 / Allow slow speeds and stopping
       max_speed_xy: 0.30            # 保持一致
       min_speed_theta: 0.0
@@ -195,34 +196,38 @@ controller_server:
       angular_granularity: 0.025
       transform_tolerance: 0.5      # 从0.2增加到0.5，容忍更大的TF延迟
       
-      # 短距离容差 / Short distance tolerance
-      xy_goal_tolerance: 0.15
+      # 目标容差 / Goal tolerance (DWB内部使用)
+      xy_goal_tolerance: 0.30       # 位置容差30cm（放宽一倍，容忍旋转时的平移）
+      yaw_goal_tolerance: 0.52      # 角度容差30度（0.52弧度）
       trans_stopped_velocity: 0.25
+      slowing_factor: 5.0           # 接近目标时减速因子
       
       # 评分 / Scoring
       short_circuit_trajectory_evaluation: True
       stateful: True
       
-      # 评价器 / Critics
+      # 评价器 / Critics - 优先旋转到目标方向（适配前置60度FOV摄像头）
+      # Prioritize rotation to goal (for forward-facing 60deg FOV camera)
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       
-      BaseObstacle.scale: 0.005     # 进一步降低到0.005，避免膨胀区速度驤降
-      PathAlign.scale: 32.0
-      PathAlign.forward_point_distance: 0.1
-      GoalAlign.scale: 24.0
-      GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 48.0          # 增加到48.0，更倾向跟随全局路径
-      GoalDist.scale: 36.0          # 保持36.0，积极向目标前进
-      RotateToGoal.scale: 8.0       # 大幅降低到8.0，避免原地旋转（planar_move不支持）
+      RotateToGoal.scale: 32.0      # 最高优先级，确保先转向目标
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
+      BaseObstacle.scale: 0.02      # 障碍物代价
+      GoalAlign.scale: 24.0         # 目标对齐
+      GoalAlign.forward_point_distance: 0.1
+      PathAlign.scale: 20.0         # 路径对齐
+      PathAlign.forward_point_distance: 0.1
+      PathDist.scale: 20.0          # 路径距离
+      GoalDist.scale: 24.0          # 目标距离
+      Oscillation.scale: 1.0        # 防止震荡
 
 local_costmap:
   local_costmap:
     ros__parameters:
       use_sim_time: True
-      update_frequency: 3.0
-      publish_frequency: 2.0
+      update_frequency: 2.0          # 从5.0降到2.0Hz，减少costmap更新负载
+      publish_frequency: 1.0         # 从2.0降到1.0Hz，减少发布频率
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
@@ -304,8 +309,8 @@ global_costmap:
   global_costmap:
     ros__parameters:
       use_sim_time: True
-      update_frequency: 3.0
-      publish_frequency: 2.0
+      update_frequency: 1.0          # 从3.0降到1.0Hz，减少全局costmap更新负载
+      publish_frequency: 0.5         # 从2.0降到0.5Hz，减少发布频率
       global_frame: map
       robot_base_frame: base_link
       # TF容差增大以适应仿真启动延迟 / Increase TF tolerance for simulation startup delay

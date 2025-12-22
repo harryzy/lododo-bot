@@ -24,6 +24,8 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from ament_index_python.packages import get_package_share_directory
+import os
 
 
 def generate_launch_description():
@@ -32,6 +34,14 @@ def generate_launch_description():
     # ===== 包路径 =====
     bot_bringup_dir = FindPackageShare('bot_bringup')
     bot_navigation_dir = FindPackageShare('bot_navigation')
+    
+    # 配置文件路径
+    exploration_config = os.path.join(
+        get_package_share_directory('bot_navigation'),
+        'config',
+        'exploration',
+        'exploration_manager.yaml'
+    )
     
     # ===== 参数 =====
     world_arg = DeclareLaunchArgument(
@@ -86,19 +96,14 @@ def generate_launch_description():
         executable='exploration_mapper',
         name='exploration_mapper',
         output='screen',
-        parameters=[{
-            'map_topic': '/map',
-            'cmd_vel_topic': '/cmd_vel',
-            'exploration_radius': exploration_radius,
-            'min_frontier_size': 5,               # 最小边界尺寸(降低到5，更容易找到目标)
-            'min_goal_distance': 0.30,            # 增加到0.30m，避免太近导致大角度旋转
-            'goal_tolerance': 0.25,               # 目标容差
-            'rotation_speed': 0.6,                # 旋转速度
-            'forward_speed': 0.20,                # 前进速度(匹配Nav2配置)
-            'map_completion_threshold': completion_threshold,
-            'safe_distance': 0.35,                # 安全距离
-            'camera_fov': 60.0,                   # 相机FOV
-        }],
+        parameters=[
+            exploration_config,  # 加载配置文件
+            {
+                # launch参数可以覆盖配置文件
+                'exploration_radius': exploration_radius,
+                'map_completion_threshold': completion_threshold,
+            }
+        ],
         # 延迟启动，等待Nav2准备好
         # prefix=['bash -c "sleep 15 && $0 $@"'],
     )

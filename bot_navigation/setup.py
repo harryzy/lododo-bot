@@ -47,6 +47,7 @@ setup(
     entry_points={
         'console_scripts': [
             'exploration_mapper = bot_navigation.exploration_mapper:main',
+            'mission_planner = bot_navigation.mission_planner:main',
         ],
     },
 )
