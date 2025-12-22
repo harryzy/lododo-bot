@@ -18,13 +18,17 @@ setup(
         # Nav2 配置文件 / Nav2 config files
         (os.path.join('share', package_name, 'config', 'nav2'), 
             glob(os.path.join('config', 'nav2', '*.yaml'))),
-        # VIO 配置文件 (rtabmap_odom, robot_localization, slam_toolbox_vio)
-        # VIO config files (rtabmap_odom, robot_localization, slam_toolbox_vio)
-        (os.path.join('share', package_name, 'config'), 
-            glob(os.path.join('config', '*.yaml'))),
+        (os.path.join('share', package_name, 'config', 'nav2'), 
+            glob(os.path.join('config', 'nav2', '*.xml'))),
+        # 定位融合配置文件 / Localization config files
+        (os.path.join('share', package_name, 'config', 'localization'), 
+            glob(os.path.join('config', 'localization', '*.yaml'))),
+        # 探索配置文件 / Exploration config files (预留)
+        (os.path.join('share', package_name, 'config', 'exploration'), 
+            glob(os.path.join('config', 'exploration', '*.yaml'))),
         # RViz 配置文件 / RViz config files
-        (os.path.join('share', package_name, 'rviz'), 
-            glob(os.path.join('rviz', '*.rviz'))),
+        (os.path.join('share', package_name, 'config', 'rviz'), 
+            glob(os.path.join('config', 'rviz', '*.rviz'))),
         # 地图文件 / Map files
         (os.path.join('share', package_name, 'maps'), 
             glob(os.path.join('maps', '*'))),

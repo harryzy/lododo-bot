@@ -132,6 +132,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # ==========================================================================
     pkg_bot_bringup = get_package_share_directory('bot_bringup')
     pkg_bot_navigation = get_package_share_directory('bot_navigation')
+    pkg_bot_slam = get_package_share_directory('bot_slam')
     pkg_bot_gazebo = get_package_share_directory('bot_gazebo')
     pkg_bot_description = get_package_share_directory('bot_description')
     pkg_bot_control = get_package_share_directory('bot_control')
@@ -141,10 +142,10 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # Configuration Files / 配置文件
     # ==========================================================================
     # RTABMap configuration / RTABMap 配置
-    rtabmap_config = os.path.join(pkg_bot_navigation, 'config', 'rtabmap.yaml')
+    rtabmap_config = os.path.join(pkg_bot_navigation, 'config', 'slam', 'rtabmap.yaml')
     
     # EKF configuration (with visual odometry) / EKF 配置（包含视觉里程计）
-    ekf_config = os.path.join(pkg_bot_navigation, 'config', 'robot_localization_rtabmap.yaml')
+    ekf_config = os.path.join(pkg_bot_navigation, 'config', 'localization', 'robot_localization_rtabmap.yaml')
     
     # ==========================================================================
     # World File Resolution / 世界文件解析

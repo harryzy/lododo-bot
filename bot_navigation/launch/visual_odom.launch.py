@@ -68,13 +68,14 @@ def generate_launch_description():
     # Package Paths / 包路径
     # ==========================================================================
     bot_navigation_dir = get_package_share_directory('bot_navigation')
+    bot_slam_dir = get_package_share_directory('bot_slam')
     
     # Default config files / 默认配置文件
     default_rtabmap_config = os.path.join(
-        bot_navigation_dir, 'config', 'rtabmap_odom.yaml'
+        bot_slam_dir, 'config', 'slam', 'rtabmap_odom.yaml'
     )
     default_ekf_config = os.path.join(
-        bot_navigation_dir, 'config', 'robot_localization.yaml'
+        bot_navigation_dir, 'config', 'localization', 'robot_localization.yaml'
     )
     
     # ==========================================================================
