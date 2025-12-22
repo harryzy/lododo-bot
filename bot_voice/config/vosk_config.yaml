@@ -1,0 +1,33 @@
+# Vosk STT configuration for bot_voice_node
+# model_type: choose a label to identify language/model family (e.g., 'cn', 'en')
+model_type: 'cn'
+
+# Absolute path to the Vosk model directory (override with environment VOSK_MODEL_PATH if set)
+model_path_cn: '~/lododo_bot/src/bot_voice/models/vosk-model-small-cn-0.22'
+model_path_en: '~/lododo_bot/src/bot_voice/models/vosk-model-small-en-us-0.15'
+
+# device_index: Index of the audio input device to use (integer, typically 0 for default device; use system tool to list devices)
+device_index: 2
+
+# Voice commands configuration
+# Define voice commands that will be recognized and mapped to robot actions
+# The key is the command identifier (used internally), the value is the voice phrase to recognize
+voice_commands:
+  # Chinese voice commands (中文语音命令)
+  cn:
+    move_forward: "前进"              # Voice command to scan the front area
+    move_backward: "后退"             # Voice command to perform a full scan
+    stop: "停止"                      # Voice command to scan and grasp objects
+    navigate: "导航"                  # Voice command to grasp and lift
+    follow_person: "跟随我"           # Voice command to deliver object
+    slam: "建立地图"                      # Voice command to start SLAM 
+    auto_slam: "自动建立地图"              # Voice command to start SLAM automatically   
+  # English voice commands
+  en:
+    move_forward: "move forward"              # Voice command to scan the front area
+    move_backward: "move backward"             # Voice command to perform a full scan
+    stop: "stop"                      # Voice command to scan and grasp objects
+    navigate: "navigate"                  # Voice command to grasp and lift
+    follow_person: "follow me"           # Voice command to deliver object
+    slam: "slam"                      # Voice command to start SLAM 
+    auto_slam: "auto slam"              # Voice command to start SLAM automatically
