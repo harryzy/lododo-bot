@@ -1,0 +1,2 @@
+# Ignore bot_voice models (local model files, not for VCS)
+bot_voice/models/
