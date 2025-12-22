@@ -1154,6 +1154,132 @@ commands:
 
 ---
 
+## 6.7 自主巡航与任务管理系统
+
+### 6.7.1 系统概述
+
+自主巡航系统是LeKiwi机器人的高级功能模块，实现了智能化的自主探索、地图管理、任务规划和多终端统一控制。系统采用分层架构设计，将功能分布在三个独立的功能包中：
+
+- **bot_navigation**: 导航执行与任务管理
+- **bot_slam**: SLAM与地图库管理  
+- **bot_cmd_interface**: 统一命令接口适配层
+
+### 6.7.2 核心特性
+
+**多样化任务类型** (13种任务类型):
+- **探索类**: 前沿探索、区域探索、智能探索
+- **巡航类**: 路径巡航、区域巡航、动态巡航
+- **导航类**: 点对点导航、路径跟踪、充电站导航
+- **复合类**: 顺序任务、并行任务、条件任务、循环任务
+
+**地图库管理系统**:
+- 版本化地图存储和管理
+- 自动/手动地图保存
+- 地图元数据追踪（创建时间、覆盖率、质量评分）
+- 持久化存储在 `~/.ros/lekiwi_maps/`
+
+**任务持久化与恢复**:
+- 任务队列自动保存
+- 断电/重启后任务恢复
+- 任务历史记录追踪
+- 任务数据存储在 `~/.ros/lekiwi_bot/navigation/tasks/`
+
+**统一命令接口**:
+- 支持多终端并发控制（语音、Web、App、手柄）
+- 异步Topic输入 → 命令队列 → 同步服务调用
+- 防止状态冲突，保证系统一致性
+- 自然语言命令解析
+
+### 6.7.3 系统架构
+
+```
+外部终端层
+├── 语音控制 (bot_voice)
+├── Web界面
+├── 移动App
+└── 手柄控制
+         |
+         v
+命令接口层 (bot_cmd_interface)
+├── CommandAdapter - 命令队列与适配
+├── VoiceHandler - 语音命令解析
+└── WebHandler - Web命令处理
+         |
+         v
+任务管理层 (bot_navigation)
+├── MissionPlanner - 任务规划
+├── TaskManager - 任务管理
+├── PatrolManager - 巡航管理
+├── NavigationExecutor - 导航执行
+└── WaypointRecorder - 路点记录
+         |
+         v
+地图管理层 (bot_slam)
+├── MapLibraryManager - 地图库管理
+├── ExplorationManager - 探索管理
+└── RTABMap/SlamToolbox - SLAM引擎
+         |
+         v
+导航底层 (Nav2 Stack)
+```
+
+### 6.7.4 关键服务接口
+
+MissionPlanner提供20+个ROS2服务接口用于任务控制：
+
+**任务管理**:
+- `create_task` - 创建任务
+- `start_task` - 启动任务  
+- `pause_task` - 暂停任务
+- `resume_task` - 恢复任务
+- `cancel_task` - 取消任务
+- `get_task_status` - 查询任务状态
+
+**探索与巡航**:
+- `start_exploration` - 开始探索
+- `start_patrol` - 开始巡航
+- `add_patrol_waypoint` - 添加巡航点
+- `start_recording_waypoints` - 开始记录路点
+
+**地图管理**:
+- `save_map` - 保存地图
+- `load_map` - 加载地图  
+- `list_maps` - 列出地图
+- `get_map_info` - 获取地图信息
+
+### 6.7.5 数据持久化
+
+系统使用统一的数据目录结构：
+
+```
+~/.ros/lekiwi_bot/
+├── maps/              # 地图库（已迁移到 ~/.ros/lekiwi_maps/）
+├── navigation/
+│   ├── tasks/        # 任务持久化
+│   │   ├── active_tasks.json
+│   │   └── task_history/
+│   ├── waypoints/    # 路点数据
+│   └── patrol_routes/  # 巡航路线
+└── logs/             # 系统日志
+
+~/.ros/lekiwi_maps/   # 独立地图库
+├── kitchen_v1/
+├── office_v2/
+└── ...
+```
+
+### 6.7.6 详细设计文档
+
+系统的详细设计、实现计划和API文档请参考：
+- **[AUTONOMOUS_PATROL_DESIGN.md](./AUTONOMOUS_PATROL_DESIGN.md)** - 自主巡航系统详细设计
+  - 任务类型定义
+  - 类设计与接口
+  - 文件结构
+  - 状态机流程
+  - 8阶段实施计划（预计20-29天）
+
+---
+
 ## 7. 开发路线图
 
 ### Phase 1: 基础框架搭建（第1-2周）
