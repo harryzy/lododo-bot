@@ -128,8 +128,13 @@ class ExplorationMapper(Node):
         self.rotation_target_yaw = None  # 目标朝向（使用实际反馈）
         self.rotation_timeout = 30.0  # 旋转超时时间
         
+        # 脱困模式状态
+        self.escape_attempt = 0  # 脱困尝试次数（0-6对应45°,90°,135°,180°,225°,270°,315°）
+        self.max_escape_attempts = 7  # 最多尝试7次（从45度开始，不含0度）
+        
         # 待处理的目标（旋转完成后发送）
         self.pending_goal = None
+        self.skip_rotation = False  # 跳过旋转，直接导航（当旋转遇到障碍物时）
         
         # ===== QoS配置 =====
         map_qos = QoSProfile(
@@ -150,6 +155,15 @@ class ExplorationMapper(Node):
             OccupancyGrid,
             self.map_topic,
             self.map_callback,
+            map_qos
+        )
+        
+        # 订阅local_costmap用于旋转时的避障检测
+        self.local_costmap = None
+        self.local_costmap_sub = self.create_subscription(
+            OccupancyGrid,
+            '/local_costmap/costmap',
+            self.local_costmap_callback,
             map_qos
         )
         
@@ -207,7 +221,52 @@ class ExplorationMapper(Node):
         
         # 总区域 = 自由空间 + 障碍物 + 可探索未知
         self.total_cells = free_cells + obstacle_cells + explorable_unknown
+    
+    def local_costmap_callback(self, msg):
+        """处理local_costmap数据（用于旋转时避障）"""
+        self.local_costmap = np.array(msg.data).reshape((msg.info.height, msg.info.width))
+        self.get_logger().debug('🛡️  Local costmap已更新', throttle_duration_sec=5.0)
+    
+    def check_rotation_safe(self):
+        """检查旋转路径是否安全（基于local_costmap）"""
+        if self.local_costmap is None:
+            # 没有costmap数据，默认安全
+            return True
         
+        try:
+            # 检查机器人周围的costmap
+            height, width = self.local_costmap.shape
+            center_x = width // 2
+            center_y = height // 2
+            
+            # 检查半径1米范围内是否有障碍物
+            # local_costmap resolution通常是0.05m，所以1m=20cells
+            check_radius = 20  # 1米半径
+            
+            for dx in range(-check_radius, check_radius + 1):
+                for dy in range(-check_radius, check_radius + 1):
+                    if dx*dx + dy*dy > check_radius*check_radius:
+                        continue
+                    
+                    cx = center_x + dx
+                    cy = center_y + dy
+                    
+                    if 0 <= cx < width and 0 <= cy < height:
+                        # 检查costmap值，>50认为有障碍物
+                        if self.local_costmap[cy, cx] > 50:
+                            self.get_logger().warn(
+                                f'⚠️  检测到障碍物！位置({dx}, {dy}), '
+                                f'costmap值={self.local_costmap[cy, cx]}',
+                                throttle_duration_sec=2.0
+                            )
+                            return False
+            
+            return True
+            
+        except Exception as e:
+            self.get_logger().error(f'检查旋转安全性失败: {e}')
+            return True  # 异常时默认安全
+    
     def world_to_map(self, x, y):
         """世界坐标转地图坐标（使用基类方法）"""
         if self.current_map_msg is None:
@@ -328,9 +387,9 @@ class ExplorationMapper(Node):
         # 🎯 方案B：根据完成度动态调整frontier选择条件
         completion = self.calculate_map_completion()
         if completion >= self.min_completion_threshold:
-            # 接近完成时放宽限制
-            max_angle_deg = 90  # 从±60°放宽到±90°
-            min_distance = 0.5  # 从1.0m降低到0.5m
+            # 接近完成时大幅放宽限制
+            max_angle_deg = 150  # 从±60°放宽到±150°（允许后方目标）
+            min_distance = 0.3  # 从1.0m降低到0.3m（允许更近目标）
             self.get_logger().info(
                 f'⚠️  接近完成({completion*100:.2f}%)，放宽选择条件: '
                 f'角度范围±{max_angle_deg}°, 最小距离{min_distance}m'
@@ -693,6 +752,7 @@ class ExplorationMapper(Node):
                     self.get_logger().info('📷 新增区域较多，标记需要扫描')
             
             self.consecutive_failures = 0
+            self.escape_attempt = 0  # 重置脱困计数器
             self.goal_start_time = None
             self._nav_executor.reset_state()  # 重置NavigationExecutor状态
         elif nav_state == NavigationState.FAILED:
@@ -733,7 +793,29 @@ class ExplorationMapper(Node):
         if self._nav_executor.get_state() != NavigationState.IDLE:
             return
         
-        # 🎯 最高优先级：检查地图完成度（必须先检查，避免被其他操作阻塞）
+        # 🎯 最高优先级1：检查是否跳过旋转直接导航（旋转遇到障碍物时）
+        if self.skip_rotation and self.pending_goal is not None:
+            self.get_logger().info('💡 跳过旋转，直接使用Nav2导航（避障模式）')
+            
+            goal_info = self.pending_goal
+            target_pos = goal_info['position']
+            target_yaw = goal_info['yaw']
+            frontier_size, distance, direction = goal_info['frontier_info']
+            
+            self.get_logger().info(
+                f'🎯 向目标导航（跳过旋转）- 大小={frontier_size}, 距离={distance:.2f}m, '
+                f'位置=({target_pos[0]:.2f}, {target_pos[1]:.2f})'
+            )
+            
+            self.no_goal_count = 0
+            self.send_navigation_goal(target_pos[0], target_pos[1], target_yaw)
+            
+            # 清理标志
+            self.pending_goal = None
+            self.skip_rotation = False
+            return
+        
+        # 🎯 最高优先级2：检查地图完成度（必须先检查，避免被其他操作阻塞）
         completion = self.calculate_map_completion()
         if completion >= self.map_completion_threshold:
             self.exploration_complete = True
@@ -752,21 +834,39 @@ class ExplorationMapper(Node):
             self.create_timer(5.0, self.shutdown_node)
             return
         
-        # 检查是否需要执行90度扫描（单次快速扫描）
+        # 检查是否需要执行扫描（朝向最近未知区域）
         if self.need_360_scan:
-            self.get_logger().info('📷 执行90度扫描以提高建图质量')
+            # 🎯 优化1：不固定90度，而是朝向最近的未知区域旋转
+            scan_angle = self.find_nearest_unknown_direction()
+            self.get_logger().info(
+                f'📷 执行智能扫描: 朝向最近未知区域旋转{scan_angle}度'
+            )
             self.need_360_scan = False
             time.sleep(0.3)
-            self.rotate_in_place(angle_degrees=90)  # 单次90度快速扫描
+            self.rotate_in_place(angle_degrees=scan_angle)
             return
         
-        # 检查是否需要执行旋转（脱困模式）
+        # 检查是否需要执行旋转（脱困模式：每45度尝试一次）
         if self.need_rotation:
-            self.get_logger().info(f'🔄 执行旋转操作（脱困模式）')
-            self.need_rotation = False
-            time.sleep(0.5)
-            self.rotate_in_place(angle_degrees=100)  # 100度旋转改变视角
-            return
+            # 🎯 优化2：脱困模式改为每45度尝试，从45度到315度
+            if self.escape_attempt < self.max_escape_attempts:
+                escape_angle = 45 + self.escape_attempt * 45  # 45, 90, 135, 180, 225, 270, 315
+                self.get_logger().info(
+                    f'🔄 脱困尝试 [{self.escape_attempt + 1}/{self.max_escape_attempts}]: '
+                    f'旋转{escape_angle}度探测'
+                )
+                self.need_rotation = False
+                self.escape_attempt += 1
+                time.sleep(0.5)
+                self.rotate_in_place(angle_degrees=escape_angle)
+                return
+            else:
+                # 所有方向都尝试过，脱困失败
+                self.get_logger().error('❌ 脱困失败：所有7个方向都无法找到有效frontier')
+                self.need_rotation = False
+                self.escape_attempt = 0
+                self.consecutive_failures += 1
+                # 继续执行后续逻辑，可能会触发探索完成
         
         # 程序启动时的初始扫描（3次100度扫描开拓视野）
         if not self.initial_scan_done:
@@ -809,10 +909,10 @@ class ExplorationMapper(Node):
                 self.create_timer(5.0, self.shutdown_node)
                 return
             
-            # 尝试旋转获取更多视野
+            # 尝试旋转获取更多视野（开始脱困模式）
             if not self.need_rotation:
                 self.need_rotation = True
-                self.rotation_angle = 45
+                self.escape_attempt = 0  # 重置脱困计数器
             return
         
         # 选择最佳目标
@@ -840,11 +940,11 @@ class ExplorationMapper(Node):
                 throttle_duration_sec=1.0
             )
             
-            # 连续多次找不到目标，触发旋转
+            # 连续多次找不到目标，触发脱困
             if self.no_goal_count >= self.max_no_goal_count:
-                self.get_logger().warn('🔄 连续多次无法找到目标，设置旋转标志')
+                self.get_logger().warn('🔄 连续多次无法找到目标，开始脱困模式')
                 self.need_rotation = True
-                self.rotation_angle = 45
+                self.escape_attempt = 0  # 重置脱困计数器
                 self.no_goal_count = 0
                 self.visited_frontiers.clear()
             
@@ -866,12 +966,13 @@ class ExplorationMapper(Node):
         else:
             # 如果没找到安全点，检查是否连续失败
             if self.consecutive_failures >= 3:
-                # 触发脱困模式：旋转改变视角
+                # 触发脱困模式：多方向尝试
                 self.get_logger().warn(
                     f'⚠️  连续{self.consecutive_failures}次未找到安全点，'
-                    f'触发脱困模式：旋转100度改变视角'
+                    f'触发脱困模式：开始多方向探测'
                 )
                 self.need_rotation = True
+                self.escape_attempt = 0  # 重置脱困计数器
                 self.consecutive_failures = 0
                 return
             
@@ -938,6 +1039,60 @@ class ExplorationMapper(Node):
         
         self.send_navigation_goal(target_pos[0], target_pos[1], target_yaw)
     
+    def find_nearest_unknown_direction(self):
+        """寻找最近未知区域的方向（相对于当前朝向）"""
+        if self.current_map is None:
+            return 90  # 默认90度
+        
+        robot_pos = self.get_robot_position()
+        robot_yaw = self.get_robot_yaw()
+        if robot_pos is None or robot_yaw is None:
+            return 90
+        
+        height, width = self.current_map.shape
+        
+        # 在机器人周围360度范围内，每10度检测一次未知区域密度
+        best_angle = 90
+        max_unknown_density = 0
+        search_radius = 3.0  # 搜索半径3米
+        
+        for angle_offset in range(-180, 180, 10):  # 每10度检测一次
+            angle_rad = robot_yaw + math.radians(angle_offset)
+            unknown_count = 0
+            total_count = 0
+            
+            # 沿着这个方向检测
+            for dist in [1.0, 1.5, 2.0, 2.5, 3.0]:  # 检测多个距离点
+                check_x = robot_pos[0] + dist * math.cos(angle_rad)
+                check_y = robot_pos[1] + dist * math.sin(angle_rad)
+                
+                # 转换为栅格坐标
+                check_mx, check_my = self.world_to_map(check_x, check_y)
+                if check_mx is None:
+                    continue
+                
+                # 检查9x9邻域
+                for dx in range(-4, 5):
+                    for dy in range(-4, 5):
+                        nx = check_mx + dx
+                        ny = check_my + dy
+                        if 0 <= nx < width and 0 <= ny < height:
+                            total_count += 1
+                            if self.current_map[ny, nx] == -1:  # 未知区域
+                                unknown_count += 1
+            
+            # 计算未知区域密度
+            if total_count > 0:
+                density = unknown_count / total_count
+                if density > max_unknown_density:
+                    max_unknown_density = density
+                    best_angle = angle_offset
+        
+        self.get_logger().info(
+            f'🔍 找到最近未知区域方向: {best_angle}° (未知密度: {max_unknown_density*100:.1f}%)'
+        )
+        return best_angle
+    
     def rotate_in_place(self, angle_degrees=90):
         """启动原地旋转（非阻塞，基于实际朝向反馈）"""
         if self.is_rotating:
@@ -947,7 +1102,11 @@ class ExplorationMapper(Node):
         # 获取当前朝向
         current_yaw = self.get_robot_yaw()
         if current_yaw is None:
-            self.get_logger().error('无法获取当前朝向，旋转取消')
+            self.get_logger().error('❌ 无法获取当前朝向（TF查询失败），旋转取消')
+            # 清理pending_goal，避免卡死
+            if self.pending_goal is not None:
+                self.get_logger().error('❌ 清理pending_goal，恢复探索流程')
+                self.pending_goal = None
             return
         
         # 计算目标朝向
@@ -961,7 +1120,7 @@ class ExplorationMapper(Node):
             self.rotation_target_yaw += 2 * math.pi
         
         self.get_logger().info(
-            f'🔄 开始旋转{angle_degrees}度: '
+            f'🔄 开始旋转{angle_degrees:.1f}度: '
             f'当前朝向={math.degrees(current_yaw):.1f}°, '
             f'目标朝向={math.degrees(self.rotation_target_yaw):.1f}°'
         )
@@ -972,6 +1131,12 @@ class ExplorationMapper(Node):
         # 设置旋转状态
         self.is_rotating = True
         self.rotation_start_time = time.time()
+        
+        # 🔧 立即发布第一条旋转命令，避免延迟
+        twist = Twist()
+        twist.angular.z = self.rotation_angular_vel
+        self.cmd_vel_pub.publish(twist)
+        self.get_logger().debug(f'🔄 发布旋转命令: angular.z={self.rotation_angular_vel:.2f}')
     
     def update_rotation(self):
         """更新旋转状态（基于实际朝向反馈）"""
@@ -987,12 +1152,38 @@ class ExplorationMapper(Node):
             twist.angular.z = 0.0
             self.cmd_vel_pub.publish(twist)
             self.is_rotating = False
+            
+            # 清理pending_goal避免卡死
+            if self.pending_goal is not None:
+                self.get_logger().warn('⚠️  旋转超时，清理pending_goal')
+                self.pending_goal = None
+            
+            return False
+        
+        # 🛡️ 检查旋转路径安全性（使用local_costmap避障）
+        if not self.check_rotation_safe():
+            self.get_logger().warn('⚠️  检测到障碍物，停止旋转')
+            twist = Twist()
+            twist.angular.z = 0.0
+            self.cmd_vel_pub.publish(twist)
+            self.is_rotating = False
+            
+            # 🎯 关键优化：不清理pending_goal，而是设置跳过旋转标志
+            # 让Nav2带着避障功能导航过去，避免重新选择陷入死循环
+            if self.pending_goal is not None:
+                self.get_logger().info('💡 旋转遇到障碍物，跳过旋转直接导航（让Nav2处理避障）')
+                self.skip_rotation = True
+            
             return False
         
         # 获取当前朝向
         current_yaw = self.get_robot_yaw()
         if current_yaw is None:
             # 无法获取朝向，继续旋转
+            self.get_logger().debug(
+                f'⚠️  无法获取当前朝向，继续旋转 (已耗时{elapsed:.1f}秒)',
+                throttle_duration_sec=2.0
+            )
             twist = Twist()
             twist.angular.z = self.rotation_angular_vel
             self.cmd_vel_pub.publish(twist)
@@ -1016,6 +1207,7 @@ class ExplorationMapper(Node):
             self.is_rotating = False
             self.rotation_start_time = None
             self.rotation_target_yaw = None
+            self.skip_rotation = False  # 清理跳过旋转标志
             
             self.get_logger().info(
                 f'✅ 旋转完成（耗时{elapsed:.1f}秒，'
