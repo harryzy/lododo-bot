@@ -324,17 +324,23 @@ global_costmap:
       resolution: 0.05
       track_unknown_space: true
       
-      # 使用滚动窗口模式，设置固定大小的窗口围绕机器人
-      # Use rolling window mode with fixed size around robot
-      # 这样避免了依赖SLAM地图边界，机器人始终在costmap中心
-      # This avoids dependency on SLAM map boundaries, robot always at costmap center
-      rolling_window: true
-      width: 10
-      height: 10
+      # 🔧 关键修改：改为false，使用SLAM地图边界
+      # 这样可以使用static_layer读取已建图的障碍物
+      # 代价：需要等待RTABMap地图初始化完成
+      rolling_window: false
+      width: 100  # 大范围costmap，覆盖整个建图区域
+      height: 100
       
-      # 注意：rolling_window 模式下不使用 static_layer
-      # Note: static_layer is not used with rolling_window mode
-      plugins: ["obstacle_layer", "inflation_layer"]
+      # ✅ 添加static_layer，使用SLAM地图的障碍物信息
+      # 已建图的障碍物会持久存在于costmap中
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      
+      # 静态层 - 从SLAM地图读取已知障碍物
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true  # 订阅持久化地图
+        map_topic: /map  # RTABMap发布的地图
+        enabled: true
       
       # 障碍物层 / Obstacle layer
       # Uses segmented obstacle point cloud from RTABMap

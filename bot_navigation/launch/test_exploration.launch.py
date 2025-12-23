@@ -64,7 +64,7 @@ def generate_launch_description():
     
     completion_threshold_arg = DeclareLaunchArgument(
         'completion_threshold',
-        default_value='0.88',
+        default_value='0.78',
         description='Map completion threshold (0-1) / 地图完成度阈值'
     )
     

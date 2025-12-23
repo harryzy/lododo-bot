@@ -17,8 +17,8 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
 
-from nav2_msgs.action import NavigateToPose
-from geometry_msgs.msg import PoseStamped
+from nav2_msgs.action import NavigateToPose, Spin
+from geometry_msgs.msg import PoseStamped, Quaternion
 from nav_msgs.msg import OccupancyGrid
 
 from tf2_ros import TransformException, Buffer, TransformListener
@@ -69,6 +69,17 @@ class NavigationExecutor:
             NavigateToPose,
             action_name
         )
+        
+        # Spin Action客户端（用于原地旋转）
+        self._spin_action_client = ActionClient(
+            node,
+            Spin,
+            'spin'
+        )
+        
+        # Spin状态管理
+        self._spin_goal_handle = None
+        self._is_spinning = False
         
         # TF 监听器
         self._tf_buffer = Buffer()
@@ -442,3 +453,170 @@ class NavigationExecutor:
         siny_cosp = 2 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
         return math.atan2(siny_cosp, cosy_cosp)
+    
+    def world_to_map(self, x: float, y: float, map_msg: OccupancyGrid) -> Optional[Tuple[int, int]]:
+        """
+        世界坐标转地图坐标
+        
+        Args:
+            x: 世界坐标x
+            y: 世界坐标y
+            map_msg: 地图消息
+            
+        Returns:
+            (mx, my): 地图坐标，失败返回None
+        """
+        mx = int((x - map_msg.info.origin.position.x) / map_msg.info.resolution)
+        my = int((y - map_msg.info.origin.position.y) / map_msg.info.resolution)
+        return (mx, my)
+    
+    def map_to_world(self, mx: int, my: int, map_msg: OccupancyGrid) -> Optional[Tuple[float, float]]:
+        """
+        地图坐标转世界坐标
+        
+        Args:
+            mx: 地图坐标x
+            my: 地图坐标y
+            map_msg: 地图消息
+            
+        Returns:
+            (x, y): 世界坐标，失败返回None
+        """
+        x = mx * map_msg.info.resolution + map_msg.info.origin.position.x
+        y = my * map_msg.info.resolution + map_msg.info.origin.position.y
+        return (x, y)
+    
+    def get_robot_yaw(self) -> Optional[float]:
+        """
+        获取机器人当前朝向（yaw角）
+        
+        Returns:
+            float: yaw角(弧度)，失败返回None
+        """
+        try:
+            pose_stamped = self.get_robot_pose()
+            if pose_stamped:
+                return self.calculate_yaw(pose_stamped)
+        except Exception as e:
+            self.logger.warning(f'无法获取机器人朝向: {e}')
+        
+        return None
+    
+    def calculate_angle_to_target(self, target_x: float, target_y: float) -> Optional[float]:
+        """
+        计算机器人到目标点的角度
+        
+        Args:
+            target_x: 目标世界坐标x
+            target_y: 目标世界坐标y
+            
+        Returns:
+            float: 角度(弧度)，失败返回None
+        """
+        robot_pose = self.get_robot_pose()
+        if robot_pose is None:
+            return None
+        
+        dx = target_x - robot_pose.pose.position.x
+        dy = target_y - robot_pose.pose.position.y
+        return math.atan2(dy, dx)
+    
+    def rotate_to_heading(self, target_yaw: float, timeout: float = 20.0) -> bool:
+        """
+        旋转到指定朝向（同步，阻塞至完成）
+        
+        Args:
+            target_yaw: 目标朝向(弧度)
+            timeout: 超时时间(秒)，默认20秒
+            
+        Returns:
+            bool: 旋转成功返回True
+        """
+        import time
+        import rclpy
+        
+        # 检查是否已经在旋转
+        if self._is_spinning:
+            self.logger.warning('已经在旋转中，跳过')
+            return False
+        
+        # 等待Spin服务器
+        self.logger.info('等待Spin action服务器...')
+        if not self._spin_action_client.wait_for_server(timeout_sec=5.0):
+            self.logger.error('Spin action服务器未响应，可能未启动')
+            return False
+        
+        self.logger.info('Spin action服务器已就绪')
+        
+        # 计算需要旋转的角度
+        current_yaw = self.get_robot_yaw()
+        if current_yaw is None:
+            self.logger.error('无法获取当前朝向')
+            return False
+        
+        # 角度差归一化到[-pi, pi]
+        angle_diff = target_yaw - current_yaw
+        while angle_diff > math.pi:
+            angle_diff -= 2 * math.pi
+        while angle_diff < -math.pi:
+            angle_diff += 2 * math.pi
+        
+        self.logger.info(
+            f'🔄 旋转朝向: 当前={math.degrees(current_yaw):.1f}°, '
+            f'目标={math.degrees(target_yaw):.1f}°, '
+            f'转动={math.degrees(angle_diff):.1f}°'
+        )
+        
+        # 如果角度差很小，跳过旋转
+        if abs(angle_diff) < math.radians(5):  # 5度容差
+            self.logger.info('朝向差异较小，跳过旋转')
+            return True
+        
+        # 创建Spin目标
+        spin_goal = Spin.Goal()
+        spin_goal.target_yaw = angle_diff  # 相对旋转角度
+        
+        self._is_spinning = True
+        
+        # 发送目标
+        send_goal_future = self._spin_action_client.send_goal_async(spin_goal)
+        
+        # 等待goal被接受
+        start_time = time.time()
+        while not send_goal_future.done() and (time.time() - start_time) < timeout:
+            rclpy.spin_once(self.node, timeout_sec=0.1)
+        
+        if not send_goal_future.done():
+            self.logger.error('Spin请求超时')
+            self._is_spinning = False
+            return False
+        
+        self._spin_goal_handle = send_goal_future.result()
+        if not self._spin_goal_handle.accepted:
+            self.logger.error('Spin目标被拒绝')
+            self._is_spinning = False
+            return False
+        
+        self.logger.info('✅ Spin目标已接受，等待完成...')
+        
+        # 等待结果
+        result_future = self._spin_goal_handle.get_result_async()
+        
+        start_time = time.time()
+        while not result_future.done() and (time.time() - start_time) < timeout:
+            rclpy.spin_once(self.node, timeout_sec=0.1)
+        
+        self._is_spinning = False
+        self._spin_goal_handle = None
+        
+        if not result_future.done():
+            self.logger.error(f'Spin执行超时（>{timeout:.1f}秒）')
+            return False
+        
+        result = result_future.result()
+        if result.status == 4:  # SUCCEEDED
+            self.logger.info('✅ 旋转完成')
+            return True
+        else:
+            self.logger.warning(f'旋转失败: 状态={result.status}')
+            return False

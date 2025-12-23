@@ -20,6 +20,7 @@ exploration_manager:
     
     # 地图完成度
     map_completion_threshold: 0.78   # 地图完成度阈值（降低，因为实际可探索区域<100%）
+    min_completion_threshold: 0.75   # 最小完成度阈值（接近完成且无frontier时提前结束）
     stagnant_threshold: 2            # 停滞阈值（次数）
     
     # 相机参数

@@ -54,6 +54,7 @@ class ExplorationMapper(Node):
                 ('rotation_speed', 0.5),
                 ('forward_speed', 0.20),
                 ('map_completion_threshold', 0.90),
+                ('min_completion_threshold', 0.75),  # 最小完成度（提前完成）
                 ('safe_distance', 0.4),
                 ('camera_fov', 60.0),
                 ('goal_timeout', 100.0),
@@ -75,6 +76,7 @@ class ExplorationMapper(Node):
         self.rotation_speed = self.get_parameter('rotation_speed').value
         self.forward_speed = self.get_parameter('forward_speed').value
         self.map_completion_threshold = self.get_parameter('map_completion_threshold').value
+        self.min_completion_threshold = self.get_parameter('min_completion_threshold').value
         self.safe_distance = self.get_parameter('safe_distance').value
         self.camera_fov_rad = math.radians(self.get_parameter('camera_fov').value)
         self.goal_timeout = self.get_parameter('goal_timeout').value
@@ -93,6 +95,7 @@ class ExplorationMapper(Node):
         
         # ===== 状态变量 =====
         self.current_map = None
+        self.current_map_msg = None  # 保存原始地图消息用于坐标转换
         self.map_resolution = 0.05
         self.map_origin = None
         self.robot_pose = None
@@ -116,6 +119,17 @@ class ExplorationMapper(Node):
         self.initial_scan_done = False  # 标记是否完成初始扫描
         self.initial_scan_count = 0  # 初始扫描计数器（0-2）
         self.no_goal_count = 0
+        
+        # 旋转状态机
+        self.is_rotating = False
+        self.rotation_start_time = None
+        self.rotation_duration = 0.0
+        self.rotation_angular_vel = 0.0
+        self.rotation_target_yaw = None  # 目标朝向（使用实际反馈）
+        self.rotation_timeout = 30.0  # 旋转超时时间
+        
+        # 待处理的目标（旋转完成后发送）
+        self.pending_goal = None
         
         # ===== QoS配置 =====
         map_qos = QoSProfile(
@@ -171,6 +185,7 @@ class ExplorationMapper(Node):
     def map_callback(self, msg: OccupancyGrid):
         """地图回调 - 更新当前地图"""
         self.current_map = np.array(msg.data).reshape((msg.info.height, msg.info.width))
+        self.current_map_msg = msg  # 保存原始消息
         self.map_resolution = msg.info.resolution
         self.map_origin = (msg.info.origin.position.x, msg.info.origin.position.y)
         
@@ -194,20 +209,16 @@ class ExplorationMapper(Node):
         self.total_cells = free_cells + obstacle_cells + explorable_unknown
         
     def world_to_map(self, x, y):
-        """世界坐标转地图坐标"""
-        if self.map_origin is None:
+        """世界坐标转地图坐标（使用基类方法）"""
+        if self.current_map_msg is None:
             return None
-        mx = int((x - self.map_origin[0]) / self.map_resolution)
-        my = int((y - self.map_origin[1]) / self.map_resolution)
-        return (mx, my)
+        return self._nav_executor.world_to_map(x, y, self.current_map_msg)
     
     def map_to_world(self, mx, my):
-        """地图坐标转世界坐标"""
-        if self.map_origin is None:
+        """地图坐标转世界坐标（使用基类方法）"""
+        if self.current_map_msg is None:
             return None
-        x = mx * self.map_resolution + self.map_origin[0]
-        y = my * self.map_resolution + self.map_origin[1]
-        return (x, y)
+        return self._nav_executor.map_to_world(mx, my, self.current_map_msg)
     
     def is_frontier_cell(self, mx, my):
         """判断是否为边界点 (已知区域与未知区域的交界)"""
@@ -296,22 +307,8 @@ class ExplorationMapper(Node):
         return (0.0, 0.0)
     
     def get_robot_yaw(self):
-        """获取机器人当前朝向（yaw角）"""
-        try:
-            pose_stamped = self._nav_executor.get_robot_pose()
-            if pose_stamped:
-                # 从四元数提取yaw角
-                q = pose_stamped.pose.orientation
-                # yaw = atan2(2*(w*z + x*y), 1 - 2*(y^2 + z^2))
-                yaw = math.atan2(
-                    2.0 * (q.w * q.z + q.x * q.y),
-                    1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-                )
-                return yaw
-        except Exception as e:
-            self.get_logger().warn(f'无法获取机器人朝向: {e}', throttle_duration_sec=5.0)
-        
-        return None
+        """获取机器人当前朝向（yaw角，使用基类方法）"""
+        return self._nav_executor.get_robot_yaw()
     
     def select_best_frontier(self, frontiers):
         """选择最佳边界目标（智能策略：方向多样性 + 覆盖率优先 + 避免身后目标）"""
@@ -328,12 +325,28 @@ class ExplorationMapper(Node):
             self.get_logger().warn('无法获取机器人朝向，使用默认角度过滤')
             robot_yaw = 0.0
         
+        # 🎯 方案B：根据完成度动态调整frontier选择条件
+        completion = self.calculate_map_completion()
+        if completion >= self.min_completion_threshold:
+            # 接近完成时放宽限制
+            max_angle_deg = 90  # 从±60°放宽到±90°
+            min_distance = 0.5  # 从1.0m降低到0.5m
+            self.get_logger().info(
+                f'⚠️  接近完成({completion*100:.2f}%)，放宽选择条件: '
+                f'角度范围±{max_angle_deg}°, 最小距离{min_distance}m'
+            )
+        else:
+            max_angle_deg = 60
+            min_distance = self.min_goal_distance
+        
+        max_angle_rad = math.radians(max_angle_deg)
+        
         best_frontier = None
         best_score = -float('inf')
         
         self.get_logger().info(
             f'评估 {len(frontiers)} 个边界区域，机器人位置=({robot_pos[0]:.2f}, {robot_pos[1]:.2f}), '
-            f'朝向={math.degrees(robot_yaw):.1f}°, 停滞计数={self.stagnant_count}/{self.max_stagnant}'
+            f'朝向={math.degrees(robot_yaw):.1f}°, 完成度={completion*100:.2f}%, 停滞计数={self.stagnant_count}/{self.max_stagnant}'
         )
         
         for i, frontier in enumerate(frontiers):
@@ -359,21 +372,19 @@ class ExplorationMapper(Node):
             while relative_angle < -math.pi:
                 relative_angle += 2 * math.pi
             
-            # 跳过太近或太远的边界
-            if distance < self.min_goal_distance or distance > self.exploration_radius:
+            # 跳过太近或太远的边界（使用动态min_distance）
+            if distance < min_distance or distance > self.exploration_radius:
                 self.get_logger().info(
                     f'跳过边界{i}: 大小={len(frontier)}, 距离={distance:.2f}m '
-                    f'(要求{self.min_goal_distance}m~{self.exploration_radius}m)'
+                    f'(要求{min_distance}m~{self.exploration_radius}m)'
                 )
                 continue
             
-            # 🎯 关键优化：避免选择身后的frontier（±60度范围外）
-            # 允许范围：[-60°, +60°]，即前方120度扇形区域
-            # 禁止范围：后方240度（±60°到±180°）
-            # 原因：Na2旋转>120度时位置偏移会超过30cm容差
-            if abs(relative_angle) > (math.pi / 3):  # 60度 = π/3
+            # 🎯 关键优化：避免选择身后的frontier（使用动态max_angle）
+            # 正常模式：[-60°, +60°]，接近完成：[-90°, +90°]
+            if abs(relative_angle) > max_angle_rad:
                 self.get_logger().info(
-                    f'⚠️  跳过边界{i}: 超出120度范围 (相对角度={math.degrees(relative_angle):.1f}°), '
+                    f'⚠️  跳过边界{i}: 超出{max_angle_deg*2}度范围 (相对角度={math.degrees(relative_angle):.1f}°), '
                     f'大小={len(frontier)}, 距离={distance:.2f}m'
                 )
                 continue
@@ -452,14 +463,29 @@ class ExplorationMapper(Node):
         Returns:
             tuple: (safe_x, safe_y) 或 None
         """
+        # 🎯 方案C：根据完成度动态调整搜索范围和安全标准
+        completion = self.calculate_map_completion()
+        if completion >= self.min_completion_threshold:
+            search_radius = 2.0  # 扩大搜索范围
+            safe_distance = 0.10  # 降低安全标准
+            self.get_logger().debug(
+                f'接近完成，扩大安全点搜索: 半径={search_radius}m, 安全距离={safe_distance}m'
+            )
+        else:
+            search_radius = 1.5
+            safe_distance = self.safe_distance
+        
         if self.current_map is None:
             return None
         
         height, width = self.current_map.shape
+        
+        # 在frontier周围搜索safe点（使用动态search_radius）
+        search_radius_cells = int(search_radius / self.map_resolution)  # 转换为栅格数
         safe_candidates = []
         
-        # 计算safe_distance对应的栅格数
-        safe_cells = int(self.safe_distance / self.map_resolution)
+        # 计算safe_distance对应的栅格数（使用动态safe_distance）
+        safe_cells = int(safe_distance / self.map_resolution)
         
         # 遍历frontier的每个点
         for mx, my in frontier_cells:
@@ -478,7 +504,7 @@ class ExplorationMapper(Node):
                 if self.current_map[check_my, check_mx] != 0:
                     continue
                 
-                # 🎯 关键检查：检查该点周围safe_distance范围内是否有障碍物
+                # 🎯 关键检查：检查该点周围safe_distance范围内是否有障碍物（使用动态safe_distance）
                 has_obstacle = False
                 for dx in range(-safe_cells, safe_cells + 1):
                     for dy in range(-safe_cells, safe_cells + 1):
@@ -582,6 +608,10 @@ class ExplorationMapper(Node):
         if self.exploration_complete:
             return
         
+        # 优先处理旋转状态
+        if self.update_rotation():
+            return  # 还在旋转中，等待下次循环
+        
         # 等待地图数据
         if self.current_map is None:
             self.get_logger().info('等待地图数据...', throttle_duration_sec=5.0)
@@ -613,6 +643,29 @@ class ExplorationMapper(Node):
         # 检查导航结果
         if nav_state == NavigationState.SUCCESS:
             self.get_logger().info('✅ 导航成功')
+            
+            # 🎯 优先检查完成度（在设置任何标志前）
+            completion = self.calculate_map_completion()
+            self.get_logger().info(
+                f'🔍 检查完成度: {completion*100:.2f}% (阈值: {self.map_completion_threshold*100:.2f}%)'
+            )
+            
+            if completion >= self.map_completion_threshold:
+                self.exploration_complete = True
+                self.get_logger().info(f'✅ 地图探索完成! 完成度: {completion*100:.2f}%')
+                self.completion_pub.publish(Bool(data=True))
+                
+                # 停止机器人
+                self.stop_robot()
+                
+                # 停止定时器
+                self.exploration_timer.cancel()
+                self.status_timer.cancel()
+                self.get_logger().info('🛑 探索定时器已停止')
+                
+                # 5秒后关闭节点
+                self.create_timer(5.0, self.shutdown_node)
+                return
             
             # 检查探索效果
             new_known_cells = self.known_cells - self.last_known_cells
@@ -680,6 +733,25 @@ class ExplorationMapper(Node):
         if self._nav_executor.get_state() != NavigationState.IDLE:
             return
         
+        # 🎯 最高优先级：检查地图完成度（必须先检查，避免被其他操作阻塞）
+        completion = self.calculate_map_completion()
+        if completion >= self.map_completion_threshold:
+            self.exploration_complete = True
+            self.get_logger().info(f'✅ 地图探索完成! 完成度: {completion*100:.2f}%')
+            self.completion_pub.publish(Bool(data=True))
+            
+            # 停止机器人
+            self.stop_robot()
+            
+            # 停止定时器
+            self.exploration_timer.cancel()
+            self.status_timer.cancel()
+            self.get_logger().info('🛑 探索定时器已停止')
+            
+            # 5秒后关闭节点
+            self.create_timer(5.0, self.shutdown_node)
+            return
+        
         # 检查是否需要执行90度扫描（单次快速扫描）
         if self.need_360_scan:
             self.get_logger().info('📷 执行90度扫描以提高建图质量')
@@ -705,30 +777,11 @@ class ExplorationMapper(Node):
                 time.sleep(0.3)
                 self.rotate_in_place(angle_degrees=100)
                 self.initial_scan_count += 1
-                return
+                return  # 等待旋转完成
             else:
                 self.initial_scan_done = True
                 self.get_logger().info('✅ 初始扫描完成，开始自主导航')
                 # 继续执行后续逻辑
-        
-        # 检查地图完成度
-        completion = self.calculate_map_completion()
-        if completion >= self.map_completion_threshold:
-            self.exploration_complete = True
-            self.get_logger().info(f'✅ 地图探索完成! 完成度: {completion*100:.1f}%')
-            self.completion_pub.publish(Bool(data=True))
-            
-            # 停止机器人
-            self.stop_robot()
-            
-            # 停止定时器
-            self.exploration_timer.cancel()
-            self.status_timer.cancel()
-            self.get_logger().info('🛑 探索定时器已停止')
-            
-            # 5秒后关闭节点
-            self.create_timer(5.0, self.shutdown_node)
-            return
         
         # 寻找边界
         frontiers = self.find_frontiers()
@@ -765,7 +818,21 @@ class ExplorationMapper(Node):
         # 选择最佳目标
         best_frontier = self.select_best_frontier(frontiers)
         
+        # 🎯 方案A：接近完成且无有效frontier时提前结束
         if best_frontier is None:
+            completion = self.calculate_map_completion()
+            if completion >= self.min_completion_threshold:
+                self.exploration_complete = True
+                self.get_logger().info(
+                    f'🎉 探索接近完成({completion*100:.2f}%)且无有效frontier，提前结束'
+                )
+                self.completion_pub.publish(Bool(data=True))
+                self.stop_robot()
+                self.exploration_timer.cancel()
+                self.status_timer.cancel()
+                self.create_timer(5.0, self.shutdown_node)
+                return
+            
             # 如果没有找到目标，可能所有frontier都太近或已访问过
             self.no_goal_count += 1
             self.get_logger().warn(
@@ -822,12 +889,46 @@ class ExplorationMapper(Node):
         if len(self.visited_frontiers) > 10:
             self.visited_frontiers.pop(0)
         
+        # 🎯 关键优化：两步导航策略
+        # 第一步：调整朝向让camera frame朝向目标方向
+        target_angle = self._nav_executor.calculate_angle_to_target(target_pos[0], target_pos[1])
+        
+        if target_angle is not None:
+            robot_yaw = self.get_robot_yaw()
+            if robot_yaw is not None:
+                angle_diff = target_angle - robot_yaw
+                # 归一化到[-pi, pi]
+                while angle_diff > math.pi:
+                    angle_diff -= 2 * math.pi
+                while angle_diff < -math.pi:
+                    angle_diff += 2 * math.pi
+                
+                # 如果角度差超过10度，先旋转对准
+                if abs(angle_diff) > math.radians(10):
+                    self.get_logger().info(
+                        f'🔄 第一步: 调整朝向对准目标 '
+                        f'(需转动{math.degrees(angle_diff):.1f}°)'
+                    )
+                    
+                    # 保存目标信息，旋转完成后发送
+                    target_yaw = self.calculate_yaw_to_target(target_pos[0], target_pos[1])
+                    self.pending_goal = {
+                        'position': target_pos,
+                        'yaw': target_yaw,
+                        'frontier_info': (frontier_size, distance, direction)
+                    }
+                    
+                    # 直接使用cmd_vel旋转
+                    angle_to_rotate = math.degrees(angle_diff)
+                    self.rotate_in_place(angle_degrees=angle_to_rotate)
+                    return  # 等待旋转完成
+        
         # 计算朝向目标的yaw角
         target_yaw = self.calculate_yaw_to_target(target_pos[0], target_pos[1])
         
-        # 发送导航目标
+        # 第二步：发送导航目标
         self.get_logger().info(
-            f'🎯 选定目标: 大小={frontier_size}, 距离={distance:.2f}m, '
+            f'🎯 第二步: 向目标移动 - 大小={frontier_size}, 距离={distance:.2f}m, '
             f'方向={math.degrees(direction):.1f}°, '
             f'位置=({target_pos[0]:.2f}, {target_pos[1]:.2f})'
         )
@@ -838,58 +939,147 @@ class ExplorationMapper(Node):
         self.send_navigation_goal(target_pos[0], target_pos[1], target_yaw)
     
     def rotate_in_place(self, angle_degrees=90):
-        """原地旋转指定角度以获取更多视野（使用Nav2 Spin action）"""
-        self.get_logger().info(f'🔄 执行原地旋转{angle_degrees}度...')
-        
-        # 等待Spin服务器
-        if not self.spin_client.wait_for_server(timeout_sec=2.0):
-            self.get_logger().error('❌ Spin action服务器未响应')
+        """启动原地旋转（非阻塞，基于实际朝向反馈）"""
+        if self.is_rotating:
+            self.get_logger().warn('已经在旋转中，跳过')
             return
         
-        # 创建Spin目标
-        spin_goal = Spin.Goal()
-        spin_goal.target_yaw = math.radians(angle_degrees)  # 转换为弧度
-        
-        self.get_logger().info(f'📤 发送Spin请求: {angle_degrees}度')
-        
-        # 发送目标（异步）
-        send_goal_future = self.spin_client.send_goal_async(spin_goal)
-        
-        # 简单的同步等待（最多10秒）
-        start_time = time.time()
-        while not send_goal_future.done() and (time.time() - start_time) < 10.0:
-            rclpy.spin_once(self, timeout_sec=0.1)
-        
-        if not send_goal_future.done():
-            self.get_logger().warn('⚠️  Spin请求超时')
+        # 获取当前朝向
+        current_yaw = self.get_robot_yaw()
+        if current_yaw is None:
+            self.get_logger().error('无法获取当前朝向，旋转取消')
             return
         
-        goal_handle = send_goal_future.result()
-        if not goal_handle.accepted:
-            self.get_logger().error('❌ Spin目标被拒绝')
-            return
+        # 计算目标朝向
+        angle_rad = math.radians(angle_degrees)
+        self.rotation_target_yaw = current_yaw + angle_rad
         
-        self.get_logger().info('✅ Spin目标已接受，等待完成...')
+        # 归一化到[-pi, pi]
+        while self.rotation_target_yaw > math.pi:
+            self.rotation_target_yaw -= 2 * math.pi
+        while self.rotation_target_yaw < -math.pi:
+            self.rotation_target_yaw += 2 * math.pi
         
-        # 等待结果（最多angle_degrees/30秒，假设30度/秒转速）
-        result_future = goal_handle.get_result_async()
-        timeout = max(abs(angle_degrees) / 30.0, 5.0)  # 至少5秒
+        self.get_logger().info(
+            f'🔄 开始旋转{angle_degrees}度: '
+            f'当前朝向={math.degrees(current_yaw):.1f}°, '
+            f'目标朝向={math.degrees(self.rotation_target_yaw):.1f}°'
+        )
         
-        start_time = time.time()
-        while not result_future.done() and (time.time() - start_time) < timeout:
-            rclpy.spin_once(self, timeout_sec=0.1)
+        # 确定旋转方向
+        self.rotation_angular_vel = self.rotation_speed if angle_degrees > 0 else -self.rotation_speed
         
-        if result_future.done():
-            result = result_future.result()
-            if result.status == 4:  # SUCCEEDED
-                self.get_logger().info(f'✅ 旋转{angle_degrees}度完成')
-            else:
-                self.get_logger().warn(f'⚠️  旋转结果: 状态={result.status}')
+        # 设置旋转状态
+        self.is_rotating = True
+        self.rotation_start_time = time.time()
+    
+    def update_rotation(self):
+        """更新旋转状态（基于实际朝向反馈）"""
+        if not self.is_rotating:
+            return False
+        
+        elapsed = time.time() - self.rotation_start_time
+        
+        # 检查超时
+        if elapsed > self.rotation_timeout:
+            self.get_logger().warn(f'⚠️  旋转超时（>{self.rotation_timeout:.1f}秒），强制停止')
+            twist = Twist()
+            twist.angular.z = 0.0
+            self.cmd_vel_pub.publish(twist)
+            self.is_rotating = False
+            return False
+        
+        # 获取当前朝向
+        current_yaw = self.get_robot_yaw()
+        if current_yaw is None:
+            # 无法获取朝向，继续旋转
+            twist = Twist()
+            twist.angular.z = self.rotation_angular_vel
+            self.cmd_vel_pub.publish(twist)
+            return True
+        
+        # 计算角度差
+        angle_diff = self.rotation_target_yaw - current_yaw
+        # 归一化到[-pi, pi]
+        while angle_diff > math.pi:
+            angle_diff -= 2 * math.pi
+        while angle_diff < -math.pi:
+            angle_diff += 2 * math.pi
+        
+        # 判断是否达到目标（5度容差）
+        if abs(angle_diff) < math.radians(5):
+            # 旋转完成
+            twist = Twist()
+            twist.angular.z = 0.0
+            self.cmd_vel_pub.publish(twist)
+            
+            self.is_rotating = False
+            self.rotation_start_time = None
+            self.rotation_target_yaw = None
+            
+            self.get_logger().info(
+                f'✅ 旋转完成（耗时{elapsed:.1f}秒，'
+                f'当前朝向={math.degrees(current_yaw):.1f}°）'
+            )
+            
+            # 旋转后清空访问记录
+            self.visited_frontiers.clear()
+            
+            # 旋转完成后立即检查完成度
+            completion = self.calculate_map_completion()
+            if completion >= self.map_completion_threshold:
+                self.exploration_complete = True
+                self.get_logger().info(f'✅ 地图探索完成! 完成度: {completion*100:.2f}%')
+                self.completion_pub.publish(Bool(data=True))
+                
+                # 停止机器人
+                self.stop_robot()
+                
+                # 停止定时器
+                self.exploration_timer.cancel()
+                self.status_timer.cancel()
+                self.get_logger().info('🛑 探索定时器已停止')
+                
+                # 5秒后关闭节点
+                self.create_timer(5.0, self.shutdown_node)
+                return False
+            
+            # 检查是否有待发送的目标（朝向对准后）
+            if self.pending_goal is not None:
+                self.get_logger().info('✅ 朝向对准完成，发送导航目标')
+                
+                goal_info = self.pending_goal
+                target_pos = goal_info['position']
+                target_yaw = goal_info['yaw']
+                frontier_size, distance, direction = goal_info['frontier_info']
+                
+                self.get_logger().info(
+                    f'🎯 第二步: 向目标移动 - 大小={frontier_size}, 距离={distance:.2f}m, '
+                    f'方向={math.degrees(direction):.1f}°, '
+                    f'位置=({target_pos[0]:.2f}, {target_pos[1]:.2f})'
+                )
+                
+                self.no_goal_count = 0
+                self.send_navigation_goal(target_pos[0], target_pos[1], target_yaw)
+                
+                self.pending_goal = None
+            
+            return False  # 旋转完成
         else:
-            self.get_logger().warn(f'⚠️  旋转超时（>{timeout:.1f}秒）')
-        
-        # 旋转后清空访问记录，允许重新尝试之前跳过的frontier
-        self.visited_frontiers.clear()
+            # 继续旋转
+            twist = Twist()
+            twist.angular.z = self.rotation_angular_vel
+            self.cmd_vel_pub.publish(twist)
+            
+            # 每5秒输出一次进度
+            if int(elapsed) % 5 == 0 and elapsed > 0:
+                self.get_logger().info(
+                    f'🔄 旋转中... 剩余{math.degrees(abs(angle_diff)):.1f}° '
+                    f'(已耗时{elapsed:.1f}秒)',
+                    throttle_duration_sec=4.9
+                )
+            
+            return True  # 还在旋转中
     
     def _get_camera_yaw(self):
         """获取camera_optical_frame相对于map的yaw角度"""
@@ -972,7 +1162,7 @@ class ExplorationMapper(Node):
         completion = self.calculate_map_completion()
         
         self.get_logger().info(
-            f'📊 状态: 完成度={completion*100:.1f}%, '
+            f'📊 状态: 完成度={completion*100:.2f}%, '
             f'已知区域={self.known_cells}, 总区域={self.total_cells}'
         )
     
