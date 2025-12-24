@@ -180,10 +180,10 @@ controller_server:
       # 轨迹生成参数 / Trajectory generation parameters
       vx_samples: 20
       vy_samples: 10                # 全向运动采样 / Omnidirectional sampling
-      vtheta_samples: 20
-      sim_time: 1.5
-      linear_granularity: 0.05
-      angular_granularity: 0.025
+      vtheta_samples: 12            # 优化: 20 -> 12 (减少角速度采样，稳定朝向)
+      sim_time: 2.0                 # 优化: 1.5 -> 2.0 (延长预测时间，平滑朝向调整)
+      linear_granularity: 0.03      # 优化: 0.05 -> 0.03 (更密集采样)
+      angular_granularity: 0.015    # 优化: 0.025 -> 0.015 (更精细角度控制)
       transform_tolerance: 0.2
       
       # 短距离容差 / Short distance tolerance
@@ -197,18 +197,30 @@ controller_server:
       # 评价器 / Critics
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       
-      # 提高障碍物代价权重，让机器人更倾向于远离障碍物的路径
-      # Increase obstacle cost weight for paths further from obstacles
-      BaseObstacle.scale: 0.05  # 增加: 0.02 -> 0.05
-      PathAlign.scale: 32.0
-      PathAlign.forward_point_distance: 0.1
-      GoalAlign.scale: 24.0
-      GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 32.0
-      GoalDist.scale: 24.0
-      RotateToGoal.scale: 32.0
-      RotateToGoal.slowing_factor: 5.0
+      # 优化权重：强化车头朝向对齐，保持全向运动能力
+      # Optimized weights: enforce heading alignment while keeping omnidirectional capability
+      
+      # 路径对齐 - 最高优先级 (强制车头沿路径方向) / Path alignment - highest priority
+      PathAlign.scale: 128.0                    # 优化: 32.0 -> 128.0 (提高4倍)
+      PathAlign.forward_point_distance: 0.4     # 优化: 0.1 -> 0.4 (提前0.4m调整朝向)
+      
+      # 目标对齐 - 次高优先级 (接近目标时车头朝向目标) / Goal alignment - second priority
+      GoalAlign.scale: 96.0                     # 优化: 24.0 -> 96.0 (提高4倍)
+      GoalAlign.forward_point_distance: 0.3     # 优化: 0.1 -> 0.3 (提前0.3m调整朝向)
+      
+      # 旋转到目标 - 高优先级 / Rotate to goal - high priority
+      RotateToGoal.scale: 64.0                  # 优化: 32.0 -> 64.0 (提高2倍)
+      RotateToGoal.slowing_factor: 3.0          # 优化: 5.0 -> 3.0 (更早开始减速转向)
       RotateToGoal.lookahead_time: -1.0
+      
+      # 路径距离 - 降低优先级 (让位于朝向对齐) / Path distance - lower priority
+      PathDist.scale: 20.0                      # 优化: 32.0 -> 20.0
+      
+      # 目标距离 - 降低优先级 / Goal distance - lower priority  
+      GoalDist.scale: 16.0                      # 优化: 24.0 -> 16.0
+      
+      # 障碍物避障 - 略微降低 (允许朝向优先) / Obstacle avoidance - slightly lower
+      BaseObstacle.scale: 0.04                  # 优化: 0.05 -> 0.04
 
 local_costmap:
   local_costmap:
