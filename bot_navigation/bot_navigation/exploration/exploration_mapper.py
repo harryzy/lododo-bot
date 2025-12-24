@@ -36,12 +36,12 @@ import time
 from typing import Tuple, Optional
 
 # 导入重构模块 / Import refactored modules
-from .navigation_executor import NavigationExecutor, NavigationState
+from ..navigation.navigation_executor import NavigationExecutor, NavigationState
 from .exploration_utils import map_utils, pose_utils, math_utils
 from .frontier_detector import FrontierDetector
 from .exploration_strategy import ExplorationStrategy
-from .rotation_controller import RotationController
-from .safety_manager import SafetyManager
+from ..utils.rotation_controller import RotationController
+from ..utils.safety_manager import SafetyManager
 
 
 class ExplorationMapper(Node):

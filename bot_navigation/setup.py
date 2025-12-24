@@ -49,11 +49,15 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'exploration_mapper = bot_navigation.exploration_mapper:main',
-            'mission_planner = bot_navigation.mission_planner:main',
-            'patrol_node = bot_navigation.patrol_node:main',
-            'map_saver_node = bot_navigation.map_saver_node:main',
-            'map_loader_node = bot_navigation.map_loader_node:main',
+            # Exploration / 探索模块
+            'exploration_mapper = bot_navigation.exploration.exploration_mapper:main',
+            # Map management / 地图管理模块
+            'map_saver_node = bot_navigation.map.map_saver_node:main',
+            'map_loader_node = bot_navigation.map.map_loader_node:main',
+            # Patrol / 巡逻模块
+            'patrol_node = bot_navigation.patrol.patrol_node:main',
+            # Navigation / 导航模块
+            'mission_planner = bot_navigation.navigation.mission_planner:main',
         ],
     },
 )

@@ -14,7 +14,7 @@ from typing import Optional, Tuple, List
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 
-from .exploration_utils import MapUtils, coordinate_converter, math_utils
+from ..exploration.exploration_utils import MapUtils, coordinate_converter, math_utils
 
 
 class SafetyManager:

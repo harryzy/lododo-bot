@@ -444,7 +444,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         executable='rviz2',
         name='rviz2',
         output='screen',
-        arguments=['-d', rviz_config],
+        arguments=['-d', rviz_config, '--ros-args', '--log-level', 'warn'],
         parameters=[{'use_sim_time': use_sim_time_str == 'true'}],
         condition=IfCondition(use_rviz)
     )

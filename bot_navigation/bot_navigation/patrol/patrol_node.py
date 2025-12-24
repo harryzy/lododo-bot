@@ -25,7 +25,7 @@ import time
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
-from .navigation_executor import NavigationExecutor, NavigationState
+from ..navigation.navigation_executor import NavigationExecutor, NavigationState
 
 
 @dataclass

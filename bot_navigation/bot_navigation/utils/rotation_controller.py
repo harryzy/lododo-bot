@@ -15,7 +15,7 @@ from typing import Optional, Tuple
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import OccupancyGrid
 
-from .exploration_utils import math_utils
+from ..exploration.exploration_utils import math_utils
 
 
 class RotationController:
@@ -123,8 +123,8 @@ class RotationController:
             else:
                 inner_radius = 6   # 0.3米内必须完全无障碍 / Must be completely clear within 0.3m  
                 outer_radius = 10  # 0.5米内不能有真障碍物 / No real obstacles within 0.5m
-                inner_threshold = 90  # 内圈：膨胀层也要避开 / Inner: avoid inflation too
-                outer_threshold = 100 # 外圈：必须是真障碍物才停止 / Outer: must be real obstacle to stop
+                inner_threshold = 80  # 优化: 90->80 (放宽内圈阈值，减少误报)
+                outer_threshold = 95  # 优化: 100->95 (略微放宽外圈)
             
             # 分层检查：内圈严格，外圈宽松 / Layered check: strict inner, lenient outer
             # local_costmap resolution通常是0.05m / local_costmap resolution is usually 0.05m
@@ -435,7 +435,7 @@ class RotationController:
                 check_y = robot_pos[1] + dist * math.sin(angle_rad)
                 
                 # 转换为栅格坐标 / Convert to grid coordinates
-                from .exploration_utils import coordinate_converter
+                from ..exploration.exploration_utils import coordinate_converter
                 check_coords = coordinate_converter.world_to_map(check_x, check_y, map_msg)
                 if check_coords is None:
                     continue

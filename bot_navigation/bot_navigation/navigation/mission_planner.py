@@ -27,7 +27,7 @@ from std_msgs.msg import String, Bool
 # )
 
 from .task_manager import TaskManager, TaskType, TaskState
-from .patrol_manager import PatrolManager
+from ..patrol.patrol_manager import PatrolManager
 from .waypoint_recorder import WaypointRecorder
 from .navigation_executor import NavigationExecutor
 
