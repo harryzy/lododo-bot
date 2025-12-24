@@ -197,7 +197,9 @@ controller_server:
       # 评价器 / Critics
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       
-      BaseObstacle.scale: 0.02
+      # 提高障碍物代价权重，让机器人更倾向于远离障碍物的路径
+      # Increase obstacle cost weight for paths further from obstacles
+      BaseObstacle.scale: 0.05  # 增加: 0.02 -> 0.05
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
@@ -263,8 +265,11 @@ local_costmap:
       # 膨胀层 / Inflation layer
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # 降低cost_scaling_factor让代价衰减更快，机器人会更倾向于远离障碍物
+        # Lower cost_scaling_factor for faster decay, robot prefers paths further from obstacles
+        cost_scaling_factor: 5.0  # 增加: 3.0 -> 5.0
+        # 增加膨胀半径，扩大安全区域 / Increase inflation radius for larger safety zone
+        inflation_radius: 0.45    # 增加: 0.35 -> 0.45
       
       always_send_full_costmap: True
 
@@ -328,8 +333,11 @@ global_costmap:
       # 膨胀层 / Inflation layer
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # 降低cost_scaling_factor让代价衰减更快，机器人会更倾向于远离障碍物
+        # Lower cost_scaling_factor for faster decay, robot prefers paths further from obstacles
+        cost_scaling_factor: 5.0  # 增加: 3.0 -> 5.0
+        # 增加膨胀半径，扩大安全区域 / Increase inflation radius for larger safety zone
+        inflation_radius: 0.45    # 增加: 0.35 -> 0.45
       
       always_send_full_costmap: True
 
