@@ -26,6 +26,9 @@ setup(
         # 探索配置文件 / Exploration config files (预留)
         (os.path.join('share', package_name, 'config', 'exploration'), 
             glob(os.path.join('config', 'exploration', '*.yaml'))),
+        # 巡航配置文件 / Patrol config files  
+        (os.path.join('share', package_name, 'config'), 
+            glob(os.path.join('config', 'patrol_waypoints.yaml'))),
         # RViz 配置文件 / RViz config files
         (os.path.join('share', package_name, 'config', 'rviz'), 
             glob(os.path.join('config', 'rviz', '*.rviz'))),
@@ -48,6 +51,9 @@ setup(
         'console_scripts': [
             'exploration_mapper = bot_navigation.exploration_mapper:main',
             'mission_planner = bot_navigation.mission_planner:main',
+            'patrol_node = bot_navigation.patrol_node:main',
+            'map_saver_node = bot_navigation.map_saver_node:main',
+            'map_loader_node = bot_navigation.map_loader_node:main',
         ],
     },
 )

@@ -348,8 +348,9 @@ global_costmap:
         # 降低cost_scaling_factor让代价衰减更快，机器人会更倾向于远离障碍物
         # Lower cost_scaling_factor for faster decay, robot prefers paths further from obstacles
         cost_scaling_factor: 5.0  # 增加: 3.0 -> 5.0
-        # 增加膨胀半径，扩大安全区域 / Increase inflation radius for larger safety zone
-        inflation_radius: 0.45    # 增加: 0.35 -> 0.45
+        # 探索模式：减小膨胀半径，允许更接近障碍物的目标点
+        # Exploration mode: reduce inflation for goals closer to obstacles
+        inflation_radius: 0.30    # 优化: 0.45 -> 0.30 (探索需要更小的安全区)
       
       always_send_full_costmap: True
 
@@ -370,16 +371,32 @@ planner_server:
   ros__parameters:
     use_sim_time: True
     
-    expected_planner_frequency: 20.0
+    # 降低期望频率以匹配实际性能 / Lower expected frequency to match actual performance
+    expected_planner_frequency: 5.0  # 优化: 20.0 -> 5.0 (匹配实际能力)
+    
+    # 规划器超时保护 / Planner timeout protection
+    action_server_result_timeout: 10.0
+    planner_server_timeout: 5.0
     
     planner_plugins: ["GridBased"]
     
-    # NavFn 全局规划器 / NavFn global planner
+    # NavFn 全局规划器 - 优化配置 / NavFn global planner - optimized
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.5
-      use_astar: false
+      # 增加容差，允许更灵活的目标点 / Increase tolerance for more flexible goals
+      tolerance: 1.0              # 优化: 0.5 -> 1.0
+      # 启用A*算法，加快规划速度 / Enable A* for faster planning
+      use_astar: true             # 优化: false -> true (A*比Dijkstra快3-5倍)
+      # 允许穿过未知区域（探索必需）/ Allow unknown space (required for exploration)
       allow_unknown: true
+      # 使用二次近似以提升性能 / Use quadratic approximation for better performance
+      use_quadratic_approximation: true
+      # 对角线移动代价（sqrt(2) ≈ 1.414）/ Diagonal move cost
+      neutral_cost: 50
+      # 致命障碍物代价 / Lethal obstacle cost  
+      lethal_cost: 253
+      # 代价因子（降低以放宽路径选择）/ Cost factor (lower for more flexible paths)
+      cost_factor: 0.55           # 默认值，可调整
 
 smoother_server:
   ros__parameters:

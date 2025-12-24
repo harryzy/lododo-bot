@@ -819,8 +819,14 @@ class ExplorationMapper(Node):
             self._exploration_strategy.update_visited_frontier(safe_target)
             # 增加失败计数，达到阈值后触发脱困 / Increment failure count, trigger escape if threshold reached
             if self._exploration_strategy.increment_failure_count():
-                self.get_logger().warn('Multiple safety check failures, triggering escape rotation')
-                self._rotation_controller.start_escape_rotation(self.get_robot_yaw, self.pending_goal)
+                # 检查是否连续旋转失败 / Check if consecutive rotation failures
+                if self._rotation_controller.consecutive_rotation_failures >= self._rotation_controller.max_consecutive_rotation_failures:
+                    self.get_logger().warn('Multiple rotation failures detected, performing backward escape')
+                    self._perform_backward_escape()
+                    self._rotation_controller.consecutive_rotation_failures = 0
+                else:
+                    self.get_logger().warn('Multiple safety check failures, triggering escape rotation')
+                    self._rotation_controller.start_escape_rotation(self.get_robot_yaw, self.pending_goal)
                 self._exploration_strategy.reset_failure_count()
             return
         
@@ -1089,6 +1095,41 @@ class ExplorationMapper(Node):
             f'rotating={rotation_status["is_rotating"]}, '
             f'safe={safety_status["safety_violations"]}/{safety_status["max_safety_violations"]}'
         )
+    
+    def _perform_backward_escape(self):
+        """执行后退脱困 / Perform backward escape"""
+        self.get_logger().info('🔙 Performing backward escape maneuver...')
+        
+        # 发送后退速度命令 / Send backward velocity command
+        cmd = Twist()
+        cmd.linear.x = -0.15  # 后退速度 / Backward speed
+        cmd.angular.z = 0.0
+        
+        # 后退1.5秒 / Move backward for 1.5 seconds
+        backward_duration = 1.5
+        start_time = time.time()
+        rate = self.create_rate(20)  # 20Hz
+        
+        while (time.time() - start_time) < backward_duration:
+            # 检查后方是否有障碍物 / Check if obstacle behind
+            if self._safety_manager.check_backward_safety(self.local_costmap, self.get_robot_position()):
+                self._rotation_controller.cmd_vel_pub.publish(cmd)
+            else:
+                self.get_logger().warn('Obstacle detected behind, stopping backward escape')
+                break
+            try:
+                rate.sleep()
+            except:
+                break
+        
+        # 停止移动 / Stop movement
+        cmd.linear.x = 0.0
+        self._rotation_controller.cmd_vel_pub.publish(cmd)
+        
+        self.get_logger().info('Backward escape completed')
+        
+        # 清空访问记录，允许重新尝试之前的frontiers / Clear visit records to retry previous frontiers
+        self._exploration_strategy.evaluator.visited_frontiers.clear()
     
     def _terminate_exploration(self, success: bool = True):
         """终止探索 / Terminate exploration"""

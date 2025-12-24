@@ -1,0 +1,32 @@
+# 巡航路点配置示例 / Patrol waypoints configuration example
+# 文件路径: src/bot_navigation/config/patrol_waypoints.yaml
+
+waypoints:
+  - name: "起点"
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+    dwell_time: 3.0
+    
+  - name: "点1"
+    x: 2.0
+    y: 0.0
+    yaw: 0.0
+    dwell_time: 2.0
+    
+  - name: "点2"
+    x: 2.0
+    y: 2.0
+    yaw: 1.57  # 90度
+    dwell_time: 2.0
+    
+  - name: "点3"
+    x: 0.0
+    y: 2.0
+    yaw: 3.14  # 180度
+    dwell_time: 2.0
+
+# 巡航设置（在launch文件中配置）/ Patrol settings (configured in launch file)
+# patrol_mode: loop        # loop, ping_pong, once, random
+# max_loops: -1            # -1表示无限循环
+# default_dwell_time: 2.0  # 默认停留时间

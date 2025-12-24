@@ -85,6 +85,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     use_rviz_str = LaunchConfiguration('use_rviz').perform(context)
     rviz_config = LaunchConfiguration('rviz_config')
     nav2_params = LaunchConfiguration('nav2_params')
+    log_level = LaunchConfiguration('log_level')
+    log_level_str = LaunchConfiguration('log_level').perform(context)
     
     # ==========================================================================
     # Package Directories / 包目录
@@ -189,7 +191,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         parameters=[{
             'use_sim_time': use_sim_time_str == 'true',
             'robot_description': robot_description_content
-        }]
+        }],
+        arguments=['--ros-args', '--log-level', log_level_str]
     )
     
     # Spawn robot (simplified model) / 生成机器人（简化模型）
@@ -236,6 +239,9 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         executable='omni_controller_node',
         name='omni_controller_node',
         output='screen',
+        arguments=[
+            '--ros-args', '--log-level', log_level_str
+        ],
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'use_simple_model': True,  # Use simplified model
@@ -263,6 +269,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         arguments=[
             '/imu/data',
             '/imu/data',
+            '--ros-args', '--log-level', log_level_str
         ],
         parameters=[{
             'use_sim_time': use_sim_time_str == 'true',
@@ -279,7 +286,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         package='tf2_ros',
         executable='static_transform_publisher',
         name='static_map_to_odom_fallback',
-        arguments=['--x', '0', '--y', '0', '--z', '0', '--roll', '0', '--pitch', '0', '--yaw', '0', '--frame-id', 'map', '--child-frame-id', 'odom'],
+        arguments=['--x', '0', '--y', '0', '--z', '0', '--roll', '0', '--pitch', '0', '--yaw', '0', '--frame-id', 'map', '--child-frame-id', 'odom', '--ros-args', '--log-level', log_level_str],
         parameters=[{
             'use_sim_time': use_sim_time_str == 'true',
         }]
@@ -315,7 +322,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         ],
         arguments=[
             '--delete_db_on_start',  # Start fresh each time / 每次重新开始
-            '--ros-args', '--log-level', 'rtabmap:=warn'  # Set log level to WARN / 设置日志级别为警告
+            '--ros-args', '--log-level', log_level_str  # Use launch parameter log level / 使用启动参数日志级别
         ]
     )
     
@@ -351,6 +358,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         executable='point_cloud_xyz',
         name='point_cloud_xyz',
         output='screen',
+        arguments=['--ros-args', '--log-level', log_level_str],
         parameters=[{
             'use_sim_time': use_sim_time_str == 'true',
             'decimation': 2,        # Decimate depth image by factor 2 (faster) / 深度图降采样2倍（更快）
@@ -372,6 +380,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         executable='obstacles_detection',
         name='obstacles_detection',
         output='screen',
+        arguments=['--ros-args', '--log-level', log_level_str],
         parameters=[{
             'use_sim_time': use_sim_time_str == 'true',
             'frame_id': 'base_link',
@@ -406,6 +415,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         executable='ekf_node',
         name='ekf_filter_node',
         output='screen',
+        arguments=['--ros-args', '--log-level', log_level_str],
         parameters=[ekf_config],
     )
     
@@ -624,6 +634,12 @@ def generate_launch_description():
         description='Nav2 parameters file / Nav2 参数文件'
     )
     
+    declare_log_level = DeclareLaunchArgument(
+        'log_level',
+        default_value='info',
+        description='Log level (debug, info, warn, error, fatal) / 日志级别'
+    )
+    
     # ==========================================================================
     # Launch Description / 启动描述
     # ==========================================================================
@@ -635,5 +651,6 @@ def generate_launch_description():
         declare_use_rviz,
         declare_rviz_config,
         declare_nav2_params,
+        declare_log_level,
         OpaqueFunction(function=launch_setup)
     ])

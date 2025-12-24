@@ -66,6 +66,10 @@ class RotationController:
         self.initial_scan_count = 0
         self.max_initial_scans = 3
         self.initial_scan_angle = 100
+        
+        # 连续旋转失败计数器 / Consecutive rotation failure counter
+        self.consecutive_rotation_failures = 0
+        self.max_consecutive_rotation_failures = 3
     
     def configure(self, config: dict):
         """
@@ -233,7 +237,8 @@ class RotationController:
         
         # 🛡️ 检查旋转路径安全性 / Check rotation path safety
         if not self.check_rotation_safety():
-            self.node.get_logger().warn('Detected obstacle during rotation, stopping rotation')
+            self.consecutive_rotation_failures += 1
+            self.node.get_logger().warn(f'Detected obstacle during rotation, stopping rotation (failure #{self.consecutive_rotation_failures})')
             self._stop_rotation()
             self.rotation_completed_successfully = False  # 障碍物中断不算成功完成 / Obstacle interruption is not successful completion
             self.after_pre_movement = False  # 遇到障碍时重置标志 / Reset flag when obstacle detected
@@ -271,6 +276,8 @@ class RotationController:
             self._stop_rotation()
             self.rotation_completed_successfully = True  # 标记为成功完成 / Mark as successfully completed
             self.after_pre_movement = False  # 旋转完成后重置标志 / Reset flag after rotation completes
+            self.consecutive_rotation_failures = 0  # 重置失败计数 / Reset failure counter
+            self.consecutive_rotation_failures = 0  # 重置失败计数 / Reset failure counter
             
             self.node.get_logger().info(
                 f'Rotation completed (elapsed: {elapsed:.1f}s, '

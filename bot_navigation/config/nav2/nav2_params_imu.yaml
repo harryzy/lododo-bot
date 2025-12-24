@@ -140,12 +140,12 @@ controller_server:
     # Progress Checker - 使用PoseProgressChecker支持旋转检测
     # Use PoseProgressChecker to detect BOTH linear and angular movement
     # 使用PoseProgressChecker同时检测线性和角度运动
-    # 探索模式：放宽限制，避免探索时频繁timeout
+    # 探索模式：进一步放宽限制，避免探索时频繁timeout
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker"
-      required_movement_radius: 0.12   # 线性位移12cm
+      required_movement_radius: 0.15   # 优化: 0.12 -> 0.15 (放宽线性位移要求)
       required_movement_angle: 0.174   # 或角度变化10度(0.174弧度)，满足一个即可
-      movement_time_allowance: 20.0    # 20秒内需有进度，避免卡住太久
+      movement_time_allowance: 30.0    # 优化: 20.0 -> 30.0 (给予更多时间)
     
     # 目标检查器 / Goal checker
     goal_checker_plugins: ["general_goal_checker"]
@@ -294,14 +294,13 @@ local_costmap:
       # 膨胀层 / Inflation layer
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # 成本缩放因子: 提高到3.0，使膨胀区惩罚更平缓，允许贴边行驶
+        # 成本缩放因子: 提高到5.0，使膨胀区惩罚更平缓，允许贴边行驶
         # Higher value = gentler cost gradient, robot can get closer to obstacles
         # cost_scaling_factor越大，代价衰减越慢，机器人越不惧怕膨胀区
-        cost_scaling_factor: 3.0
-        # 膨胀半径进一步减小到0.18m，支持室内窄通道导航
-        # inflation_radius = robot_radius + 安全距离
-        # 0.18 = 0.12 + 0.06m 最小安全裕度，允许更贴近障碍物
-        inflation_radius: 0.18
+        cost_scaling_factor: 5.0  # 优化: 3.0 -> 5.0
+        # 局部代价地图保持较小膨胀半径以支持窄通道
+        # Local costmap keeps smaller inflation for narrow passages
+        inflation_radius: 0.25    # 优化: 0.18 -> 0.25 (略微增加安全余量)
       
       always_send_full_costmap: False  # 从 True 改为 False，只发送更新
 
@@ -370,12 +369,14 @@ global_costmap:
           inf_is_valid: true
       
       # 膨胀层 / Inflation layer
-      # Reduced for indoor narrow corridors: robot_radius (0.12m) + safety_distance (0.06m) = 0.18m
-      # 减小以支持室内窄通道：机器人半径(0.12m) + 安全距离(0.06m) = 0.18m
+      # 探索模式：适度膨胀，平衡安全性和可达性
+      # Exploration mode: moderate inflation, balance safety and reachability
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.18
+        cost_scaling_factor: 5.0  # 优化: 3.0 -> 5.0 (更快衰减)
+        # 探索模式：减小膨胀半径，允许更接近障碍物的目标点
+        # Exploration mode: reduce inflation for goals closer to obstacles
+        inflation_radius: 0.30    # 优化: 0.18 -> 0.30 (探索需要更大安全区)
       
       always_send_full_costmap: False  # 只发送更新
 
@@ -396,16 +397,32 @@ planner_server:
   ros__parameters:
     use_sim_time: True
     
+    # 降低期望频率以匹配实际性能 / Lower expected frequency to match actual performance
     expected_planner_frequency: 5.0   # 从 20.0 降到 5.0，规划不需要太频繁
+    
+    # 规划器超时保护 / Planner timeout protection
+    action_server_result_timeout: 10.0
+    planner_server_timeout: 5.0
     
     planner_plugins: ["GridBased"]
     
-    # NavFn 全局规划器 / NavFn global planner
+    # NavFn 全局规划器 - 优化配置 / NavFn global planner - optimized
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.5
-      use_astar: false
+      # 增加容差，允许更灵活的目标点 / Increase tolerance for more flexible goals
+      tolerance: 1.0              # 优化: 0.5 -> 1.0
+      # 启用A*算法，加快规划速度 / Enable A* for faster planning
+      use_astar: true             # 优化: false -> true (A*比Dijkstra快3-5倍)
+      # 允许穿过未知区域（探索必需）/ Allow unknown space (required for exploration)
       allow_unknown: true
+      # 使用二次近似以提升性能 / Use quadratic approximation for better performance
+      use_quadratic_approximation: true
+      # 对角线移动代价（sqrt(2) ≈ 1.414）/ Diagonal move cost
+      neutral_cost: 50
+      # 致命障碍物代价 / Lethal obstacle cost  
+      lethal_cost: 253
+      # 代价因子（降低以放宽路径选择）/ Cost factor (lower for more flexible paths)
+      cost_factor: 0.55           # 默认值，可调整
 
 smoother_server:
   ros__parameters:
