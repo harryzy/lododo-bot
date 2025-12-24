@@ -149,6 +149,7 @@ controller_server:
     
     # 目标检查器 / Goal checker
     goal_checker_plugins: ["general_goal_checker"]
+    current_goal_checker: "general_goal_checker"  # 指定默认goal checker，消除警告
     general_goal_checker:
       stateful: False               # 探索模式：关闭stateful，到达即成功，无需停止
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -206,21 +207,36 @@ controller_server:
       short_circuit_trajectory_evaluation: True
       stateful: True
       
-      # 评价器 / Critics - 优先旋转到目标方向（适配前置60度FOV摄像头）
-      # Prioritize rotation to goal (for forward-facing 60deg FOV camera)
+      # 评价器 / Critics
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       
-      RotateToGoal.scale: 32.0      # 最高优先级，确保先转向目标
-      RotateToGoal.slowing_factor: 5.0
+      # 优化权重：强化车头朝向对齐，保持全向运动能力
+      # Optimized weights: enforce heading alignment while keeping omnidirectional capability
+      
+      # 路径对齐 - 最高优先级 (强制车头沿路径方向) / Path alignment - highest priority
+      PathAlign.scale: 128.0                    # 优化: 20.0 -> 128.0 (提高6.4倍)
+      PathAlign.forward_point_distance: 0.4     # 优化: 0.1 -> 0.4 (提前0.4m调整朝向)
+      
+      # 目标对齐 - 次高优先级 (接近目标时车头朝向目标) / Goal alignment - second priority
+      GoalAlign.scale: 96.0                     # 优化: 24.0 -> 96.0 (提高4倍)
+      GoalAlign.forward_point_distance: 0.3     # 优化: 0.1 -> 0.3 (提前0.3m调整朝向)
+      
+      # 旋转到目标 - 高优先级 / Rotate to goal - high priority
+      RotateToGoal.scale: 64.0                  # 优化: 32.0 -> 64.0 (提高2倍)
+      RotateToGoal.slowing_factor: 3.0          # 优化: 5.0 -> 3.0 (更早开始减速转向)
       RotateToGoal.lookahead_time: -1.0
-      BaseObstacle.scale: 0.02      # 障碍物代价
-      GoalAlign.scale: 24.0         # 目标对齐
-      GoalAlign.forward_point_distance: 0.1
-      PathAlign.scale: 20.0         # 路径对齐
-      PathAlign.forward_point_distance: 0.1
-      PathDist.scale: 20.0          # 路径距离
-      GoalDist.scale: 24.0          # 目标距离
-      Oscillation.scale: 1.0        # 防止震荡
+      
+      # 路径距离 - 降低优先级 (让位于朝向对齐) / Path distance - lower priority
+      PathDist.scale: 20.0                      # 保持: 20.0
+      
+      # 目标距离 - 降低优先级 / Goal distance - lower priority  
+      GoalDist.scale: 16.0                      # 优化: 24.0 -> 16.0
+      
+      # 障碍物避障 - 略微降低 (允许朝向优先) / Obstacle avoidance - slightly lower
+      BaseObstacle.scale: 0.04                  # 优化: 0.02 -> 0.04 (保持与nav2_params.yaml一致)
+      
+      # 防止震荡 / Prevent oscillation
+      Oscillation.scale: 1.0
 
 local_costmap:
   local_costmap:
