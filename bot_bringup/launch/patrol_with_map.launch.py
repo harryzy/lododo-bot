@@ -99,6 +99,12 @@ def generate_launch_description():
         description='Direct map file path (if use_map_library=false) / 直接指定地图文件路径'
     )
     
+    rtabmap_db_path_arg = DeclareLaunchArgument(
+        'rtabmap_db_path',
+        default_value='',
+        description='RTABMap database path (auto-detected if using map library) / RTABMap数据库路径（使用地图库时自动检测）'
+    )
+    
     # 巡航参数
     waypoint_file_arg = DeclareLaunchArgument(
         'waypoint_file',
@@ -138,21 +144,24 @@ def generate_launch_description():
     map_name = LaunchConfiguration('map_name')
     map_version = LaunchConfiguration('map_version')
     map_file = LaunchConfiguration('map_file')
+    rtabmap_db_path = LaunchConfiguration('rtabmap_db_path')  # 新增
     waypoint_file = LaunchConfiguration('waypoint_file')
     patrol_mode = LaunchConfiguration('patrol_mode')
     max_loops = LaunchConfiguration('max_loops')
     default_dwell_time = LaunchConfiguration('default_dwell_time')
     auto_start = LaunchConfiguration('auto_start')
+    auto_start = LaunchConfiguration('auto_start')
     
     # ===== 启动仿真+Nav2系统(带定位) =====
-    # 注意：这里应该使用AMCL定位而不是SLAM
+    # 使用RTABMap Localization模式（纯定位，不建图）
+    # Uses RTABMap Localization mode (localization only, no mapping)
     # 设置日志级别为warn减少输出
     simulation_nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             PathJoinSubstitution([
                 bot_bringup_dir,
                 'launch',
-                'simple_simulation_nav2_rtabmap.launch.py'  # TODO: 创建使用AMCL的版本
+                'simple_simulation_nav2_rtabmap_localization.launch.py'  # ✅ 使用Localization版本
             ])
         ]),
         launch_arguments={
@@ -160,6 +169,7 @@ def generate_launch_description():
             'use_rviz': use_rviz,
             'use_sim_time': use_sim_time,
             'log_level': 'warn',  # 减少日志输出
+            'rtabmap_db_path': rtabmap_db_path,  # ✅ 传递数据库路径
         }.items()
     )
     
@@ -175,9 +185,14 @@ def generate_launch_description():
             'library_path': '~/lododo_bot/maps',
             'auto_load': True,
         }],
-        arguments=['--ros-args', '--log-level', 'WARN'],
+        arguments=['--ros-args', '--log-level', 'INFO'],  # 改为INFO以查看输出
         condition=IfCondition(use_map_library),
     )
+    
+    # ===== Map Server (发布地图到/map话题) =====
+    # RTABMap在localization模式下会从数据库生成occupancy grid并发布到/map
+    # 但Nav2的static_layer需要从/map订阅,所以我们需要确保RTABMap正确配置
+    # 注意: RTABMap的grid_map重映射到/map已在localization launch中配置
     
     # ===== 巡航节点 (复用patrol.launch.py) =====
     patrol_launch = IncludeLaunchDescription(
@@ -275,6 +290,7 @@ def generate_launch_description():
         map_name_arg,
         map_version_arg,
         map_file_arg,
+        rtabmap_db_path_arg,  # ✅ 新增RTABMap数据库路径参数
         waypoint_file_arg,
         patrol_mode_arg,
         max_loops_arg,

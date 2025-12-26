@@ -124,7 +124,19 @@ class MapLoaderNode(Node):
         if success:
             self._map_loaded = True
             self._map_yaml_path = map_yaml_path
+            
+            # 检查RTABMap数据库是否存在 / Check if RTABMap database exists
+            rtabmap_db_path = self._get_rtabmap_database_path()
+            
             self.get_logger().info(f'✅ Map loaded: {map_yaml_path}')
+            
+            if rtabmap_db_path:
+                self.get_logger().info(f'✅ RTABMap database found: {rtabmap_db_path}')
+                # 设置ROS参数供其他节点使用 / Set ROS parameter for other nodes
+                self.declare_parameter('rtabmap_db_path', rtabmap_db_path)
+            else:
+                self.get_logger().warn('⚠️  RTABMap database not found (required for localization mode)')
+            
             self.get_logger().info('')
             self.get_logger().info('=' * 80)
             self.get_logger().info('⚠️  重要提示 / IMPORTANT:')
@@ -137,6 +149,14 @@ class MapLoaderNode(Node):
             self.get_logger().info('Please configure map_server in launch file to use this map:')
             self.get_logger().info('')
             self.get_logger().info(f'  map_file: {map_yaml_path}')
+            
+            if rtabmap_db_path:
+                self.get_logger().info('')
+                self.get_logger().info('对于RTABMap定位模式，使用数据库路径:')
+                self.get_logger().info('For RTABMap localization mode, use database path:')
+                self.get_logger().info('')
+                self.get_logger().info(f'  rtabmap_db_path: {rtabmap_db_path}')
+            
             self.get_logger().info('')
             self.get_logger().info('或者使用命令行启动map_server:')
             self.get_logger().info('Or start map_server via command line:')
@@ -148,6 +168,34 @@ class MapLoaderNode(Node):
             self.get_logger().error(f'❌ Failed to load map: {message}')
         
         return success, message
+    
+    def _get_rtabmap_database_path(self):
+        """
+        获取RTABMap数据库路径 / Get RTABMap database path
+        
+        Returns:
+            数据库路径或None / Database path or None
+        """
+        if not self._map_name:
+            return None
+        
+        library_path = os.path.expanduser(self._library_path)
+        map_dir = os.path.join(library_path, self._map_name)
+        db_path = os.path.join(map_dir, 'rtabmap.db')
+        
+        if os.path.exists(db_path):
+            return db_path
+        
+        return None
+    
+    def get_rtabmap_database_path(self):
+        """
+        公共方法：获取RTABMap数据库路径 / Public method: Get RTABMap database path
+        
+        Returns:
+            数据库路径或None / Database path or None
+        """
+        return self._get_rtabmap_database_path()
     
     def get_map_yaml_path(self):
         """获取加载的地图YAML路径"""

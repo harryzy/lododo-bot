@@ -5,6 +5,7 @@
 功能:
 - 监听探索完成信号 (/exploration/complete)
 - 自动调用地图库管理器保存地图
+- 保存RTABMap数据库文件
 - 提供手动保存服务
 
 Author: GitHub Copilot
@@ -15,6 +16,9 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool
 from std_srvs.srv import Trigger
+import os
+import shutil
+import time
 
 from .map_library_manager import MapLibraryManager
 
@@ -135,7 +139,7 @@ class MapSaverNode(Node):
         
         self.get_logger().info(f'💾 Saving map: {self._map_name}')
         
-        # 调用地图库管理器保存地图
+        # 调用地图库管理器保存地图（占据栅格地图）
         success, message = self._map_library.save_map(
             map_name=self._map_name,
             map_topic='/map',
@@ -143,13 +147,68 @@ class MapSaverNode(Node):
             tags=self._tags
         )
         
-        if success:
-            self._map_saved = True
-            self.get_logger().info(f'✅ {message}')
-        else:
-            self.get_logger().error(f'❌ {message}')
+        if not success:
+            self.get_logger().error(f'❌ Failed to save occupancy grid map: {message}')
+            return success, message
         
-        return success, message
+        self.get_logger().info(f'✅ Occupancy grid map saved: {message}')
+        
+        # 保存RTABMap数据库文件
+        db_success, db_message = self._save_rtabmap_database()
+        
+        if db_success:
+            self.get_logger().info(f'✅ RTABMap database saved: {db_message}')
+            self._map_saved = True
+            final_message = f'{message}; {db_message}'
+            return True, final_message
+        else:
+            self.get_logger().warn(f'⚠️  RTABMap database save warning: {db_message}')
+            self._map_saved = True
+            final_message = f'{message}; RTABMap DB warning: {db_message}'
+            return True, final_message  # 占据栅格地图已保存，即使DB保存失败也返回成功
+    
+    def _save_rtabmap_database(self):
+        """
+        保存RTABMap数据库到地图库目录 / Save RTABMap database to map library
+        
+        Returns:
+            (success, message)
+        """
+        # RTABMap默认数据库路径
+        default_db_path = os.path.expanduser('~/.ros/rtabmap.db')
+        
+        # 目标地图目录
+        library_path = os.path.expanduser(self._library_path)
+        map_dir = os.path.join(library_path, self._map_name)
+        
+        if not os.path.exists(map_dir):
+            return False, f'Map directory not found: {map_dir}'
+        
+        # 检查RTABMap数据库是否存在
+        if not os.path.exists(default_db_path):
+            return False, f'RTABMap database not found at {default_db_path}'
+        
+        # 等待RTABMap完成写入（避免文件未完全写入）
+        time.sleep(1.0)
+        
+        # 复制数据库文件到地图目录
+        target_db_path = os.path.join(map_dir, 'rtabmap.db')
+        
+        try:
+            shutil.copy2(default_db_path, target_db_path)
+            
+            # 验证文件大小
+            src_size = os.path.getsize(default_db_path)
+            dst_size = os.path.getsize(target_db_path)
+            
+            if src_size != dst_size:
+                return False, f'File size mismatch: {src_size} != {dst_size}'
+            
+            self.get_logger().info(f'RTABMap database copied: {target_db_path} ({src_size} bytes)')
+            return True, f'RTABMap database saved ({src_size / 1024 / 1024:.2f} MB)'
+            
+        except Exception as e:
+            return False, f'Failed to copy RTABMap database: {str(e)}'
 
 
 def main(args=None):

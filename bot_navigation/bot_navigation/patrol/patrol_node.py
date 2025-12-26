@@ -265,12 +265,15 @@ class PatrolNode(Node):
         self._arrival_tolerance = self.get_parameter('arrival_tolerance').value
         self._auto_start = self.get_parameter('auto_start').value
         
-        # 如果启用自动开始，延迟3秒后启动
+        # 如果启用自动开始,延迟3秒后启动(使用手动取消的timer实现one-shot效果)
         if self._auto_start:
-            self.create_timer(3.0, self._auto_start_patrol, one_shot=True)
+            self._auto_start_timer = self.create_timer(3.0, self._auto_start_patrol)
     
     def _auto_start_patrol(self):
         """自动启动巡航 / Auto start patrol"""
+        # 取消timer实现one-shot效果(ROS 2 Humble不支持one_shot参数)
+        if hasattr(self, '_auto_start_timer'):
+            self._auto_start_timer.cancel()
         self.get_logger().info('Auto-starting patrol...')
         self._start_patrol()
     
