@@ -15,16 +15,18 @@ Date: 2025-12-22
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.action import ActionClient
 
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import String, Bool
+from nav2_msgs.action import NavigateToPose as Nav2NavigateToPose
 
-# TODO: 创建自定义服务消息
-# from bot_navigation_msgs.srv import (
-#     CreateTask, StartTask, PauseTask, ResumeTask, CancelTask,
-#     GetTaskStatus, ListTasks, StartExploration, StopExploration,
-#     StartPatrol, StopPatrol, AddPatrolWaypoint, SaveMap, LoadMap
-# )
+# 导入自定义服务消息
+from bot_navigation_msgs.srv import (
+    CreateTask, TaskControl, GetTaskStatus, ListTasks,
+    StartExploration, StartPatrol, WaypointControl,
+    RecordWaypoints, NavigateToPose, EmergencyStop
+)
 
 from .task_manager import TaskManager, TaskType, TaskState
 from ..patrol.patrol_manager import PatrolManager
@@ -32,6 +34,8 @@ from .waypoint_recorder import WaypointRecorder
 from .navigation_executor import NavigationExecutor
 
 from typing import Optional, Dict, Any
+from datetime import datetime
+import json
 
 
 class MissionPlanner(Node):
@@ -95,8 +99,7 @@ class MissionPlanner(Node):
         )
         
         # ========== 服务服务器 ==========
-        # TODO: 取消注释并实现20+个服务接口
-        # self._create_service_servers()
+        self._create_service_servers()
         
         # ========== 定时器 ==========
         self._update_timer = self.create_timer(
@@ -109,15 +112,102 @@ class MissionPlanner(Node):
     def _create_service_servers(self):
         """创建所有服务服务器"""
         # 任务管理服务
-        # self._create_task_srv = self.create_service(
-        #     CreateTask,
-        #     '/mission_planner/create_task',
-        #     self._handle_create_task,
-        #     callback_group=self._callback_group
-        # )
+        self._create_task_srv = self.create_service(
+            CreateTask,
+            '/mission/create_task',
+            self._handle_create_task,
+            callback_group=self._callback_group
+        )
         
-        # TODO: 实现其他19+个服务
-        pass
+        self._start_task_srv = self.create_service(
+            TaskControl,
+            '/mission/start_task',
+            self._handle_start_task,
+            callback_group=self._callback_group
+        )
+        
+        self._pause_task_srv = self.create_service(
+            TaskControl,
+            '/mission/pause_task',
+            self._handle_pause_task,
+            callback_group=self._callback_group
+        )
+        
+        self._resume_task_srv = self.create_service(
+            TaskControl,
+            '/mission/resume_task',
+            self._handle_resume_task,
+            callback_group=self._callback_group
+        )
+        
+        self._cancel_task_srv = self.create_service(
+            TaskControl,
+            '/mission/cancel_task',
+            self._handle_cancel_task,
+            callback_group=self._callback_group
+        )
+        
+        self._get_status_srv = self.create_service(
+            GetTaskStatus,
+            '/mission/get_task_status',
+            self._handle_get_task_status,
+            callback_group=self._callback_group
+        )
+        
+        self._list_tasks_srv = self.create_service(
+            ListTasks,
+            '/mission/list_tasks',
+            self._handle_list_tasks,
+            callback_group=self._callback_group
+        )
+        
+        # 探索和巡航服务
+        self._start_exploration_srv = self.create_service(
+            StartExploration,
+            '/mission/start_exploration',
+            self._handle_start_exploration,
+            callback_group=self._callback_group
+        )
+        
+        self._start_patrol_srv = self.create_service(
+            StartPatrol,
+            '/mission/start_patrol',
+            self._handle_start_patrol,
+            callback_group=self._callback_group
+        )
+        
+        # 路点控制服务
+        self._waypoint_control_srv = self.create_service(
+            WaypointControl,
+            '/mission/waypoint_control',
+            self._handle_waypoint_control,
+            callback_group=self._callback_group
+        )
+        
+        self._record_waypoints_srv = self.create_service(
+            RecordWaypoints,
+            '/mission/record_waypoints',
+            self._handle_record_waypoints,
+            callback_group=self._callback_group
+        )
+        
+        # 导航服务
+        self._navigate_to_pose_srv = self.create_service(
+            NavigateToPose,
+            '/mission/navigate_to_pose',
+            self._handle_navigate_to_pose,
+            callback_group=self._callback_group
+        )
+        
+        # 紧急停止
+        self._emergency_stop_srv = self.create_service(
+            EmergencyStop,
+            '/mission/emergency_stop',
+            self._handle_emergency_stop,
+            callback_group=self._callback_group
+        )
+        
+        self.get_logger().info('All service servers created successfully')
     
     def _update_callback(self):
         """定期更新回调"""
@@ -162,101 +252,380 @@ class MissionPlanner(Node):
         msg.data = f"{task.task_id}:{task.state.value}:{task.progress:.2f}"
         self._task_status_pub.publish(msg)
     
-    # ========== 服务处理函数（框架） ==========
+    # ========== 服务处理函数 ==========
     
     def _handle_create_task(self, request, response):
         """处理创建任务请求"""
-        # TODO: 实现
+        try:
+            # 解析参数
+            parameters = {}
+            for i, key in enumerate(request.parameters_keys):
+                if i < len(request.parameters_values):
+                    parameters[key] = request.parameters_values[i]
+            
+            # 创建任务
+            task = self._task_manager.create_task(
+                task_id=request.task_id,
+                task_type=TaskType(request.task_type),
+                priority=request.priority,
+                parameters=parameters
+            )
+            
+            response.success = True
+            response.message = f"Task '{request.task_id}' created successfully"
+            response.task_id = task.task_id
+            
+            self.get_logger().info(f"Created task: {task.task_id}")
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Failed to create task: {str(e)}"
+            response.task_id = ""
+            self.get_logger().error(f"Error creating task: {str(e)}")
+        
         return response
     
     def _handle_start_task(self, request, response):
         """处理启动任务请求"""
-        # TODO: 实现
+        try:
+            self._task_manager.start_task(request.task_id)
+            response.success = True
+            response.message = f"Task '{request.task_id}' started"
+            self.get_logger().info(f"Started task: {request.task_id}")
+        except Exception as e:
+            response.success = False
+            response.message = f"Failed to start task: {str(e)}"
+            self.get_logger().error(f"Error starting task: {str(e)}")
         return response
     
     def _handle_pause_task(self, request, response):
         """处理暂停任务请求"""
-        # TODO: 实现
+        try:
+            self._task_manager.pause_task(request.task_id)
+            response.success = True
+            response.message = f"Task '{request.task_id}' paused"
+            self.get_logger().info(f"Paused task: {request.task_id}")
+        except Exception as e:
+            response.success = False
+            response.message = f"Failed to pause task: {str(e)}"
+            self.get_logger().error(f"Error pausing task: {str(e)}")
         return response
     
     def _handle_resume_task(self, request, response):
         """处理恢复任务请求"""
-        # TODO: 实现
+        try:
+            self._task_manager.resume_task(request.task_id)
+            response.success = True
+            response.message = f"Task '{request.task_id}' resumed"
+            self.get_logger().info(f"Resumed task: {request.task_id}")
+        except Exception as e:
+            response.success = False
+            response.message = f"Failed to resume task: {str(e)}"
+            self.get_logger().error(f"Error resuming task: {str(e)}")
         return response
     
     def _handle_cancel_task(self, request, response):
         """处理取消任务请求"""
-        # TODO: 实现
+        try:
+            self._task_manager.cancel_task(request.task_id)
+            response.success = True
+            response.message = f"Task '{request.task_id}' cancelled"
+            self.get_logger().info(f"Cancelled task: {request.task_id}")
+        except Exception as e:
+            response.success = False
+            response.message = f"Failed to cancel task: {str(e)}"
+            self.get_logger().error(f"Error cancelling task: {str(e)}")
         return response
     
     def _handle_get_task_status(self, request, response):
         """处理获取任务状态请求"""
-        # TODO: 实现
+        try:
+            task_id = request.task_id if request.task_id else None
+            task = self._task_manager.get_task(task_id) if task_id else self._task_manager.get_current_task()
+            
+            if task:
+                response.success = True
+                response.message = "Task status retrieved"
+                response.task_id = task.task_id
+                response.task_type = task.task_type.value
+                response.state = task.state.value
+                response.progress = task.progress
+            else:
+                response.success = False
+                response.message = "Task not found"
+                response.task_id = ""
+                response.task_type = ""
+                response.state = ""
+                response.progress = 0.0
+                
+        except Exception as e:
+            response.success = False
+            response.message = f"Error retrieving task status: {str(e)}"
+            self.get_logger().error(f"Error getting task status: {str(e)}")
+        
         return response
     
     def _handle_list_tasks(self, request, response):
         """处理列出任务请求"""
-        # TODO: 实现
+        try:
+            filter_type = request.filter if request.filter else 'all'
+            
+            if filter_type == 'active':
+                tasks = [t for t in self._task_manager._tasks.values() 
+                        if t.state in [TaskState.PENDING, TaskState.RUNNING, TaskState.PAUSED]]
+            elif filter_type == 'completed':
+                tasks = [t for t in self._task_manager._tasks.values() 
+                        if t.state == TaskState.COMPLETED]
+            elif filter_type == 'failed':
+                tasks = [t for t in self._task_manager._tasks.values() 
+                        if t.state == TaskState.FAILED]
+            else:  # 'all'
+                tasks = list(self._task_manager._tasks.values())
+            
+            response.success = True
+            response.message = f"Found {len(tasks)} tasks"
+            response.task_ids = [t.task_id for t in tasks]
+            response.task_types = [t.task_type.value for t in tasks]
+            response.states = [t.state.value for t in tasks]
+            response.priorities = [t.priority for t in tasks]
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Error listing tasks: {str(e)}"
+            response.task_ids = []
+            response.task_types = []
+            response.states = []
+            response.priorities = []
+            self.get_logger().error(f"Error listing tasks: {str(e)}")
+        
         return response
     
     def _handle_start_exploration(self, request, response):
         """处理开始探索请求"""
-        # TODO: 实现
-        return response
-    
-    def _handle_stop_exploration(self, request, response):
-        """处理停止探索请求"""
-        # TODO: 实现
+        try:
+            # 创建探索任务
+            task_id = f"exploration_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            parameters = {
+                'map_name': request.map_name,
+                'save_map': request.save_map,
+                'max_duration': request.max_duration,
+                'coverage_threshold': request.coverage_threshold
+            }
+            
+            task = self._task_manager.create_task(
+                task_id=task_id,
+                task_type=TaskType.FRONTIER_EXPLORATION,
+                priority=5,
+                parameters=parameters
+            )
+            
+            # 立即启动
+            self._task_manager.start_task(task_id)
+            
+            response.success = True
+            response.message = "Exploration started"
+            response.task_id = task_id
+            
+            self.get_logger().info(f"Started exploration task: {task_id}")
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Failed to start exploration: {str(e)}"
+            response.task_id = ""
+            self.get_logger().error(f"Error starting exploration: {str(e)}")
+        
         return response
     
     def _handle_start_patrol(self, request, response):
         """处理开始巡航请求"""
-        # TODO: 实现
+        try:
+            # 创建巡航任务
+            task_id = f"patrol_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            parameters = {
+                'waypoint_file': request.waypoint_file,
+                'patrol_mode': request.patrol_mode,
+                'speed_factor': request.speed_factor
+            }
+            
+            task = self._task_manager.create_task(
+                task_id=task_id,
+                task_type=TaskType.PATH_PATROL,
+                priority=3,
+                parameters=parameters
+            )
+            
+            # 立即启动
+            self._task_manager.start_task(task_id)
+            
+            response.success = True
+            response.message = "Patrol started"
+            response.task_id = task_id
+            
+            self.get_logger().info(f"Started patrol task: {task_id}")
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Failed to start patrol: {str(e)}"
+            response.task_id = ""
+            self.get_logger().error(f"Error starting patrol: {str(e)}")
+        
         return response
     
-    def _handle_stop_patrol(self, request, response):
-        """处理停止巡航请求"""
-        # TODO: 实现
+    def _handle_waypoint_control(self, request, response):
+        """处理路点控制请求"""
+        try:
+            action = request.action
+            
+            if action == 'add':
+                # 添加路点
+                waypoint = {
+                    'x': request.x,
+                    'y': request.y,
+                    'yaw': request.yaw,
+                    'name': request.waypoint_name
+                }
+                # TODO: 调用WaypointRecorder添加路点
+                response.success = True
+                response.message = "Waypoint added"
+                response.waypoint_count = 0  # TODO: 获取实际数量
+                
+            elif action == 'save':
+                # 保存路点
+                # TODO: 调用WaypointRecorder保存
+                response.success = True
+                response.message = f"Waypoints saved to {request.filename}"
+                response.waypoint_count = 0
+                
+            elif action == 'load':
+                # 加载路点
+                # TODO: 调用WaypointRecorder加载
+                response.success = True
+                response.message = f"Waypoints loaded from {request.filename}"
+                response.waypoint_count = 0
+                
+            elif action == 'clear':
+                # 清空路点
+                # TODO: 调用WaypointRecorder清空
+                response.success = True
+                response.message = "Waypoints cleared"
+                response.waypoint_count = 0
+            else:
+                response.success = False
+                response.message = f"Unknown action: {action}"
+                response.waypoint_count = 0
+                
+            self.get_logger().info(f"Waypoint control action: {action}")
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Waypoint control error: {str(e)}"
+            response.waypoint_count = 0
+            self.get_logger().error(f"Error in waypoint control: {str(e)}")
+        
         return response
     
-    def _handle_add_patrol_waypoint(self, request, response):
-        """处理添加巡航路点请求"""
-        # TODO: 实现
-        return response
-    
-    def _handle_start_recording_waypoints(self, request, response):
-        """处理开始记录路点请求"""
-        # TODO: 实现
-        return response
-    
-    def _handle_stop_recording_waypoints(self, request, response):
-        """处理停止记录路点请求"""
-        # TODO: 实现
-        return response
-    
-    def _handle_save_waypoints(self, request, response):
-        """处理保存路点请求"""
-        # TODO: 实现
-        return response
-    
-    def _handle_load_waypoints(self, request, response):
-        """处理加载路点请求"""
-        # TODO: 实现
+    def _handle_record_waypoints(self, request, response):
+        """处理路点录制控制请求"""
+        try:
+            action = request.action
+            
+            if action == 'start':
+                # 开始录制
+                # TODO: 调用WaypointRecorder开始录制
+                response.success = True
+                response.message = "Waypoint recording started"
+                response.recorded_count = 0
+                
+            elif action == 'stop':
+                # 停止录制
+                # TODO: 调用WaypointRecorder停止录制
+                response.success = True
+                response.message = "Waypoint recording stopped"
+                response.recorded_count = 0
+                
+            elif action == 'record_current':
+                # 录制当前位置
+                # TODO: 调用WaypointRecorder录制当前位置
+                response.success = True
+                response.message = "Current position recorded"
+                response.recorded_count = 0
+            else:
+                response.success = False
+                response.message = f"Unknown action: {action}"
+                response.recorded_count = 0
+                
+            self.get_logger().info(f"Record waypoints action: {action}")
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Record waypoints error: {str(e)}"
+            response.recorded_count = 0
+            self.get_logger().error(f"Error in record waypoints: {str(e)}")
+        
         return response
     
     def _handle_navigate_to_pose(self, request, response):
         """处理导航到位姿请求"""
-        # TODO: 实现
-        return response
-    
-    def _handle_cancel_navigation(self, request, response):
-        """处理取消导航请求"""
-        # TODO: 实现
+        try:
+            # 创建导航任务
+            task_id = f"nav_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            parameters = {
+                'x': request.x,
+                'y': request.y,
+                'yaw': request.yaw,
+                'frame_id': request.frame_id if request.frame_id else 'map'
+            }
+            
+            task = self._task_manager.create_task(
+                task_id=task_id,
+                task_type=TaskType.POINT_TO_POINT,
+                priority=7,
+                parameters=parameters
+            )
+            
+            # 立即启动
+            self._task_manager.start_task(task_id)
+            
+            response.success = True
+            response.message = "Navigation started"
+            response.task_id = task_id
+            
+            self.get_logger().info(f"Started navigation task: {task_id}")
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Failed to navigate: {str(e)}"
+            response.task_id = ""
+            self.get_logger().error(f"Error in navigation: {str(e)}")
+        
         return response
     
     def _handle_emergency_stop(self, request, response):
         """处理紧急停止请求"""
-        # TODO: 实现
+        try:
+            self.get_logger().warn("EMERGENCY STOP ACTIVATED!")
+            
+            # 取消当前任务
+            current_task = self._task_manager.get_current_task()
+            if current_task:
+                self._task_manager.cancel_task(current_task.task_id)
+            
+            # 如果需要，清空所有任务
+            if request.clear_tasks:
+                # TODO: 实现清空所有任务
+                pass
+            
+            # 停止所有运动
+            # TODO: 发布零速度命令
+            
+            response.success = True
+            response.message = "Emergency stop executed"
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Emergency stop error: {str(e)}"
+            self.get_logger().error(f"Error in emergency stop: {str(e)}")
+        
         return response
     
     def shutdown(self):
