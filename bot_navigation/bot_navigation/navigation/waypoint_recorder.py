@@ -16,7 +16,8 @@ from typing import List, Optional, Dict
 from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
-import json
+import yaml
+import math
 import os
 from datetime import datetime
 
@@ -183,7 +184,7 @@ class WaypointRecorder:
     
     def save_waypoints(self, filename: str) -> bool:
         """
-        保存路点到文件
+        保存路点到 YAML 文件
         
         Args:
             filename: 文件名（不含路径）
@@ -194,18 +195,34 @@ class WaypointRecorder:
         if len(self._waypoints) == 0:
             return False
         
+        # 确保 .yaml 扩展名
+        if not filename.endswith('.yaml'):
+            filename = filename + '.yaml'
+        
         filepath = os.path.join(self._persistence_dir, filename)
         
-        # 转换为字典列表
-        waypoints_data = {
-            'waypoints': [self._pose_to_dict(wp) for wp in self._waypoints],
-            'count': len(self._waypoints),
-            'created_at': datetime.now().isoformat()
-        }
+        # 转换为 YAML 格式（PatrolNode 兼容）
+        waypoints_list = []
+        for idx, wp in enumerate(self._waypoints, 1):
+            yaw = self._quaternion_to_yaw(
+                wp.pose.orientation.x,
+                wp.pose.orientation.y,
+                wp.pose.orientation.z,
+                wp.pose.orientation.w
+            )
+            waypoints_list.append({
+                'name': f'点{idx}',
+                'x': float(wp.pose.position.x),
+                'y': float(wp.pose.position.y),
+                'yaw': float(yaw),
+                'dwell_time': 2.0
+            })
+        
+        data = {'waypoints': waypoints_list}
         
         try:
-            with open(filepath, 'w') as f:
-                json.dump(waypoints_data, f, indent=2)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
             return True
         except Exception as e:
             print(f"Failed to save waypoints: {e}")
@@ -213,7 +230,7 @@ class WaypointRecorder:
     
     def load_waypoints(self, filename: str) -> bool:
         """
-        从文件加载路点
+        从 YAML 文件加载路点
         
         Args:
             filename: 文件名（不含路径）
@@ -221,16 +238,35 @@ class WaypointRecorder:
         Returns:
             bool: 成功返回True
         """
+        # 确保 .yaml 扩展名
+        if not filename.endswith('.yaml'):
+            filename = filename + '.yaml'
+        
         filepath = os.path.join(self._persistence_dir, filename)
         
         if not os.path.exists(filepath):
             return False
         
         try:
-            with open(filepath, 'r') as f:
-                data = json.load(f)
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
             
-            self._waypoints = [self._dict_to_pose(wp) for wp in data['waypoints']]
+            # 从 YAML 格式转换为 PoseStamped
+            self._waypoints = []
+            for wp_data in data.get('waypoints', []):
+                pose = PoseStamped()
+                pose.header.frame_id = 'map'
+                pose.pose.position.x = float(wp_data['x'])
+                pose.pose.position.y = float(wp_data['y'])
+                pose.pose.position.z = 0.0
+                
+                # yaw 转四元数
+                yaw = float(wp_data['yaw'])
+                pose.pose.orientation.z = math.sin(yaw / 2.0)
+                pose.pose.orientation.w = math.cos(yaw / 2.0)
+                
+                self._waypoints.append(pose)
+            
             return True
         except Exception as e:
             print(f"Failed to load waypoints: {e}")
@@ -241,7 +277,7 @@ class WaypointRecorder:
         if not os.path.exists(self._persistence_dir):
             return []
         
-        return [f for f in os.listdir(self._persistence_dir) if f.endswith('.json')]
+        return [f for f in os.listdir(self._persistence_dir) if f.endswith('.yaml')]
     
     def create_visualization_markers(self, namespace: str = 'waypoints') -> MarkerArray:
         """
@@ -297,43 +333,18 @@ class WaypointRecorder:
         return (dx**2 + dy**2 + dz**2) ** 0.5
     
     @staticmethod
-    def _pose_to_dict(pose: PoseStamped) -> Dict:
-        """将 PoseStamped 转换为字典"""
-        return {
-            'header': {
-                'frame_id': pose.header.frame_id,
-                'stamp': {
-                    'sec': pose.header.stamp.sec,
-                    'nanosec': pose.header.stamp.nanosec
-                }
-            },
-            'pose': {
-                'position': {
-                    'x': pose.pose.position.x,
-                    'y': pose.pose.position.y,
-                    'z': pose.pose.position.z
-                },
-                'orientation': {
-                    'x': pose.pose.orientation.x,
-                    'y': pose.pose.orientation.y,
-                    'z': pose.pose.orientation.z,
-                    'w': pose.pose.orientation.w
-                }
-            }
-        }
-    
-    @staticmethod
-    def _dict_to_pose(data: Dict) -> PoseStamped:
-        """将字典转换为 PoseStamped"""
-        pose = PoseStamped()
-        pose.header.frame_id = data['header']['frame_id']
-        pose.header.stamp.sec = data['header']['stamp']['sec']
-        pose.header.stamp.nanosec = data['header']['stamp']['nanosec']
-        pose.pose.position.x = data['pose']['position']['x']
-        pose.pose.position.y = data['pose']['position']['y']
-        pose.pose.position.z = data['pose']['position']['z']
-        pose.pose.orientation.x = data['pose']['orientation']['x']
-        pose.pose.orientation.y = data['pose']['orientation']['y']
-        pose.pose.orientation.z = data['pose']['orientation']['z']
-        pose.pose.orientation.w = data['pose']['orientation']['w']
-        return pose
+    def _quaternion_to_yaw(x: float, y: float, z: float, w: float) -> float:
+        """
+        将四元数转换为 yaw 角（绕 z 轴旋转）
+        
+        Args:
+            x, y, z, w: 四元数分量
+            
+        Returns:
+            float: yaw 角度（弧度）
+        """
+        # yaw (z-axis rotation)
+        siny_cosp = 2.0 * (w * z + x * y)
+        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        return yaw

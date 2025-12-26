@@ -58,6 +58,7 @@ setup(
             'patrol_node = bot_navigation.patrol.patrol_node:main',
             # Navigation / 导航模块
             'mission_planner = bot_navigation.navigation.mission_planner:main',
+            'waypoint_recorder = bot_navigation.navigation.waypoint_recorder_node:main',
         ],
     },
 )
