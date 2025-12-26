@@ -15,9 +15,11 @@ Date: 2025-12-24 (Refactored)
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 from std_srvs.srv import Trigger
 from std_msgs.msg import String, Bool
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import OccupancyGrid
 
 import yaml
 import math
@@ -231,6 +233,20 @@ class PatrolNode(Node):
             Bool,
             '/patrol/complete',
             10
+        )
+        
+        # ===== 订阅器 =====
+        # 订阅地图用于目标点验证（使用TRANSIENT_LOCAL以接收持久化地图）
+        map_qos = QoSProfile(
+            depth=10,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE
+        )
+        self._map_sub = self.create_subscription(
+            OccupancyGrid,
+            '/map',
+            self._map_callback,
+            map_qos
         )
         
         # ===== 定时器 =====
@@ -511,6 +527,22 @@ class PatrolNode(Node):
                 f'dwelling={self._is_dwelling}'
         
         self._status_pub.publish(String(data=status))
+    
+    def _map_callback(self, msg: OccupancyGrid):
+        """
+        地图回调 / Map callback
+        
+        Args:
+            msg: 占据栅格地图消息
+        """
+        self._nav_executor.set_map(msg)
+        # 只在首次接收时记录日志
+        if not hasattr(self, '_map_received'):
+            self._map_received = True
+            self.get_logger().info(
+                f'Map received: {msg.info.width}x{msg.info.height}, '
+                f'resolution={msg.info.resolution:.3f}m'
+            )
 
 
 def main(args=None):

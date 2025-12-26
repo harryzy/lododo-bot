@@ -296,12 +296,20 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             rtabmap_config,  # YAML配置文件路径
             {
                 'database_path': rtabmap_db_path_str,  # 数据库路径
-                # 强制覆盖数据库中的参数,确保localization模式正确工作
+                # ========================================================================
+                # 定位模式关键参数 - 确保数据库只读
+                # ========================================================================
                 # ⚠️ 注意: RTABMap参数必须是字符串类型!
-                'Mem/IncrementalMemory': 'false',  # 不建图,只定位
-                'Mem/InitWMWithAllNodes': 'true',  # 用所有节点初始化Working Memory(关键!)
+                'Mem/IncrementalMemory': 'false',  # ❗不建图,只定位(防止写入数据库)
+                'Mem/InitWMWithAllNodes': 'true',  # 用所有节点初始化Working Memory
                 'Mem/BinDataKept': 'true',  # 保持二进制数据(包括词汇)
                 'Kp/IncrementalFlann': 'false',  # 定位模式不需要增量FLANN
+                
+                # 额外的保护措施 - 禁止任何可能修改数据库的操作
+                'Mem/STMSize': '1',  # 短期记忆只保留1个节点(定位模式不需要大STM)
+                'Mem/ImageKept': 'false',  # 不保存新图像到数据库
+                'Mem/NotLinkedNodesKept': 'false',  # 不保存未链接的节点
+                'DbSqlite3/InMemory': 'false',  # 不使用内存数据库(确保从磁盘只读)
             }
         ],
         remappings=[
@@ -311,7 +319,6 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             ('odom', '/odometry/filtered'),
             ('grid_map', '/map'),
         ],
-
     )
     
     # RTABMap visualization node (optional)
@@ -462,7 +469,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             on_start=[
                 LogInfo(msg='[Event] Control nodes started!'),
                 LogInfo(msg='[Phase 3] Starting sensor processing, EKF fusion, and RTABMap Localization...'),
-                static_map_to_odom,
+                # static_map_to_odom,  # RTABMap定位模式会自己发布map->odom，不需要静态变换
                 imu_relay,
                 ekf_filter,
                 rtabmap_localization,  # Localization mode
