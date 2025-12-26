@@ -1,0 +1,14 @@
+# ListTasks.srv - 列出任务
+
+# 请求
+string filter                 # 过滤条件（all/active/completed/failed）
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息
+string[] task_ids             # 任务ID列表
+string[] task_types           # 任务类型列表
+string[] states               # 状态列表
+int32[] priorities            # 优先级列表

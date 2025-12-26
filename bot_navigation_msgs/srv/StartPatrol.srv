@@ -1,0 +1,13 @@
+# StartPatrol.srv - 开始巡航
+
+# 请求
+string waypoint_file          # 路点文件路径（相对或绝对）
+string patrol_mode            # 巡航模式（loop/ping_pong/once/random）
+float32 speed_factor          # 速度因子（0.1-1.0，调整速度）
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息
+string task_id                # 创建的任务ID

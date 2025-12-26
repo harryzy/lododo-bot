@@ -1,0 +1,10 @@
+# TaskControl.srv - 任务控制服务（启动/暂停/恢复/取消）
+
+# 请求
+string task_id                # 任务ID
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息

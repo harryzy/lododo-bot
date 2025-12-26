@@ -1,0 +1,14 @@
+# GetTaskStatus.srv - 获取任务状态
+
+# 请求
+string task_id                # 任务ID（空字符串表示获取当前任务）
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息
+string task_id                # 任务ID
+string task_type              # 任务类型
+string state                  # 任务状态（pending/running/paused/completed/failed/cancelled）
+float32 progress              # 进度（0.0-1.0）

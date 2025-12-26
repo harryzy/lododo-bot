@@ -1,0 +1,15 @@
+# CreateTask.srv - 创建任务服务
+
+# 请求
+string task_id                # 任务ID（唯一标识符）
+string task_type              # 任务类型（exploration_save, patrol_config等）
+int32 priority                # 优先级（0-10，值越大优先级越高）
+string[] parameters_keys      # 参数键列表
+string[] parameters_values    # 参数值列表
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息
+string task_id                # 创建的任务ID

@@ -81,6 +81,7 @@ class MissionPlanner(Node):
         # ========== 状态变量 ==========
         self._system_state = 'idle'  # idle, busy, error
         self._current_operation = None
+        self._active_nodes = {}  # 存储活动的子节点进程
         
         # ========== 回调组 ==========
         self._callback_group = ReentrantCallbackGroup()
@@ -236,9 +237,114 @@ class MissionPlanner(Node):
         self._publish_system_state()
     
     def _execute_task(self, task):
-        """执行任务（框架方法，待实现）"""
-        # TODO: 根据任务类型调用相应组件
-        pass
+        """执行任务 - 根据任务类型调用相应组件"""
+        try:
+            task_type = task.task_type
+            
+            # 探索类任务
+            if task_type == TaskType.FRONTIER_EXPLORATION:
+                self._execute_exploration_task(task)
+            
+            # 巡航类任务
+            elif task_type == TaskType.PATH_PATROL:
+                self._execute_patrol_task(task)
+            
+            # 导航类任务
+            elif task_type == TaskType.POINT_TO_POINT:
+                self._execute_navigation_task(task)
+            
+            # 其他任务类型
+            else:
+                self.get_logger().warn(f"Task type {task_type.value} not yet implemented")
+                self._task_manager.fail_task(task.task_id, "Task type not implemented")
+                
+        except Exception as e:
+            self.get_logger().error(f"Error executing task {task.task_id}: {str(e)}")
+            self._task_manager.fail_task(task.task_id, str(e))
+    
+    def _execute_exploration_task(self, task):
+        """执行探索任务"""
+        params = task.parameters
+        
+        # 检查是否已经在探索
+        if 'exploration' in self._active_nodes:
+            self.get_logger().info(f"Exploration task {task.task_id} already running")
+            return
+        
+        # 启动探索节点（通过launch文件或直接启动）
+        # 这里使用简化实现：记录任务正在执行
+        self._active_nodes['exploration'] = task.task_id
+        
+        self.get_logger().info(
+            f"Exploration task started: map_name={params.get('map_name')}, "
+            f"save_map={params.get('save_map')}"
+        )
+        
+        # TODO: 实际启动 exploration_mapper 节点
+        # 可以通过以下方式：
+        # 1. 使用 subprocess 启动独立进程
+        # 2. 使用 lifecycle nodes
+        # 3. 使用 launch API 动态启动
+        
+        # 临时：模拟任务完成（实际应该监听探索节点状态）
+        # self._task_manager.complete_task(task.task_id)
+    
+    def _execute_patrol_task(self, task):
+        """执行巡航任务"""
+        params = task.parameters
+        
+        # 检查是否已经在巡航
+        if 'patrol' in self._active_nodes:
+            self.get_logger().info(f"Patrol task {task.task_id} already running")
+            return
+        
+        # 启动巡航节点
+        self._active_nodes['patrol'] = task.task_id
+        
+        self.get_logger().info(
+            f"Patrol task started: waypoint_file={params.get('waypoint_file')}, "
+            f"mode={params.get('patrol_mode')}"
+        )
+        
+        # TODO: 实际启动 patrol_node
+        # 可以通过 launch API 或 subprocess
+        
+        # 临时：模拟任务完成
+        # self._task_manager.complete_task(task.task_id)
+    
+    def _execute_navigation_task(self, task):
+        """执行点对点导航任务"""
+        params = task.parameters
+        
+        try:
+            # 构造目标位姿
+            goal_pose = PoseStamped()
+            goal_pose.header.frame_id = params.get('frame_id', 'map')
+            goal_pose.header.stamp = self.get_clock().now().to_msg()
+            goal_pose.pose.position.x = float(params.get('x', 0.0))
+            goal_pose.pose.position.y = float(params.get('y', 0.0))
+            goal_pose.pose.position.z = 0.0
+            
+            # 设置方向（yaw转四元数）
+            import math
+            yaw = float(params.get('yaw', 0.0))
+            goal_pose.pose.orientation.z = math.sin(yaw / 2.0)
+            goal_pose.pose.orientation.w = math.cos(yaw / 2.0)
+            
+            self.get_logger().info(
+                f"Navigation task started: target=({goal_pose.pose.position.x:.2f}, "
+                f"{goal_pose.pose.position.y:.2f}, yaw={yaw:.2f})"
+            )
+            
+            # 使用 NavigationExecutor 执行导航
+            self._navigation_executor.navigate_to_pose(goal_pose)
+            
+            # TODO: 监听导航结果并更新任务状态
+            # 现在暂时手动标记为完成（实际应该在回调中处理）
+            
+        except Exception as e:
+            self.get_logger().error(f"Navigation task failed: {str(e)}")
+            self._task_manager.fail_task(task.task_id, str(e))
     
     def _publish_system_state(self):
         """发布系统状态"""
@@ -631,9 +737,31 @@ class MissionPlanner(Node):
     def shutdown(self):
         """关闭时保存状态"""
         self.get_logger().info('Shutting down MissionPlanner...')
+        
+        # 停止所有活动节点
+        self._stop_all_active_nodes()
+        
         # 保存所有状态
         self._task_manager._save_active_tasks()
         self.get_logger().info('MissionPlanner shutdown complete')
+    
+    def _stop_all_active_nodes(self):
+        """停止所有活动的子节点"""
+        for node_type, task_id in list(self._active_nodes.items()):
+            self.get_logger().info(f"Stopping {node_type} node (task: {task_id})")
+            # TODO: 实际停止节点进程
+            del self._active_nodes[node_type]
+    
+    def _check_task_timeout(self, task):
+        """检查任务是否超时"""
+        if task.created_at is None:
+            return False
+        
+        elapsed = (datetime.now() - task.created_at).total_seconds()
+        if elapsed > self._task_timeout:
+            self.get_logger().warn(f"Task {task.task_id} timed out after {elapsed:.1f}s")
+            return True
+        return False
 
 
 def main(args=None):

@@ -1,0 +1,11 @@
+# RecordWaypoints.srv - 路点录制控制
+
+# 请求
+string action                 # 动作（start/stop/record_current）
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息
+int32 recorded_count          # 已录制路点数量

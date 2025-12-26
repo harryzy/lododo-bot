@@ -1,0 +1,16 @@
+# WaypointControl.srv - 路点控制（添加/保存/加载）
+
+# 请求
+string action                 # 动作类型（add/save/load/clear）
+string filename               # 文件名（用于save/load）
+float32 x                     # X坐标（用于add）
+float32 y                     # Y坐标（用于add）
+float32 yaw                   # 方向角（用于add）
+string waypoint_name          # 路点名称（可选）
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息
+int32 waypoint_count          # 当前路点数量

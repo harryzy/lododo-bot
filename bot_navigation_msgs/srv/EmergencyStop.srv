@@ -1,0 +1,10 @@
+# EmergencyStop.srv - 紧急停止
+
+# 请求
+bool clear_tasks              # 是否清空所有任务队列
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息

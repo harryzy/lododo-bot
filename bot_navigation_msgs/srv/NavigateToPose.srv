@@ -1,0 +1,14 @@
+# NavigateToPose.srv - 导航到目标位姿
+
+# 请求
+float32 x                     # 目标X坐标
+float32 y                     # 目标Y坐标
+float32 yaw                   # 目标方向角
+string frame_id               # 坐标系（默认"map"）
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息
+string task_id                # 创建的导航任务ID
