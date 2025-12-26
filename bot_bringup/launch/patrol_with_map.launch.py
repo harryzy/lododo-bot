@@ -58,7 +58,7 @@ def generate_launch_description():
     # 环境参数
     world_arg = DeclareLaunchArgument(
         'world',
-        default_value='cafe',
+        default_value='navigation_5x5_rgbd.world',
         description='Gazebo world name / Gazebo世界名称'
     )
     

@@ -130,15 +130,16 @@ rtabmap:
     # Graph Optimization / 图优化（定位模式简化）
     # ========================================================================
     
-    # Optimizer / 优化器
+    # Optimizer / 优化器（定位模式保守配置）
     Optimizer/Strategy: "1"          # 1=g2o
-    Optimizer/Iterations: "10"       # 定位模式减少迭代 / Fewer iterations in localization
-    Optimizer/Epsilon: "0.001"       # Convergence threshold
+    Optimizer/Iterations: "20"       # 定位模式减少迭代 / Fewer iterations in localization
+    Optimizer/Epsilon: "0.0001"      # 放宽收敛阈值
     
     # Robust optimization / 鲁棒优化
-    Optimizer/Robust: "true"         # Use robust kernel
+    Optimizer/Robust: "false"        # ⚠️ 不使用鲁棒核（避免过度调整poses）
     Optimizer/VarianceIgnored: "false"
     Optimizer/GravitySigma: "0.3"
+    Optimizer/PriorsIgnored: "false" # ⚠️ 不忽略先验（保持数据库poses）
     
     # ========================================================================
     # 2D Grid Map Generation / 2D栅格地图生成
@@ -173,6 +174,20 @@ rtabmap:
     Grid/GroundIsObstacle: "false"
     
     # ========================================================================
+    # GridGlobal Parameters - 全局地图参数（定位模式关键配置）
+    # ========================================================================
+    # 🔒 这些参数确保定位模式下地图不被重新生成，保持与mapping时一致
+    
+    GridGlobal/MinSize: "0.0"            # ⚠️ 使用0！让RTABMap根据实际poses自动计算地图大小
+    GridGlobal/UpdateError: "100.0"      # ⚠️ 关键！设置很大防止地图更新（默认0.01会频繁更新）
+    GridGlobal/FootprintRadius: "0.15"   # 与Grid/FootprintRadius保持一致
+    GridGlobal/FullUpdate: "false"       # 不使用完整更新（定位模式不需要）
+    GridGlobal/MaxNodes: "0"             # 使用所有节点组装地图（0=unlimited）
+    GridGlobal/AltitudeDelta: "0"        # 禁用多层地图
+    GridGlobal/Eroded: "false"           # 不侵蚀障碍物
+    GridGlobal/OccupancyThr: "0.5"       # 占据阈值
+    
+    # ========================================================================
     # Real-time Optimization / 实时性优化
     # ========================================================================
     
@@ -194,8 +209,13 @@ rtabmap:
     publish_tf: true                 # Publish TF transforms
     publish_stats: true              # Publish statistics
     
-    # Database / 数据库
+    # Database / 数据库（定位模式只读配置）
     # ⚠️ 注意：启动时必须用 -d 参数指定数据库路径
     # Note: Must specify database path with -d flag when launching
     database_path: ""                # Will be overridden by launch file
     Db/Sql3InMemory: "false"         # 定位模式从磁盘加载 / Load from disk in localization mode
+    DbSqlite3/InMemory: "false"      # ⚠️ 不使用内存数据库，从磁盘只读加载
+    DbSqlite3/CacheSize: "10000"     # SQLite缓存大小
+    DbSqlite3/JournalMode: "0"       # ⚠️ 关键！设置为DELETE模式（只读安全）
+    DbSqlite3/Synchronous: "0"       # 关闭同步（只读模式不需要）
+    DbSqlite3/TempStore: "2"         # 临时数据存储在内存

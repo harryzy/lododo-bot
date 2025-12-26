@@ -302,14 +302,20 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
                 # ⚠️ 注意: RTABMap参数必须是字符串类型!
                 'Mem/IncrementalMemory': 'false',  # ❗不建图,只定位(防止写入数据库)
                 'Mem/InitWMWithAllNodes': 'true',  # 用所有节点初始化Working Memory
-                'Mem/BinDataKept': 'true',  # 保持二进制数据(包括词汇)
-                'Kp/IncrementalFlann': 'false',  # 定位模式不需要增量FLANN
+                'Mem/BinDataKept': 'true',  # ⚠️ 保持二进制数据(包括词汇) - 必须true才能加载词典
+                'Kp/IncrementalFlann': 'true',  # ⚠️ 改为true！定位模式需要FLANN索引来匹配特征
                 
                 # 额外的保护措施 - 禁止任何可能修改数据库的操作
-                'Mem/STMSize': '1',  # 短期记忆只保留1个节点(定位模式不需要大STM)
-                'Mem/ImageKept': 'false',  # 不保存新图像到数据库
+                'Mem/STMSize': '30',  # 短期记忆保留30个节点（定位需要足够的STM）
+                # 'Mem/ImageKept': 'false',  # ⚠️ 注释掉！这会阻止加载词典数据
                 'Mem/NotLinkedNodesKept': 'false',  # 不保存未链接的节点
                 'DbSqlite3/InMemory': 'false',  # 不使用内存数据库(确保从磁盘只读)
+                'DbSqlite3/JournalMode': '0',  # ⚠️ DELETE模式（只读安全）
+                
+                # 地图参数 - 防止地图被重新生成
+                'GridGlobal/MinSize': '0.0',  # ⚠️ 使用0让RTABMap根据实际poses计算大小
+                'GridGlobal/UpdateError': '100.0',  # ⚠️ 关键！防止地图频繁更新
+                'GridGlobal/FullUpdate': 'false',  # 不使用完整更新（定位模式不需要）
             }
         ],
         remappings=[
