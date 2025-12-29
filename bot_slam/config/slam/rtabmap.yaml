@@ -115,6 +115,10 @@ rtabmap:
     Mem/ImageKept: "false"            # 不保存完整图像（节省空间）
     Mem/UseOdomFeatures: "false"     # Don't use odom for loop detection / 不用里程计做闭环
     
+    # Depth image format / 深度图像格式
+    Mem/SaveDepth16Format: "false"   # ⚠️ 使用32位格式（支持>65米深度）
+    Mem/DepthCompressionFormat: ".png" # ⚠️ 使用PNG压缩（兼容32位格式）
+    
     # Vocabulary/Dictionary settings / 词典设置
     Kp/IncrementalDictionary: "true" # ⚠️ 增量词典（mapping时必须true）
     Kp/IncrementalFlann: "true"      # 使用增量FLANN索引

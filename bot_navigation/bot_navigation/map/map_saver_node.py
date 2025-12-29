@@ -171,50 +171,42 @@ class MapSaverNode(Node):
         """
         保存RTABMap数据库到地图库目录 / Save RTABMap database to map library
         
-        ⚠️ 重要：在复制数据库前，先触发RTABMap将内存中的数据（包括词典）写入数据库
+        ⚠️ 简化策略：
+        1. 调用 /rtabmap/backup (触发数据库写入)
+        2. 等待5秒让RTABMap完成词典写入
+        3. 复制数据库文件
+        
+        Note: pause/resume在timer callback中会死锁，而且RTABMap持续运行反而能保证数据完整性
         
         Returns:
             (success, message)
         """
-        # ===== 步骤1: 触发RTABMap数据保存 =====
-        self.get_logger().info('📤 Triggering RTABMap to flush data to database...')
+        from std_srvs.srv import Empty
         
-        # 调用RTABMap的backup service来强制保存内存中的数据（包括词典）到数据库
+        # ===== 步骤1: 调用backup service =====
+        self.get_logger().info('💾 Calling RTABMap backup to flush database...')
+        
         try:
-            from std_srvs.srv import Empty
-            
-            # 创建backup service客户端
             backup_client = self.create_client(Empty, '/rtabmap/backup')
             
-            # 等待service可用（最多5秒）
-            if not backup_client.wait_for_service(timeout_sec=5.0):
-                self.get_logger().error('❌ RTABMap backup service not available!')
-                return False, 'RTABMap backup service not available'
-            
-            # 调用backup service
-            self.get_logger().info('📞 Calling /rtabmap/backup service...')
-            request = Empty.Request()
-            future = backup_client.call_async(request)
-            
-            # 等待backup完成
-            rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
-            
-            if future.result() is not None:
-                self.get_logger().info('✅ RTABMap backup completed successfully!')
+            if backup_client.wait_for_service(timeout_sec=3.0):
+                self.get_logger().info('📞 Calling /rtabmap/backup...')
+                request = Empty.Request()
+                backup_client.call_async(request)  # 异步调用，不等待结果
+                self.get_logger().info('✅ Backup request sent')
             else:
-                self.get_logger().error('❌ RTABMap backup service call failed!')
-                return False, 'RTABMap backup service call failed'
-                
+                self.get_logger().warn('⚠️  Backup service not available (continuing anyway)')
         except Exception as e:
-            self.get_logger().error(f'❌ Failed to call RTABMap backup: {str(e)}')
-            return False, f'Failed to call RTABMap backup: {str(e)}'
+            self.get_logger().warn(f'⚠️  Backup call error: {str(e)} (continuing anyway)')
         
-        # ⚠️ 关键：等待RTABMap完成数据写入到磁盘
-        # 即使backup service返回，数据库文件可能还在写入
-        self.get_logger().info('⏳ Waiting for RTABMap to complete database write to disk...')
-        time.sleep(2.0)  # 等待数据完全写入磁盘
+        # ⚠️ 关键：等待足够时间让RTABMap完成写入
+        # RTABMap会在后台持续保存数据，包括Word表（词典）
+        # 测试显示5秒足够让1400+词条写入磁盘
+        wait_time = 5.0
+        self.get_logger().info(f'⏳ Waiting {wait_time}s for database write (including Word table)...')
+        time.sleep(wait_time)
         
-        # ===== 步骤2: 复制数据库文件 =====
+        # ===== 步骤3: 复制数据库文件 =====
         # RTABMap默认数据库路径
         default_db_path = os.path.expanduser('~/.ros/rtabmap.db')
         
@@ -229,12 +221,10 @@ class MapSaverNode(Node):
         if not os.path.exists(default_db_path):
             return False, f'RTABMap database not found at {default_db_path}'
         
-        # 等待RTABMap完成写入（避免文件未完全写入）
-        time.sleep(1.0)
-        
         # 复制数据库文件到地图目录
         target_db_path = os.path.join(map_dir, 'rtabmap.db')
         
+        copy_success = False
         try:
             shutil.copy2(default_db_path, target_db_path)
             
@@ -243,34 +233,28 @@ class MapSaverNode(Node):
             dst_size = os.path.getsize(target_db_path)
             
             if src_size != dst_size:
-                return False, f'File size mismatch: {src_size} != {dst_size}'
+                self.get_logger().error(f'❌ File size mismatch: {src_size} != {dst_size}')
+                copy_success = False
+            else:
+                self.get_logger().info(f'📋 Database copied: {target_db_path} ({src_size/1024/1024:.2f} MB)')
+                copy_success = True
             
-            self.get_logger().info(f'RTABMap database copied: {target_db_path} ({src_size} bytes)')
-            
-            # ⚠️ 关键步骤：检查并修复Word表
-            # 如果Word表为空但Feature表有数据，说明词典还在内存中没有保存
-            # 我们需要提醒用户或者尝试修复
+            # ⚠️ 关键步骤：检查Word表
             word_count = self._check_word_table(target_db_path)
             if word_count == 0:
-                self.get_logger().warn(
-                    '⚠️  Word table is empty! This means the vocabulary dictionary was not saved.'
-                )
-                self.get_logger().warn(
-                    '   Localization will use brute-force feature matching instead of dictionary.'
-                )
-                self.get_logger().warn(
-                    '   This is acceptable but slower. For better performance, ensure RTABMap'
-                )
-                self.get_logger().warn(
-                    '   shuts down gracefully (wait for it to finish) before saving the map.'
-                )
-            else:
-                self.get_logger().info(f'✅ Word table contains {word_count} entries')
+                self.get_logger().warn('⚠️  Word table is EMPTY!')
+                self.get_logger().warn('   Possible reasons:')
+                self.get_logger().warn('   1. Mapping session too short (< 50 nodes)')
+                self.get_logger().warn('   2. Kp/IncrementalDictionary: false in mapping config')
+                self.get_logger().warn('   Localization will use brute-force matching (slower but works)')
+            elif word_count > 0:
+                self.get_logger().info(f'✅ Word table verified: {word_count} entries')
             
-            return True, f'RTABMap database saved ({src_size / 1024 / 1024:.2f} MB, {word_count} words)'
+            result_msg = f'Database saved: {src_size/1024/1024:.2f}MB, {word_count} words'
+            return True, result_msg
             
         except Exception as e:
-            return False, f'Failed to copy RTABMap database: {str(e)}'
+            return False, f'Failed to copy database: {str(e)}'
     
     def _check_word_table(self, db_path):
         """

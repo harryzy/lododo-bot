@@ -1112,7 +1112,7 @@ class ExplorationMapper(Node):
         
         while (time.time() - start_time) < backward_duration:
             # 检查后方是否有障碍物 / Check if obstacle behind
-            if self._safety_manager.check_backward_safety(self.local_costmap, self.get_robot_position()):
+            if self._safety_manager.check_backward_safety(self._safety_manager.local_costmap, self.get_robot_position()):
                 self._rotation_controller.cmd_vel_pub.publish(cmd)
             else:
                 self.get_logger().warn('Obstacle detected behind, stopping backward escape')

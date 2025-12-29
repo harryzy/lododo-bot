@@ -212,18 +212,30 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # PHASE 2: Robot Control with ros2_control / 第二阶段：基于ros2_control的机器人控制
     # ==========================================================================
     
+    # Wait for controller_manager to be ready
+    # 等待controller_manager就绪
+    wait_for_controller_manager = ExecuteProcess(
+        cmd=['bash', '-c', 
+             'until ros2 service list | grep -q controller_manager; do sleep 0.5; done && '
+             'echo "[Event] controller_manager is ready"'],
+        name='wait_for_controller_manager',
+        output='screen'
+    )
+    
     # Load ros2_control controllers spawner (joint_state_broadcaster)
     # 加载 ros2_control 控制器生成器（关节状态广播器）
+    # 使用spawner命令替代load_controller，更可靠
     load_joint_state_broadcaster = ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
+        cmd=['ros2', 'run', 'controller_manager', 'spawner', 
              'joint_state_broadcaster'],
         output='screen'
     )
     
     # Load simplified omni wheel velocity controller
     # 加载简化版全向轮速度控制器
+    # 使用spawner命令，自动等待controller_manager就绪
     load_omni_wheel_controller = ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
+        cmd=['ros2', 'run', 'controller_manager', 'spawner',
              'simple_omni_wheel_controller'],
         output='screen'
     )
@@ -485,7 +497,19 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             target_action=spawn_robot,
             on_exit=[
                 LogInfo(msg='[Event] Robot spawned successfully!'),
-                LogInfo(msg='[Phase 2] Starting ros2_control controllers...'),
+                LogInfo(msg='[Phase 2] Waiting for controller_manager...'),
+                wait_for_controller_manager,
+            ]
+        )
+    )
+    
+    # Event: When controller_manager is ready -> load controllers
+    # 事件：当controller_manager就绪后 -> 加载控制器
+    event_controller_manager_ready = RegisterEventHandler(
+        OnProcessExit(
+            target_action=wait_for_controller_manager,
+            on_exit=[
+                LogInfo(msg='[Event] controller_manager ready, loading controllers...'),
                 load_joint_state_broadcaster,
                 load_omni_wheel_controller,
                 omni_controller_node,
@@ -578,6 +602,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         event_gazebo_started,
         event_rsp_started,
         event_robot_spawned,
+        event_controller_manager_ready,
         event_control_started,
         event_slam_started,
         event_ekf_started,
