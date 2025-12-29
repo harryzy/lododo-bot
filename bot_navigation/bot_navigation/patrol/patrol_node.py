@@ -23,7 +23,7 @@ from nav_msgs.msg import OccupancyGrid
 
 import yaml
 import math
-import time
+import time,os
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
@@ -275,6 +275,10 @@ class PatrolNode(Node):
     def _load_parameters(self):
         """加载参数 / Load parameters"""
         self._waypoint_file = self.get_parameter('waypoint_file').value
+        # 展开路径中的~符号
+        if self._waypoint_file:
+            self._waypoint_file = os.path.expanduser(self._waypoint_file)
+        
         self._patrol_mode = self.get_parameter('patrol_mode').value
         self._default_dwell_time = self.get_parameter('default_dwell_time').value
         self._max_loops = self.get_parameter('max_loops').value

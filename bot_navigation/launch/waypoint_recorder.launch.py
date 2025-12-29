@@ -9,7 +9,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-
+import os
 
 def generate_launch_description():
     """生成 Launch 描述"""
@@ -51,6 +51,12 @@ def generate_launch_description():
         description='Frame ID for waypoints'
     )
     
+    waypoints_save_path_arg = DeclareLaunchArgument(
+        'waypoints_save_path',
+        default_value=os.path.join(os.getcwd(), 'waypoints'),
+        description='Directory to save recorded waypoints (default: <workspace>/waypoints)'
+    )
+    
     # WaypointRecorder 节点
     waypoint_recorder_node = Node(
         package='bot_navigation',
@@ -64,9 +70,9 @@ def generate_launch_description():
             'recording_interval': LaunchConfiguration('recording_interval'),
             'min_distance': LaunchConfiguration('min_distance'),
             'frame_id': LaunchConfiguration('frame_id'),
+            'persistence_dir': LaunchConfiguration('waypoints_save_path'),
         }],
-        emulate_tty=True,
-        prefix='xterm -e',  # 在独立终端窗口中运行
+        emulate_tty=True,  # 保持终端交互
     )
     
     return LaunchDescription([
@@ -76,6 +82,8 @@ def generate_launch_description():
         recording_interval_arg,
         min_distance_arg,
         frame_id_arg,
+        waypoints_save_path_arg,
         LogInfo(msg='Starting Waypoint Recorder...'),
+        LogInfo(msg='使用命令: r-录制 d-删除 s-保存 l-列表 q-退出'),
         waypoint_recorder_node,
     ])

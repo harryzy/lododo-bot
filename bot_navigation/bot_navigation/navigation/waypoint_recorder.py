@@ -50,19 +50,21 @@ class WaypointRecorder:
         self._persistence_dir = persistence_dir
         os.makedirs(self._persistence_dir, exist_ok=True)
     
-    def start_recording(self, interval: float = 1.0, min_distance: float = 0.5):
+    def start_recording(self, interval: float = 1.0, min_distance: float = 0.5, clear_existing: bool = False):
         """
         开始记录路点
         
         Args:
             interval: 记录时间间隔(秒)
             min_distance: 最小记录距离(m)
+            clear_existing: 是否清空已有路点（默认False，保留已录制的路点）
         """
         self._is_recording = True
         self._recording_interval = interval
         self._min_distance = min_distance
         self._last_record_time = None
-        self._waypoints.clear()
+        if clear_existing:
+            self._waypoints.clear()
     
     def stop_recording(self) -> int:
         """
@@ -78,7 +80,7 @@ class WaypointRecorder:
         """检查是否正在记录"""
         return self._is_recording
     
-    def add_waypoint(self, pose: PoseStamped, current_time: float) -> bool:
+    def add_waypoint(self, pose: PoseStamped, current_time: float) -> dict:
         """
         添加路点（需要检查时间间隔和距离）
         
@@ -87,28 +89,34 @@ class WaypointRecorder:
             current_time: 当前时间(秒)
             
         Returns:
-            bool: 成功添加返回True
+            dict: {'added': bool, 'reason': str}
         """
         if not self._is_recording:
-            return False
+            return {'added': False, 'reason': 'Not recording'}
+        
+        # 第一个路点：立即记录（无需检查间隔和距离）
+        if len(self._waypoints) == 0:
+            self._waypoints.append(pose)
+            self._last_record_time = current_time
+            return {'added': True, 'reason': 'First waypoint'}
         
         # 检查时间间隔
         if self._last_record_time is not None:
-            if current_time - self._last_record_time < self._recording_interval:
-                return False
+            time_elapsed = current_time - self._last_record_time
+            if time_elapsed < self._recording_interval:
+                return {'added': False, 'reason': f'Time interval not met ({time_elapsed:.2f}s < {self._recording_interval}s)'}
         
         # 检查距离（与最后一个路点的距离）
-        if len(self._waypoints) > 0:
-            last_wp = self._waypoints[-1]
-            distance = self._calculate_distance(pose, last_wp)
-            if distance < self._min_distance:
-                return False
+        last_wp = self._waypoints[-1]
+        distance = self._calculate_distance(pose, last_wp)
+        if distance < self._min_distance:
+            return {'added': False, 'reason': f'Distance too small ({distance:.3f}m < {self._min_distance}m)'}
         
         # 添加路点
         self._waypoints.append(pose)
         self._last_record_time = current_time
         
-        return True
+        return {'added': True, 'reason': f'Added (distance: {distance:.3f}m)'}
     
     def add_waypoint_manual(self, pose: PoseStamped):
         """手动添加路点（不检查间隔和距离）"""
@@ -192,8 +200,7 @@ class WaypointRecorder:
         Returns:
             bool: 成功返回True
         """
-        if len(self._waypoints) == 0:
-            return False
+        # 不检查路点数量，让调用方决定是否允许保存空列表
         
         # 确保 .yaml 扩展名
         if not filename.endswith('.yaml'):
@@ -222,7 +229,7 @@ class WaypointRecorder:
         
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
-                yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
+                yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
             return True
         except Exception as e:
             print(f"Failed to save waypoints: {e}")

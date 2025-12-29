@@ -14,7 +14,7 @@ from bot_navigation_msgs.srv import WaypointControl
 from std_srvs.srv import Trigger
 from .waypoint_recorder import WaypointRecorder
 import threading
-import math
+import math,os
 
 
 class WaypointRecorderNode(Node):
@@ -29,12 +29,13 @@ class WaypointRecorderNode(Node):
         self.declare_parameters(
             namespace='',
             parameters=[
-                ('pose_topic', '/rtabmap/localization_pose'),
+                ('pose_topic', '/localization_pose'),
                 ('backup_pose_topic', '/odom'),
                 ('use_odom_backup', True),
                 ('recording_interval', 1.0),
                 ('min_distance', 0.5),
                 ('frame_id', 'map'),
+                ('persistence_dir', ''),
             ]
         )
         
@@ -44,21 +45,43 @@ class WaypointRecorderNode(Node):
         self._recording_interval = self.get_parameter('recording_interval').value
         self._min_distance = self.get_parameter('min_distance').value
         self._frame_id = self.get_parameter('frame_id').value
+        self._persistence_dir = self.get_parameter('persistence_dir').value
+        
+        # 展开路径中的~符号
+        if self._persistence_dir:
+            self._persistence_dir = os.path.expanduser(self._persistence_dir)
         
         # 路点录制器
-        self._recorder = WaypointRecorder()
+        # 如果指定了persistence_dir参数，则使用；否则使用默认路径
+        if self._persistence_dir:
+            self._recorder = WaypointRecorder(persistence_dir=self._persistence_dir)
+        else:
+            self._recorder = WaypointRecorder()
         
         # 当前位姿
         self._current_pose: PoseStamped = None
         self._pose_received = False
         
-        # 订阅位姿话题
-        self._pose_sub = self.create_subscription(
-            PoseStamped,
-            self._pose_topic,
-            self._pose_callback,
-            10
-        )
+        # 订阅位姿话题（先尝试PoseWithCovarianceStamped，如果话题不存在再尝试PoseStamped）
+        try:
+            # RTABMap localization 发布 PoseWithCovarianceStamped
+            from geometry_msgs.msg import PoseWithCovarianceStamped
+            self._pose_sub = self.create_subscription(
+                PoseWithCovarianceStamped,
+                self._pose_topic,
+                self._pose_with_cov_callback,
+                10
+            )
+            self.get_logger().info(f'Subscribed to {self._pose_topic} (PoseWithCovarianceStamped)')
+        except Exception as e:
+            # 如果话题类型不匹配，尝试PoseStamped
+            self._pose_sub = self.create_subscription(
+                PoseStamped,
+                self._pose_topic,
+                self._pose_callback,
+                10
+            )
+            self.get_logger().info(f'Subscribed to {self._pose_topic} (PoseStamped)')
         
         # 备用：订阅里程计
         if self._use_odom_backup:
@@ -123,11 +146,17 @@ class WaypointRecorderNode(Node):
         self.get_logger().info('WaypointRecorderNode initialized')
         self.get_logger().info(f'Listening to pose topic: {self._pose_topic}')
         
-    def _pose_callback(self, msg: PoseStamped):
-        """位姿话题回调"""
-        self._current_pose = msg
+    def _pose_with_cov_callback(self, msg):
+        """位姿话题回调 (PoseWithCovarianceStamped)"""
+        # 转换为 PoseStamped
+        pose = PoseStamped()
+        pose.header = msg.header
+        pose.pose = msg.pose.pose
+        self._current_pose = pose
         self._pose_received = True
     
+    def _pose_callback(self, msg: PoseStamped):
+        """位姿话题回调 (PoseStamped)"""
     def _odom_callback(self, msg: Odometry):
         """里程计话题回调（备用）"""
         if not self._pose_received:
@@ -139,11 +168,28 @@ class WaypointRecorderNode(Node):
     
     def _auto_record_callback(self):
         """自动录制回调"""
-        if self._recorder.is_recording() and self._current_pose is not None:
-            current_time = self.get_clock().now().nanoseconds / 1e9
-            if self._recorder.add_waypoint(self._current_pose, current_time):
-                count = self._recorder.get_waypoint_count()
-                self.get_logger().info(f'✓ Recorded waypoint #{count}')
+        if self._recorder.is_recording():
+            if self._current_pose is None:
+                # 没收到pose，每5秒提醒一次
+                if not hasattr(self, '_last_pose_warning_time'):
+                    self._last_pose_warning_time = 0
+                current_time = self.get_clock().now().nanoseconds / 1e9
+                if current_time - self._last_pose_warning_time > 5.0:
+                    self.get_logger().warn('⚠ Auto-recording active but no pose received yet')
+                    self._last_pose_warning_time = current_time
+            else:
+                current_time = self.get_clock().now().nanoseconds / 1e9
+                result = self._recorder.add_waypoint(self._current_pose, current_time)
+                if result['added']:
+                    count = self._recorder.get_waypoint_count()
+                    x = self._current_pose.pose.position.x
+                    y = self._current_pose.pose.position.y
+                    self.get_logger().info(f'✓ Auto-recorded waypoint #{count} at ({x:.2f}, {y:.2f})')
+                elif result['reason'] and self._recorder.get_waypoint_count() == 0:
+                    # 第一个路点如果失败，输出原因
+                    if not hasattr(self, '_first_waypoint_debug_shown'):
+                        self.get_logger().info(f'Debug: {result["reason"]}')
+                        self._first_waypoint_debug_shown = True
     
     def _publish_markers(self):
         """发布可视化标记"""
@@ -158,19 +204,24 @@ class WaypointRecorderNode(Node):
         
         self._recorder.add_waypoint_manual(self._current_pose)
         count = self._recorder.get_waypoint_count()
-        self.get_logger().info(f'✓ Manually recorded waypoint #{count}')
+        x = self._current_pose.pose.position.x
+        y = self._current_pose.pose.position.y
+        self.get_logger().info(f'✓ Manually recorded waypoint #{count} at ({x:.2f}, {y:.2f})')
         return True
     
     def start_recording(self):
         """开始自动录制"""
+        current_count = self._recorder.get_waypoint_count()
         self._recorder.start_recording(
             interval=self._recording_interval,
-            min_distance=self._min_distance
+            min_distance=self._min_distance,
+            clear_existing=False  # 不清空已有路点
         )
         self.get_logger().info(
-            f'Started recording (interval={self._recording_interval}s, '
-            f'min_distance={self._min_distance}m)'
+            f'Started auto-recording (interval={self._recording_interval}s, '
+            f'min_distance={self._min_distance}m). Current waypoints: {current_count}'
         )
+        self.get_logger().info('Move the robot to start recording waypoints...')
     
     def stop_recording(self):
         """停止自动录制"""
@@ -196,24 +247,31 @@ class WaypointRecorderNode(Node):
     
     def save_waypoints(self, filename: str):
         """保存路点到文件"""
-        if not filename.endswith('.json'):
-            filename += '.json'
+        # 检查是否有路点
+        count = self._recorder.get_waypoint_count()
+        if count == 0:
+            self.get_logger().error('✗ Failed to save: No waypoints recorded yet. Use "r" to record or "a" to start auto-recording.')
+            return False
         
+        # WaypointRecorder会自动添加.yaml扩展名，这里不需要添加
         if self._recorder.save_waypoints(filename):
-            self.get_logger().info(f'✓ Saved waypoints to: {filename}')
+            # 构建完整保存路径（展开~）
+            save_dir = os.path.expanduser(self._persistence_dir) if self._persistence_dir else os.path.expanduser('~/.ros/lekiwi_bot/navigation/waypoints')
+            save_path = os.path.join(save_dir, filename if filename.endswith('.yaml') else filename + '.yaml')
+            self.get_logger().info(f'✓ Saved {count} waypoints to: {save_path}')
             return True
         else:
-            self.get_logger().error(f'✗ Failed to save waypoints')
+            self.get_logger().error(f'✗ Failed to save waypoints to file')
             return False
     
     def load_waypoints(self, filename: str):
         """从文件加载路点"""
-        if not filename.endswith('.json'):
-            filename += '.json'
-        
+        # WaypointRecorder会自动添加.yaml扩展名
         if self._recorder.load_waypoints(filename):
             count = self._recorder.get_waypoint_count()
-            self.get_logger().info(f'✓ Loaded {count} waypoints from: {filename}')
+            save_dir = os.path.expanduser(self._persistence_dir) if self._persistence_dir else os.path.expanduser('~/.ros/lekiwi_bot/navigation/waypoints')
+            save_path = os.path.join(save_dir, filename if filename.endswith('.yaml') else filename + '.yaml')
+            self.get_logger().info(f'✓ Loaded {count} waypoints from: {save_path}')
             return True
         else:
             self.get_logger().error(f'✗ Failed to load waypoints from: {filename}')
@@ -297,74 +355,81 @@ def run_interactive_cli(node: WaypointRecorderNode):
     
     print_menu()
     
-    # ROS2 spin 在后台线程
-    def spin_thread():
+    # CLI 在单独线程运行（避免阻塞 ROS2 回调）
+    def cli_thread():
         while rclpy.ok():
-            rclpy.spin_once(node, timeout_sec=0.1)
-    
-    spinner = threading.Thread(target=spin_thread, daemon=True)
-    spinner.start()
-    
-    while rclpy.ok():
-        try:
-            # 阻塞式读取用户输入
-            command = input('\n[%d waypoints] > ' % node._recorder.get_waypoint_count()).strip().lower()
-            
-            if command == 'r':
-                node.record_current_pose()
-            
-            elif command == 'a':
-                node.start_recording()
-            
-            elif command == 't':
-                node.stop_recording()
-            
-            elif command == 'd':
-                node.delete_last()
-            
-            elif command == 'c':
-                confirm = input('确认清空所有路点? (y/n): ')
-                if confirm.lower() == 'y':
-                    node.clear_all()
-            
-            elif command == 'l':
-                node.list_waypoints()
-            
-            elif command == 'p':
-                node.show_current_pose()
-            
-            elif command == 's':
-                filename = input('输入文件名 (不含扩展名): ')
-                if filename:
-                    node.save_waypoints(filename)
-            
-            elif command == 'o':
-                filename = input('输入文件名 (不含扩展名): ')
-                if filename:
-                    node.load_waypoints(filename)
-            
-            elif command == 'f':
-                node.list_saved_files()
-            
-            elif command == 'h':
-                print_menu()
-            
-            elif command == 'q':
-                print('退出...')
+            try:
+                # 阻塞式读取用户输入
+                command = input('\n[%d waypoints] > ' % node._recorder.get_waypoint_count()).strip().lower()
+                
+                if command == 'r':
+                    node.record_current_pose()
+                
+                elif command == 'a':
+                    node.start_recording()
+                
+                elif command == 't':
+                    node.stop_recording()
+                
+                elif command == 'd':
+                    node.delete_last()
+                
+                elif command == 'c':
+                    confirm = input('确认清空所有路点? (y/n): ')
+                    if confirm.lower() == 'y':
+                        node.clear_all()
+                
+                elif command == 'l':
+                    node.list_waypoints()
+                
+                elif command == 'p':
+                    node.show_current_pose()
+                
+                elif command == 's':
+                    filename = input('输入文件名 (不含扩展名): ')
+                    if filename:
+                        node.save_waypoints(filename)
+                
+                elif command == 'o':
+                    filename = input('输入文件名 (不含扩展名): ')
+                    if filename:
+                        node.load_waypoints(filename)
+                
+                elif command == 'f':
+                    node.list_saved_files()
+                
+                elif command == 'h':
+                    print_menu()
+                
+                elif command == 'q':
+                    print('退出...')
+                    rclpy.shutdown()
+                    break
+                
+                elif command:
+                    print(f'未知命令: {command}. 输入 h 查看帮助')
+                
+            except KeyboardInterrupt:
+                print('\n退出...')
+                rclpy.shutdown()
                 break
-            
-            elif command:
-                print(f'未知命令: {command}. 输入 h 查看帮助')
-            
-        except KeyboardInterrupt:
-            print('\n退出...')
-            break
-        except EOFError:
-            # 处理 Ctrl+D
-            print('\n退出...')
-            break
-        except Exception as e:
-            node.get_logger().error(f'Error: {str(e)}')
+            except EOFError:
+                # 处理 Ctrl+D
+                print('\n退出...')
+                rclpy.shutdown()
+                break
+            except Exception as e:
+                node.get_logger().error(f'CLI Error: {str(e)}')
+    
+    # 启动 CLI 线程
+    cli_worker = threading.Thread(target=cli_thread, daemon=True)
+    cli_worker.start()
+    
+    # 主线程运行 ROS2 spin（保证回调能正常执行）
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
 
 
 # ========== ROS2 服务处理函数（独立于交互式CLI） ==========
@@ -410,8 +475,7 @@ def service_handle_record_current(node, request, response):
             response.success = False
             response.message = "No pose available"
         else:
-            current_time = node.get_clock().now().nanoseconds / 1e9
-            node._recorder.add_waypoint(node._current_pose, current_time, force=True)
+            node._recorder.add_waypoint_manual(node._current_pose)
             count = node._recorder.get_waypoint_count()
             response.success = True
             response.message = f"Recorded waypoint #{count}"
