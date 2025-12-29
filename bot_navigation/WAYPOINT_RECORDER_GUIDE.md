@@ -17,12 +17,17 @@ WaypointRecorder 是一个交互式路点录制工具，用于：
 cd ~/lododo_bot
 source install/setup.bash
 
-# 方法1: 直接运行
+# 方法1: 直接运行（推荐 - 交互式）
 ros2 run bot_navigation waypoint_recorder
 
 # 方法2: 使用 launch 文件（在独立终端）
 ros2 launch bot_navigation waypoint_recorder.launch.py
 ```
+
+**注意**: 
+- 启动后会显示交互式菜单
+- **需要手动输入命令**才会执行操作
+- 不会自动开始录制，必须输入 `a` 启动自动录制或 `r` 手动录制
 
 ### 2. 命令列表
 
@@ -54,54 +59,54 @@ LeKiwi 路点录制器 / Waypoint Recorder
 
 1. 启动录制器
 2. 使用键盘或手柄控制机器人移动到第一个路点
-3. 输入 `r` 录制当前位置
+3. **输入 `r` 并按回车**录制当前位置
 4. 继续移动到下一个路点
 5. 重复步骤 3-4
 6. 输入 `l` 查看所有路点
 7. 输入 `s` 保存，命名为 `patrol_route1`
 
 ```bash
-[0 waypoints] > r
+[0 waypoints] > r  ← 输入命令后按回车
 ✓ Manually recorded waypoint #1
 
-[1 waypoints] > r
+[1 waypoints] > r  ← 再次输入并回车
 ✓ Manually recorded waypoint #2
 
-[2 waypoints] > l
+[2 waypoints] > l  ← 查看路点列表
 ===== Waypoints (2) =====
   [1] x=1.230, y=2.450, yaw=0.000 rad
   [2] x=3.120, y=1.890, yaw=1.570 rad
 ==============================
 
-[2 waypoints] > s
+[2 waypoints] > s  ← 保存
 输入文件名 (不含扩展名): patrol_route1
-✓ Saved waypoints to: patrol_route1.json
+✓ Saved waypoints to: patrol_route1.yaml
 ```
 
 ### 场景2: 自动录制行驶轨迹
 
 1. 启动录制器
-2. 输入 `a` 开始自动录制
+2. **输入 `a` 并回车**开始自动录制
 3. 遥控机器人行驶（会自动按间隔录制）
-4. 输入 `t` 停止自动录制
+4. **输入 `t` 并回车**停止自动录制
 5. 输入 `s` 保存路点
 
 ```bash
-[0 waypoints] > a
+[0 waypoints] > a  ← 输入命令启动自动录制
 Started recording (interval=1.0s, min_distance=0.5m)
 
-[0 waypoints] > 
+[0 waypoints] >    ← 机器人移动时自动录制
 ✓ Recorded waypoint #1
 ✓ Recorded waypoint #2
 ✓ Recorded waypoint #3
 ...
 
-[15 waypoints] > t
+[15 waypoints] > t  ← 停止录制
 Stopped recording. Total waypoints: 15
 
-[15 waypoints] > s
+[15 waypoints] > s  ← 保存
 输入文件名 (不含扩展名): exploration_route
-✓ Saved waypoints to: exploration_route.json
+✓ Saved waypoints to: exploration_route.yaml
 ```
 
 ### 场景3: 编辑路点
@@ -169,24 +174,19 @@ ros2 launch bot_navigation waypoint_recorder.launch.py \
 ~/.ros/lekiwi_bot/navigation/waypoints/
 ```
 
-文件格式（JSON）：
-```json
-{
-  "waypoints": [
-    {
-      "header": {
-        "frame_id": "map",
-        "stamp": {"sec": 0, "nanosec": 0}
-      },
-      "pose": {
-        "position": {"x": 1.23, "y": 2.45, "z": 0.0},
-        "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
-      }
-    }
-  ],
-  "count": 1,
-  "created_at": "2025-12-26T13:00:00"
-}
+文件格式（YAML - 直接兼容 PatrolNode）：
+```yaml
+waypoints:
+  - name: "点1"
+    x: 1.23
+    y: 2.45
+    yaw: 0.0
+    dwell_time: 2.0
+  - name: "点2"
+    x: 3.12
+    y: 1.89
+    yaw: 1.570
+    dwell_time: 2.0
 ```
 
 ## 与 PatrolNode 集成
@@ -196,12 +196,9 @@ ros2 launch bot_navigation waypoint_recorder.launch.py \
 ```bash
 # 1. 录制路点
 ros2 run bot_navigation waypoint_recorder
-# ... 录制并保存为 my_patrol_route.json
+# ... 录制并保存为 my_patrol_route.yaml
 
-# 2. 转换为 PatrolNode 格式（如果需要）
-# WaypointRecorder 的 JSON 格式需要转换
-
-# 3. 启动巡航
+# 2. 启动巡航
 ros2 launch bot_bringup patrol_with_map.launch.py \
   waypoint_file:=my_patrol_route.yaml \
   patrol_mode:=loop

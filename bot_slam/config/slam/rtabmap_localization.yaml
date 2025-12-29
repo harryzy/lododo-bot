@@ -91,6 +91,11 @@ rtabmap:
     Kp/MaxFeatures: "600"            # Features for matching
     Kp/BadSignRatio: "0.4"           # Bad/good signature ratio threshold
     
+    # ⚠️ 关键：不使用词典，改用描述符暴力匹配
+    Kp/IncrementalDictionary: "false" # 禁用词典（Word表为空时必须false）
+    Kp/NNStrategy: "1"                # 1=暴力匹配（不依赖词典），3=FLANN需要词典
+    Kp/TfIdfLikelihoodUsed: "false"   # 不使用TF-IDF（需要词典）
+    
     # ========================================================================
     # Memory Management - LOCALIZATION MODE / 内存管理 - 定位模式
     # ========================================================================
@@ -109,10 +114,10 @@ rtabmap:
     # Loop Closure Detection / 闭环检测（定位中用于重定位）
     # ========================================================================
     
-    # Bag-of-Words / 词袋模型
-    Mem/BinDataKept: "true"          # Keep binary data
+    # Bag-of-Words / 词袋模型（禁用，因为Word表为空）
+    Mem/BinDataKept: "true"          # ⚠️ 保持二进制数据（特征描述符）
     Mem/UseOdomFeatures: "false"     # Don't use odom for detection
-    Kp/IncrementalFlann: "false"     # 定位模式不需要增量FLANN / No incremental FLANN in localization
+    Kp/IncrementalFlann: "false"     # ⚠️ 关键！不使用FLANN（Word表为空时必须false）
     
     # Localization thresholds / 定位阈值
     RGBD/LinearUpdate: "0.1"         # 定位模式可以稍微放宽 / Slightly relaxed for localization

@@ -110,9 +110,22 @@ rtabmap:
     # ========================================================================
     
     # Bag-of-Words / 词袋模型
-    Mem/BinDataKept: "true"          # Keep binary data for localization / 保留二进制数据用于定位
+    Mem/BinDataKept: "true"          # ⚠️ 关键！保留二进制数据（包括词典）到数据库
+    Mem/RawDescriptorsKept: "true"   # ⚠️ 保留原始描述符到数据库
+    Mem/ImageKept: "false"            # 不保存完整图像（节省空间）
     Mem/UseOdomFeatures: "false"     # Don't use odom for loop detection / 不用里程计做闭环
-    Kp/IncrementalFlann: "true"      # Use incremental FLANN for better accuracy / 使用增量FLANN提高精度
+    
+    # Vocabulary/Dictionary settings / 词典设置
+    Kp/IncrementalDictionary: "true" # ⚠️ 增量词典（mapping时必须true）
+    Kp/IncrementalFlann: "true"      # 使用增量FLANN索引
+    Kp/FlannRebalancingFactor: "2.0" # FLANN重建因子（默认2.0）
+    Kp/NNStrategy: "3"                # 3=FLANN_KDTREE（最佳性能）
+    
+    # Database settings / 数据库设置
+    DbSqlite3/InMemory: "false"       # ⚠️ 不使用内存数据库，确保数据写入磁盘
+    DbSqlite3/CacheSize: "10000"      # SQLite缓存大小
+    DbSqlite3/JournalMode: "3"        # 3=WAL模式（更好的并发写入）
+    DbSqlite3/Synchronous: "1"        # 1=NORMAL（平衡性能和安全）
     
     # Loop closure thresholds / 闭环阈值
     RGBD/LinearUpdate: "0.05"        # Min translation to add node (5cm, denser) / 添加节点的最小平移

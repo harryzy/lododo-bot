@@ -14,10 +14,6 @@ from bot_navigation_msgs.srv import WaypointControl
 from std_srvs.srv import Trigger
 from .waypoint_recorder import WaypointRecorder
 import threading
-import sys
-import select
-import tty
-import termios
 import math
 
 
@@ -297,67 +293,74 @@ def print_menu():
 
 def run_interactive_cli(node: WaypointRecorderNode):
     """运行交互式 CLI"""
+    import threading
+    
     print_menu()
+    
+    # ROS2 spin 在后台线程
+    def spin_thread():
+        while rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.1)
+    
+    spinner = threading.Thread(target=spin_thread, daemon=True)
+    spinner.start()
     
     while rclpy.ok():
         try:
-            # 等待用户输入
-            print('\n[%d waypoints] > ' % node._recorder.get_waypoint_count(), end='', flush=True)
+            # 阻塞式读取用户输入
+            command = input('\n[%d waypoints] > ' % node._recorder.get_waypoint_count()).strip().lower()
             
-            # 使用 select 非阻塞读取（带超时）
-            if select.select([sys.stdin], [], [], 0.1)[0]:
-                command = sys.stdin.readline().strip().lower()
-                
-                if command == 'r':
-                    node.record_current_pose()
-                
-                elif command == 'a':
-                    node.start_recording()
-                
-                elif command == 't':
-                    node.stop_recording()
-                
-                elif command == 'd':
-                    node.delete_last()
-                
-                elif command == 'c':
-                    confirm = input('确认清空所有路点? (y/n): ')
-                    if confirm.lower() == 'y':
-                        node.clear_all()
-                
-                elif command == 'l':
-                    node.list_waypoints()
-                
-                elif command == 'p':
-                    node.show_current_pose()
-                
-                elif command == 's':
-                    filename = input('输入文件名 (不含扩展名): ')
-                    if filename:
-                        node.save_waypoints(filename)
-                
-                elif command == 'o':
-                    filename = input('输入文件名 (不含扩展名): ')
-                    if filename:
-                        node.load_waypoints(filename)
-                
-                elif command == 'f':
-                    node.list_saved_files()
-                
-                elif command == 'h':
-                    print_menu()
-                
-                elif command == 'q':
-                    print('退出...')
-                    break
-                
-                elif command:
-                    print(f'未知命令: {command}. 输入 h 查看帮助')
+            if command == 'r':
+                node.record_current_pose()
             
-            # 让 ROS2 处理回调
-            rclpy.spin_once(node, timeout_sec=0.01)
+            elif command == 'a':
+                node.start_recording()
+            
+            elif command == 't':
+                node.stop_recording()
+            
+            elif command == 'd':
+                node.delete_last()
+            
+            elif command == 'c':
+                confirm = input('确认清空所有路点? (y/n): ')
+                if confirm.lower() == 'y':
+                    node.clear_all()
+            
+            elif command == 'l':
+                node.list_waypoints()
+            
+            elif command == 'p':
+                node.show_current_pose()
+            
+            elif command == 's':
+                filename = input('输入文件名 (不含扩展名): ')
+                if filename:
+                    node.save_waypoints(filename)
+            
+            elif command == 'o':
+                filename = input('输入文件名 (不含扩展名): ')
+                if filename:
+                    node.load_waypoints(filename)
+            
+            elif command == 'f':
+                node.list_saved_files()
+            
+            elif command == 'h':
+                print_menu()
+            
+            elif command == 'q':
+                print('退出...')
+                break
+            
+            elif command:
+                print(f'未知命令: {command}. 输入 h 查看帮助')
             
         except KeyboardInterrupt:
+            print('\n退出...')
+            break
+        except EOFError:
+            # 处理 Ctrl+D
             print('\n退出...')
             break
         except Exception as e:

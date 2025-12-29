@@ -303,11 +303,17 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
                 'Mem/IncrementalMemory': 'false',  # ❗不建图,只定位(防止写入数据库)
                 'Mem/InitWMWithAllNodes': 'true',  # 用所有节点初始化Working Memory
                 'Mem/BinDataKept': 'true',  # ⚠️ 保持二进制数据(包括词汇) - 必须true才能加载词典
-                'Kp/IncrementalFlann': 'true',  # ⚠️ 改为true！定位模式需要FLANN索引来匹配特征
+                
+                # ⚠️ 关键修改：不使用词典，改用描述符暴力匹配
+                'Kp/IncrementalDictionary': 'false',  # ⚠️ Word表为空，禁用词典
+                'Kp/NNStrategy': '1',  # ⚠️ 1=暴力匹配（不依赖Word表），3=FLANN需要词典
+                'Kp/TfIdfLikelihoodUsed': 'false',  # ⚠️ 不使用TF-IDF（需要词典）
+                'Kp/IncrementalFlann': 'false',  # ⚠️ 不使用FLANN（Word表为空时必须false）
                 
                 # 额外的保护措施 - 禁止任何可能修改数据库的操作
                 'Mem/STMSize': '30',  # 短期记忆保留30个节点（定位需要足够的STM）
-                # 'Mem/ImageKept': 'false',  # ⚠️ 注释掉！这会阻止加载词典数据
+                'Mem/ImageKept': 'true',  # ⚠️ 必须true！否则不加载词典和图像数据
+                'Mem/RawDescriptorsKept': 'true',  # ⚠️ 保留原始描述符
                 'Mem/NotLinkedNodesKept': 'false',  # 不保存未链接的节点
                 'DbSqlite3/InMemory': 'false',  # 不使用内存数据库(确保从磁盘只读)
                 'DbSqlite3/JournalMode': '0',  # ⚠️ DELETE模式（只读安全）

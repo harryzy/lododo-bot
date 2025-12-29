@@ -171,9 +171,50 @@ class MapSaverNode(Node):
         """
         保存RTABMap数据库到地图库目录 / Save RTABMap database to map library
         
+        ⚠️ 重要：在复制数据库前，先触发RTABMap将内存中的数据（包括词典）写入数据库
+        
         Returns:
             (success, message)
         """
+        # ===== 步骤1: 触发RTABMap数据保存 =====
+        self.get_logger().info('📤 Triggering RTABMap to flush data to database...')
+        
+        # 调用RTABMap的backup service来强制保存内存中的数据（包括词典）到数据库
+        try:
+            from std_srvs.srv import Empty
+            
+            # 创建backup service客户端
+            backup_client = self.create_client(Empty, '/rtabmap/backup')
+            
+            # 等待service可用（最多5秒）
+            if not backup_client.wait_for_service(timeout_sec=5.0):
+                self.get_logger().error('❌ RTABMap backup service not available!')
+                return False, 'RTABMap backup service not available'
+            
+            # 调用backup service
+            self.get_logger().info('📞 Calling /rtabmap/backup service...')
+            request = Empty.Request()
+            future = backup_client.call_async(request)
+            
+            # 等待backup完成
+            rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
+            
+            if future.result() is not None:
+                self.get_logger().info('✅ RTABMap backup completed successfully!')
+            else:
+                self.get_logger().error('❌ RTABMap backup service call failed!')
+                return False, 'RTABMap backup service call failed'
+                
+        except Exception as e:
+            self.get_logger().error(f'❌ Failed to call RTABMap backup: {str(e)}')
+            return False, f'Failed to call RTABMap backup: {str(e)}'
+        
+        # ⚠️ 关键：等待RTABMap完成数据写入到磁盘
+        # 即使backup service返回，数据库文件可能还在写入
+        self.get_logger().info('⏳ Waiting for RTABMap to complete database write to disk...')
+        time.sleep(2.0)  # 等待数据完全写入磁盘
+        
+        # ===== 步骤2: 复制数据库文件 =====
         # RTABMap默认数据库路径
         default_db_path = os.path.expanduser('~/.ros/rtabmap.db')
         
@@ -205,10 +246,59 @@ class MapSaverNode(Node):
                 return False, f'File size mismatch: {src_size} != {dst_size}'
             
             self.get_logger().info(f'RTABMap database copied: {target_db_path} ({src_size} bytes)')
-            return True, f'RTABMap database saved ({src_size / 1024 / 1024:.2f} MB)'
+            
+            # ⚠️ 关键步骤：检查并修复Word表
+            # 如果Word表为空但Feature表有数据，说明词典还在内存中没有保存
+            # 我们需要提醒用户或者尝试修复
+            word_count = self._check_word_table(target_db_path)
+            if word_count == 0:
+                self.get_logger().warn(
+                    '⚠️  Word table is empty! This means the vocabulary dictionary was not saved.'
+                )
+                self.get_logger().warn(
+                    '   Localization will use brute-force feature matching instead of dictionary.'
+                )
+                self.get_logger().warn(
+                    '   This is acceptable but slower. For better performance, ensure RTABMap'
+                )
+                self.get_logger().warn(
+                    '   shuts down gracefully (wait for it to finish) before saving the map.'
+                )
+            else:
+                self.get_logger().info(f'✅ Word table contains {word_count} entries')
+            
+            return True, f'RTABMap database saved ({src_size / 1024 / 1024:.2f} MB, {word_count} words)'
             
         except Exception as e:
             return False, f'Failed to copy RTABMap database: {str(e)}'
+    
+    def _check_word_table(self, db_path):
+        """
+        检查Word表中的记录数 / Check Word table entry count
+        
+        Args:
+            db_path: 数据库文件路径
+        
+        Returns:
+            Word表中的记录数
+        """
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['sqlite3', db_path, 'SELECT COUNT(*) FROM Word;'],
+                capture_output=True,
+                text=True,
+                timeout=5.0
+            )
+            if result.returncode == 0:
+                count = int(result.stdout.strip())
+                return count
+            else:
+                self.get_logger().warn(f'Failed to query Word table: {result.stderr}')
+                return -1
+        except Exception as e:
+            self.get_logger().warn(f'Failed to check Word table: {str(e)}')
+            return -1
 
 
 def main(args=None):
