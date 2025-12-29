@@ -309,14 +309,19 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
                 'Kp/NNStrategy': '1',  # ⚠️ 1=暴力匹配（不依赖Word表），3=FLANN需要词典
                 'Kp/TfIdfLikelihoodUsed': 'false',  # ⚠️ 不使用TF-IDF（需要词典）
                 'Kp/IncrementalFlann': 'false',  # ⚠️ 不使用FLANN（Word表为空时必须false）
+                'Kp/BadSignRatio': '1.0',  # ✅ 禁用词典检查（1.0表示接受所有特征）
                 
                 # 额外的保护措施 - 禁止任何可能修改数据库的操作
                 'Mem/STMSize': '30',  # 短期记忆保留30个节点（定位需要足够的STM）
-                'Mem/ImageKept': 'true',  # ⚠️ 必须true！否则不加载词典和图像数据
+                'Mem/ImageKept': 'false',  # ✅ 定位模式不需要保存图像，减少内存
                 'Mem/RawDescriptorsKept': 'true',  # ⚠️ 保留原始描述符
                 'Mem/NotLinkedNodesKept': 'false',  # 不保存未链接的节点
                 'DbSqlite3/InMemory': 'false',  # 不使用内存数据库(确保从磁盘只读)
                 'DbSqlite3/JournalMode': '0',  # ⚠️ DELETE模式（只读安全）
+                
+                # 深度图像格式配置 - 修复深度转换错误
+                'Mem/SaveDepth16Format': 'false',  # ✅ 使用32位格式保持米单位，避免超过65.535m限制
+                'Mem/DepthCompressionFormat': '.png',  # ✅ 使用.png格式压缩
                 
                 # 地图参数 - 防止地图被重新生成
                 'GridGlobal/MinSize': '0.0',  # ⚠️ 使用0让RTABMap根据实际poses计算大小
@@ -384,7 +389,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             'use_sim_time': use_sim_time_str == 'true',
             'frame_id': 'base_link',
             'map_frame_id': 'map',
-            'wait_for_transform': 15.0,
+            'wait_for_transform': 30.0,  # ✅ 增加等待时间：15.0 -> 30.0秒（RTABMap定位需要更长时间初始化）
             'Grid/MaxObstacleHeight': '2.0',
             'Grid/MinObstacleHeight': '0.1',
         }],

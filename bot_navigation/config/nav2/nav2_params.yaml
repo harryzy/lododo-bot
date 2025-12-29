@@ -340,8 +340,7 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-          # 处理无穷大值 / Handle infinite values
-          inf_is_valid: true
+          # inf_is_valid不适用于LaserScan，已移除
       
       # 膨胀层 / Inflation layer
       inflation_layer:

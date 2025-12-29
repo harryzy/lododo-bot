@@ -55,7 +55,7 @@ rtabmap:
     approx_sync_max_interval: 0.01   # Max 10ms difference / 最大10ms差异
     
     # Queue size / 队列大小
-    queue_size: 10                   # Reasonable buffer / 合理的缓冲
+    sync_queue_size: 10              # Reasonable buffer / 合理的缓冲 (renamed from queue_size)
     
     # ========================================================================
     # Visual Odometry / 视觉里程计
