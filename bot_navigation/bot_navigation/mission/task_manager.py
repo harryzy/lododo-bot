@@ -46,14 +46,15 @@ class TaskType(Enum):
 
 class TaskState(Enum):
     """任务状态枚举"""
-    PENDING = 'pending'      # 等待中
-    RUNNING = 'running'      # 执行中
-    PAUSED = 'paused'        # 已暂停
-    COMPLETED = 'completed'  # 已完成
-    FAILED = 'failed'        # 失败
-    CANCELED = 'canceled'    # 已取消
-    TIMEOUT = 'timeout'      # 超时
-    BLOCKED = 'blocked'      # 阻塞（等待条件）
+    PENDING = 'pending'              # 等待中
+    WAITING_EXECUTION = 'waiting'    # 等待执行资源（NavigationExecutor）
+    RUNNING = 'running'              # 执行中
+    PAUSED = 'paused'                # 已暂停
+    COMPLETED = 'completed'          # 已完成
+    FAILED = 'failed'                # 失败
+    CANCELED = 'canceled'            # 已取消
+    TIMEOUT = 'timeout'              # 超时
+    BLOCKED = 'blocked'              # 阻塞（等待条件）
 
 
 @dataclass
@@ -179,6 +180,36 @@ class TaskManager:
         """获取指定状态的任务"""
         return [task for task in self._tasks.values() if task.state == state]
     
+    def update_task_state(self, task_id: str, new_state: TaskState) -> bool:
+        """
+        更新任务状态
+        
+        Args:
+            task_id: 任务ID
+            new_state: 新状态
+            
+        Returns:
+            bool: 成功返回True
+        """
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        
+        old_state = task.state
+        task.state = new_state
+        
+        # 如果从 WAITING_EXECUTION 转为 RUNNING，更新 current_task_id
+        if old_state == TaskState.WAITING_EXECUTION and new_state == TaskState.RUNNING:
+            self._current_task_id = task_id
+        
+        # 如果任务结束，清除 current_task_id
+        if new_state in [TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELED]:
+            if self._current_task_id == task_id:
+                self._current_task_id = None
+        
+        self._save_active_tasks()
+        return True
+    
     def get_next_task(self) -> Optional[Task]:
         """获取下一个待执行的任务"""
         for task_id in self._task_queue:
@@ -190,6 +221,9 @@ class TaskManager:
     def start_task(self, task_id: str) -> bool:
         """
         开始执行任务
+        
+        如果任务需要 NavigationExecutor，先进入 WAITING_EXECUTION 状态
+        等待资源分配后再转为 RUNNING
         
         Args:
             task_id: 任务ID
@@ -204,12 +238,36 @@ class TaskManager:
         if task.state != TaskState.PENDING:
             return False
         
-        task.state = TaskState.RUNNING
+        # 检查是否需要等待执行资源
+        if self._requires_navigation_executor(task):
+            task.state = TaskState.WAITING_EXECUTION
+        else:
+            task.state = TaskState.RUNNING
+            self._current_task_id = task_id
+        
         task.started_at = datetime.now().isoformat()
-        self._current_task_id = task_id
         self._save_active_tasks()
         
         return True
+    
+    def _requires_navigation_executor(self, task: Task) -> bool:
+        """
+        判断任务是否需要 NavigationExecutor
+        
+        需要导航执行器的任务类型:
+        - FRONTIER_EXPLORATION: 边界探索
+        - POINT_TO_POINT: 点对点导航
+        - PATH_PATROL: 路径巡航
+        - PATH_FOLLOWING: 路径跟随
+        - DOCK_NAVIGATION: 停靠导航
+        """
+        return task.task_type in [
+            TaskType.FRONTIER_EXPLORATION,
+            TaskType.POINT_TO_POINT,
+            TaskType.PATH_PATROL,
+            TaskType.PATH_FOLLOWING,
+            TaskType.DOCK_NAVIGATION
+        ]
     
     def pause_task(self, task_id: str) -> bool:
         """暂停任务"""

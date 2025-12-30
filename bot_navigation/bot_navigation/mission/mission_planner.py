@@ -37,14 +37,17 @@ from std_srvs.srv import Trigger
 from .task_manager import TaskManager, TaskType, TaskState
 from ..patrol.patrol_manager import PatrolManager
 from .waypoint_recorder import WaypointRecorder
-from .navigation_executor import NavigationExecutor
+from .navigation_executor import NavigationExecutor, NavigationState
 
-# 导入服务处理模块
+# 导入工具模块和任务处理器
 from .service_handlers import (
-    WaypointServiceHandler,
-    NavigationServiceHandler,
-    TaskExecutionHandler
+    WaypointTools,
+    NavigationHandler,
+    PatrolHandler,
+    ExplorationHandler  # Phase 3
 )
+
+import math
 
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -127,21 +130,28 @@ class MissionPlanner(Node):
         self._task_manager.load_active_tasks()
         self._patrol_manager.load_all_routes()
         
-        # ========== 服务处理器 ==========
-        # 路点服务处理器（内置WaypointRecorder实例，不再依赖外部服务）
-        self._waypoint_handler = WaypointServiceHandler(
+        # ========== 工具模块 ==========
+        # 路点工具（独立于任务系统的工具功能）
+        self._waypoint_tools = WaypointTools(
             self,
             pose_topic='/rtabmap/localization_pose',
             backup_pose_topic='/wheel/odom',
             persistence_dir=waypoints_dir
         )
         
-        self._navigation_handler = NavigationServiceHandler(
+        # ========== 任务处理器 ==========
+        # 创建统一的任务处理器（继承 TaskExecutionHandler 基类）
+        self._navigation_handler = NavigationHandler(
             self, self._task_manager, self._navigation_executor
         )
-        self._task_execution_handler = TaskExecutionHandler(
-            self, self._task_manager, self._patrol_manager
+        self._patrol_handler = PatrolHandler(
+            self, self._task_manager, self._navigation_executor
         )
+        self._exploration_handler = ExplorationHandler(
+            self, self._task_manager, self._navigation_executor
+        )
+        
+        self.get_logger().info('All task handlers initialized')
         
         # ========== 状态变量 ==========
         self._system_state = 'idle'  # idle, busy, error
@@ -202,38 +212,39 @@ class MissionPlanner(Node):
         )
         
         # 任务执行服务（委托给 TaskExecutionHandler）
+        # 探索和巡航服务（暂时保留旧接口，Phase 3 重构）
         self._start_exploration_srv = self.create_service(
             StartExploration, '/mission/start_exploration',
-            self._task_execution_handler.handle_start_exploration,
+            self._handle_start_exploration,
             callback_group=self._callback_group
         )
         self._start_patrol_srv = self.create_service(
             StartPatrol, '/mission/start_patrol',
-            self._task_execution_handler.handle_start_patrol,
+            self._handle_start_patrol,
             callback_group=self._callback_group
         )
         
-        # 路点服务（委托给 WaypointServiceHandler）
+        # 路点服务（委托给 WaypointTools）
         self._waypoint_control_srv = self.create_service(
             WaypointControl, '/mission/waypoint_control',
-            self._waypoint_handler.handle_waypoint_control,
+            self._waypoint_tools.handle_waypoint_control,
             callback_group=self._callback_group
         )
         self._record_waypoints_srv = self.create_service(
             RecordWaypoints, '/mission/record_waypoints',
-            self._waypoint_handler.handle_record_waypoints,
+            self._waypoint_tools.handle_record_waypoints,
             callback_group=self._callback_group
         )
         
-        # 导航服务（委托给 NavigationServiceHandler）
+        # 导航服务（内置处理）
         self._navigate_to_pose_srv = self.create_service(
             NavigateToPose, '/mission/navigate_to_pose',
-            self._navigation_handler.handle_navigate_to_pose,
+            self._handle_navigate_to_pose,
             callback_group=self._callback_group
         )
         self._emergency_stop_srv = self.create_service(
             EmergencyStop, '/mission/emergency_stop',
-            self._navigation_handler.handle_emergency_stop,
+            self._handle_emergency_stop,
             callback_group=self._callback_group
         )
         
@@ -340,6 +351,8 @@ class MissionPlanner(Node):
                     response.message = "Task completed successfully"
                 elif task.state == TaskState.RUNNING:
                     response.message = "Task is running"
+                elif task.state == TaskState.WAITING_EXECUTION:
+                    response.message = "Task is waiting for NavigationExecutor"
                 elif task.state == TaskState.PENDING:
                     response.message = "Task is pending"
                 elif task.state == TaskState.PAUSED:
@@ -449,6 +462,137 @@ class MissionPlanner(Node):
         
         return response
     
+    # ========== 导航服务处理 ==========
+    
+    def _handle_navigate_to_pose(self, request, response):
+        """
+        处理导航到位姿请求
+        
+        服务: /mission/navigate_to_pose
+        创建点对点导航任务并启动
+        """
+        try:
+            # 创建导航任务
+            task_id = f"nav_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:21]}"
+            parameters = {
+                'x': request.x,
+                'y': request.y,
+                'yaw': request.yaw,
+                'frame_id': request.frame_id if request.frame_id else 'map'
+            }
+            
+            task = self._task_manager.create_task(
+                task_id=task_id,
+                task_type=TaskType.POINT_TO_POINT,
+                priority=7,
+                parameters=parameters
+            )
+            
+            # 立即启动
+            self._task_manager.start_task(task_id)
+            
+            response.success = True
+            response.message = "Navigation started"
+            response.task_id = task_id
+            
+            self.get_logger().info(f"Started navigation task: {task_id}")
+            
+        except Exception as e:
+            import traceback
+            response.success = False
+            error_str = str(e) if str(e) else f"{type(e).__name__}"
+            response.message = f"Failed to start navigation: {error_str}"
+            response.task_id = ""
+            self.get_logger().error(f"Error starting navigation: {error_str}")
+            self.get_logger().error(f"Traceback:\n{traceback.format_exc()}")
+        
+        return response
+    
+    def _handle_emergency_stop(self, request, response):
+        """
+        处理紧急停止请求
+        
+        服务: /mission/emergency_stop
+        """
+        try:
+            # 立即取消当前导航（如果有）
+            nav_state = self._navigation_executor.get_state()
+            if nav_state == NavigationState.EXECUTING or nav_state == NavigationState.CANCELING:
+                self._navigation_executor.cancel_navigation()
+                self.get_logger().warn("Emergency stop: cancelled active navigation")
+            
+            # 取消所有正在运行的任务
+            active_tasks = self._task_manager.get_tasks_by_state(TaskState.RUNNING)
+            cancelled_count = 0
+            
+            for task in active_tasks:
+                try:
+                    self._task_manager.cancel_task(task.task_id)
+                    cancelled_count += 1
+                except Exception as e:
+                    self.get_logger().error(f"Failed to cancel task {task.task_id}: {str(e)}")
+            
+            # 如果请求清空任务队列
+            if request.clear_tasks:
+                self._task_manager.clear_all_tasks()
+            
+            response.success = True
+            response.message = f"Emergency stop executed. Cancelled {cancelled_count} tasks"
+            
+            self.get_logger().warn(f"Emergency stop: cancelled {cancelled_count} tasks")
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Emergency stop error: {str(e)}"
+            self.get_logger().error(f"Error in emergency stop: {str(e)}")
+        
+        return response
+    
+    def _handle_start_exploration(self, request, response):
+        """处理开始探索请求"""
+        try:
+            # 创建探索任务
+            task_id = f"exploration_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:28]}"
+            parameters = {
+                'map_name': request.map_name,
+                'save_map': request.save_map,
+                'max_duration': request.max_duration if hasattr(request, 'max_duration') else 0,
+                'coverage_threshold': request.coverage_threshold if hasattr(request, 'coverage_threshold') else 0.9
+            }
+            
+            task = self._task_manager.create_task(
+                task_id=task_id,
+                task_type=TaskType.FRONTIER_EXPLORATION,
+                priority=6,
+                parameters=parameters
+            )
+            
+            # 立即启动
+            self._task_manager.start_task(task_id)
+            
+            response.success = True
+            response.message = "Exploration started"
+            response.task_id = task_id
+            
+            self.get_logger().info(f"Started exploration task: {task_id}")
+            
+        except Exception as e:
+            import traceback
+            response.success = False
+            response.message = f"Failed to start exploration: {str(e)}"
+            response.task_id = ""
+            self.get_logger().error(f"Error starting exploration: {str(e)}")
+            self.get_logger().error(f"Traceback:\n{traceback.format_exc()}")
+        
+        return response
+    
+    def _handle_start_patrol(self, request, response):
+        """处理开始巡航请求（暂时保留，Phase 3 重构）"""
+        # TODO: Phase 3 - 使用 PatrolHandler
+        response.success = False
+        response.message = "Patrol not yet implemented in new architecture"
+        return response
+    
     # ========== 任务执行调度 ==========
     
     def _update_callback(self):
@@ -472,30 +616,29 @@ class MissionPlanner(Node):
                 self.get_logger().error(f"Marked task {current_task.task_id} as failed due to error")
     
     def _execute_pending_tasks(self):
-        """执行待执行的任务"""
-        # 获取RUNNING、PAUSED和CANCELED状态的任务
+        """执行待执行的任务（使用新的 Handler 架构）"""
+        # 获取RUNNING、WAITING_EXECUTION、PAUSED和CANCELED状态的任务
+        # WAITING_EXECUTION: 等待获取 NavigationExecutor
         # RUNNING: 正常执行
         # PAUSED: 需要让handler有机会响应暂停状态（取消Nav2导航）
         # CANCELED: 需要让handler有机会清理资源
+        waiting_tasks = self._task_manager.get_tasks_by_state(TaskState.WAITING_EXECUTION)
         running_tasks = self._task_manager.get_tasks_by_state(TaskState.RUNNING)
         paused_tasks = self._task_manager.get_tasks_by_state(TaskState.PAUSED)
         canceled_tasks = self._task_manager.get_tasks_by_state(TaskState.CANCELED)
         
-        # 合并三个列表
-        tasks_to_process = running_tasks + paused_tasks + canceled_tasks
+        # 合并所有需要处理的任务，优先执行 RUNNING，然后 WAITING_EXECUTION
+        tasks_to_process = waiting_tasks + running_tasks + paused_tasks + canceled_tasks
         
         for task in tasks_to_process:
             try:
-                # 任务类型路由
-                if task.task_type == TaskType.FRONTIER_EXPLORATION:
-                    self._task_execution_handler.execute_exploration_task(task)
-                elif task.task_type == TaskType.PATH_PATROL:
-                    self._task_execution_handler.execute_patrol_task(task)
-                elif task.task_type == TaskType.POINT_TO_POINT:
-                    self._navigation_handler.execute_navigation_task(task)
+                # 任务类型路由 - 使用新的 Handler 架构
+                handler = self._get_handler_for_task(task)
+                if handler:
+                    handler.execute(task)
                 else:
                     # 未知任务类型
-                    error_msg = f"Unknown task type: {task.task_type}"
+                    error_msg = f"No handler for task type: {task.task_type}"
                     self.get_logger().error(error_msg)
                     self._task_manager.fail_task(task.task_id, error_msg)
                     
@@ -503,7 +646,20 @@ class MissionPlanner(Node):
                 # 捕获任务执行中的异常并标记任务失败
                 error_msg = f"Task execution error: {str(e)}"
                 self.get_logger().error(f"Task {task.task_id} failed: {error_msg}")
+                import traceback
+                self.get_logger().error(f"Traceback:\n{traceback.format_exc()}")
                 self._task_manager.fail_task(task.task_id, error_msg)
+    
+    def _get_handler_for_task(self, task):
+        """根据任务类型获取对应的 Handler"""
+        if task.task_type == TaskType.POINT_TO_POINT:
+            return self._navigation_handler
+        elif task.task_type == TaskType.PATH_PATROL:
+            return self._patrol_handler
+        elif task.task_type == TaskType.FRONTIER_EXPLORATION:
+            return self._exploration_handler
+        else:
+            return None
     
     def _publish_system_state(self):
         """发布系统状态"""
@@ -531,8 +687,9 @@ class MissionPlanner(Node):
     def shutdown(self):
         """关闭节点"""
         self.get_logger().info('Shutting down MissionPlanner...')
-        self._task_execution_handler.stop_all_tasks()
+        # 保存活动任务
         self._task_manager._save_active_tasks()
+        self.get_logger().info('MissionPlanner shutdown complete')
 
 
 def main(args=None):

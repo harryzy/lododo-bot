@@ -265,6 +265,24 @@ class MissionIntegrationTesterV2(Node):
                 'name': 'test_patrol_pause_resume',
                 'description': '测试巡航任务的暂停/恢复',
                 'function': self.test_patrol_pause_resume
+            },
+            {
+                'id': 6,
+                'name': 'test_exploration_basic',
+                'description': '测试探索任务的基础执行',
+                'function': self.test_exploration_basic
+            },
+            {
+                'id': 7,
+                'name': 'test_waiting_execution_state',
+                'description': '测试 NavigationExecutor 互斥和 WAITING_EXECUTION 状态',
+                'function': self.test_waiting_execution_state
+            },
+            {
+                'id': 8,
+                'name': 'test_emergency_stop_global',
+                'description': '测试紧急停止全局取消功能',
+                'function': self.test_emergency_stop_global
             }
         ]
         
@@ -1011,6 +1029,352 @@ class MissionIntegrationTesterV2(Node):
                 print(f"       {result['details']}")
         
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
+    
+    def test_exploration_basic(self):
+        """
+        TEST 6: 探索任务基础执行测试
+        
+        验证点：
+        1. 探索任务成功创建
+        2. 任务状态从 WAITING_EXECUTION → RUNNING
+        3. 探索期间机器人移动行为
+        4. 探索任务可以被取消
+        """
+        print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 6: Exploration Basic Execution{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
+        
+        task_id = None
+        
+        try:
+            # 步骤1：启动探索任务
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 启动探索任务")
+            
+            req = StartExploration.Request()
+            req.map_name = 'test_explore'
+            req.save_map = False  # 测试不保存地图
+            req.max_duration = 120.0  # 2分钟超时
+            
+            success, response = self.call_service('/mission/start_exploration', StartExploration, req)
+            if not success or not response.success:
+                self.record_test('Exploration Start', False, '启动探索失败', response.message if response else 'No response')
+                return
+            
+            task_id = response.task_id
+            self.record_test('Exploration Start', True, f'Task ID: {task_id}')
+            
+            # 步骤2：等待任务获取执行器
+            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} 等待任务获取 NavigationExecutor (2s)...")
+            time.sleep(2.0)
+            
+            for _ in range(10):
+                rclpy.spin_once(self, timeout_sec=0.1)
+            
+            # 步骤3：检查任务状态（应该是 RUNNING）
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 检查任务状态")
+            status = self.get_task_status(task_id)
+            
+            if status:
+                expected_state = 'RUNNING'
+                self.record_test(
+                    'Exploration State Transition',
+                    status['state'] == expected_state,
+                    f"状态: {status['state']}, 期望: {expected_state}",
+                    f"Progress: {status['progress']:.1f}%"
+                )
+                self.log_verbose(f"Task state: {status['state']}, progress: {status['progress']}%")
+            else:
+                self.record_test('Exploration State Check', False, '无法获取任务状态')
+            
+            # 步骤4：观察机器人行为（3秒）
+            print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 观察机器人探索行为 (3s)...")
+            time.sleep(3.0)
+            
+            for _ in range(10):
+                rclpy.spin_once(self, timeout_sec=0.1)
+            
+            # 检查机器人是否在移动
+            is_moving = self.robot_monitor.is_robot_moving(threshold=0.005)
+            speed = self.robot_monitor.get_robot_speed()
+            
+            self.record_test(
+                'Robot Exploring',
+                is_moving,
+                f"机器人{'正在探索移动' if is_moving else '未检测到移动'}",
+                f"Linear: {speed['linear']:.3f} m/s, Angular: {speed['angular']:.3f} rad/s"
+            )
+            
+            # 步骤5：取消探索任务
+            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 取消探索任务")
+            cancel_req = TaskControl.Request()
+            cancel_req.task_id = task_id
+            
+            success, response = self.call_service('/mission/cancel_task', TaskControl, cancel_req)
+            if success and response.success:
+                self.record_test('Exploration Cancel', True, '探索任务已取消')
+                time.sleep(1.0)
+                
+                # 验证任务状态
+                status = self.get_task_status(task_id)
+                if status:
+                    self.record_test(
+                        'Exploration Canceled State',
+                        status['state'] == 'CANCELED',
+                        f"取消后状态: {status['state']}"
+                    )
+            else:
+                self.record_test('Exploration Cancel', False, '取消探索任务失败')
+        
+        except Exception as e:
+            self.record_test('Exploration Test', False, f'异常: {str(e)}')
+            self.get_logger().error(f'TEST 6 Exception: {e}')
+    
+    def test_waiting_execution_state(self):
+        """
+        TEST 7: NavigationExecutor 互斥和 WAITING_EXECUTION 状态测试
+        
+        验证点：
+        1. 第一个任务获取 NavigationExecutor 并进入 RUNNING
+        2. 第二个任务因执行器被占用而进入 WAITING_EXECUTION
+        3. 第一个任务完成后，第二个任务自动获取执行器并转为 RUNNING
+        4. 任务队列顺序正确
+        """
+        print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 7: WAITING_EXECUTION State & Executor Mutex{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
+        
+        task_id_1 = None
+        task_id_2 = None
+        
+        try:
+            # 步骤1：启动第一个导航任务（远距离）
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 启动第一个导航任务 (远距离)")
+            
+            req1 = NavigateToPose.Request()
+            req1.x = 3.0
+            req1.y = 3.0
+            req1.yaw = 0.0
+            req1.frame_id = 'map'
+            
+            success, response = self.call_service('/mission/navigate_to_pose', NavigateToPose, req1)
+            if not success or not response.success:
+                self.record_test('First Navigation Start', False, '第一个任务启动失败')
+                return
+            
+            task_id_1 = response.task_id
+            self.record_test('First Navigation Start', True, f'Task 1 ID: {task_id_1}')
+            time.sleep(2.0)  # 等待任务开始执行
+            
+            # 步骤2：立即启动第二个导航任务
+            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} 立即启动第二个导航任务 (应进入 WAITING_EXECUTION)")
+            
+            req2 = NavigateToPose.Request()
+            req2.x = -2.0
+            req2.y = -2.0
+            req2.yaw = 0.0
+            req2.frame_id = 'map'
+            
+            success, response = self.call_service('/mission/navigate_to_pose', NavigateToPose, req2)
+            if not success or not response.success:
+                self.record_test('Second Navigation Start', False, '第二个任务启动失败')
+                return
+            
+            task_id_2 = response.task_id
+            self.record_test('Second Navigation Start', True, f'Task 2 ID: {task_id_2}')
+            
+            # 步骤3：检查两个任务的状态
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 检查任务状态 (2s)...")
+            time.sleep(2.0)
+            
+            status_1 = self.get_task_status(task_id_1)
+            status_2 = self.get_task_status(task_id_2)
+            
+            if status_1:
+                self.record_test(
+                    'Task 1 Running',
+                    status_1['state'] == 'RUNNING',
+                    f"任务1状态: {status_1['state']}, 期望: RUNNING"
+                )
+                self.log_verbose(f"Task 1: {status_1['state']}, progress: {status_1['progress']}%")
+            
+            if status_2:
+                # 任务2应该在等待
+                is_waiting = status_2['state'] in ['WAITING_EXECUTION', 'PENDING']
+                self.record_test(
+                    'Task 2 Waiting',
+                    is_waiting,
+                    f"任务2状态: {status_2['state']}, 期望: WAITING_EXECUTION 或 PENDING"
+                )
+                self.log_verbose(f"Task 2: {status_2['state']}, progress: {status_2['progress']}%")
+            
+            # 步骤4：取消第一个任务，观察第二个任务是否自动执行
+            print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 取消任务1，观察任务2是否自动获取执行器")
+            
+            cancel_req = TaskControl.Request()
+            cancel_req.task_id = task_id_1
+            
+            success, response = self.call_service('/mission/cancel_task', TaskControl, cancel_req)
+            if success and response.success:
+                self.record_test('Task 1 Canceled', True, '任务1已取消')
+                
+                # 等待任务2获取执行器
+                print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 等待任务2自动获取执行器 (3s)...")
+                time.sleep(3.0)
+                
+                status_2_after = self.get_task_status(task_id_2)
+                if status_2_after:
+                    self.record_test(
+                        'Task 2 Auto Start',
+                        status_2_after['state'] == 'RUNNING',
+                        f"任务2在任务1取消后状态: {status_2_after['state']}, 期望: RUNNING"
+                    )
+                    self.log_verbose(f"Task 2 after task 1 canceled: {status_2_after['state']}")
+                    
+                    # 清理任务2
+                    cancel_req.task_id = task_id_2
+                    self.call_service('/mission/cancel_task', TaskControl, cancel_req)
+            else:
+                self.record_test('Task 1 Cancel', False, '取消任务1失败')
+        
+        except Exception as e:
+            self.record_test('WAITING_EXECUTION Test', False, f'异常: {str(e)}')
+            self.get_logger().error(f'TEST 7 Exception: {e}')
+    
+    def test_emergency_stop_global(self):
+        """
+        TEST 8: 紧急停止全局取消功能测试
+        
+        验证点：
+        1. 创建多个不同类型的任务
+        2. 触发紧急停止
+        3. 所有任务立即转为 CANCELED 状态
+        4. 机器人立即停止移动
+        5. NavigationExecutor 被释放
+        """
+        print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 8: Emergency Stop Global Cancel{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
+        
+        task_ids = []
+        
+        try:
+            # 步骤1：创建多个任务
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 创建多个导航任务")
+            
+            # 任务1
+            req1 = NavigateToPose.Request()
+            req1.x = 2.0
+            req1.y = 2.0
+            req1.yaw = 0.0
+            req1.frame_id = 'map'
+            
+            success, response = self.call_service('/mission/navigate_to_pose', NavigateToPose, req1)
+            if success and response.success:
+                task_ids.append(response.task_id)
+                self.record_test('Create Task 1', True, f'Task ID: {response.task_id}')
+            
+            time.sleep(0.5)
+            
+            # 任务2
+            req2 = NavigateToPose.Request()
+            req2.x = -1.5
+            req2.y = 1.5
+            req2.yaw = 0.0
+            req2.frame_id = 'map'
+            
+            success, response = self.call_service('/mission/navigate_to_pose', NavigateToPose, req2)
+            if success and response.success:
+                task_ids.append(response.task_id)
+                self.record_test('Create Task 2', True, f'Task ID: {response.task_id}')
+            
+            time.sleep(0.5)
+            
+            # 任务3
+            req3 = NavigateToPose.Request()
+            req3.x = 1.0
+            req3.y = -2.0
+            req3.yaw = 0.0
+            req3.frame_id = 'map'
+            
+            success, response = self.call_service('/mission/navigate_to_pose', NavigateToPose, req3)
+            if success and response.success:
+                task_ids.append(response.task_id)
+                self.record_test('Create Task 3', True, f'Task ID: {response.task_id}')
+            
+            if not task_ids:
+                self.record_test('Create Tasks', False, '无法创建任务')
+                return
+            
+            # 步骤2：等待第一个任务开始执行
+            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} 等待任务开始执行 (2s)...")
+            time.sleep(2.0)
+            
+            for _ in range(10):
+                rclpy.spin_once(self, timeout_sec=0.1)
+            
+            # 检查机器人是否在移动
+            is_moving_before = self.robot_monitor.is_robot_moving()
+            speed_before = self.robot_monitor.get_robot_speed()
+            
+            self.record_test(
+                'Robot Moving Before Emergency',
+                is_moving_before,
+                f"紧急停止前机器人{'正在移动' if is_moving_before else '未移动'}",
+                f"Linear: {speed_before['linear']:.3f} m/s, Angular: {speed_before['angular']:.3f} rad/s"
+            )
+            
+            # 步骤3：触发紧急停止
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 触发紧急停止")
+            
+            emergency_req = EmergencyStop.Request()
+            emergency_req.reason = 'Test emergency stop'
+            
+            success, response = self.call_service('/mission/emergency_stop', EmergencyStop, emergency_req)
+            if success and response.success:
+                self.record_test('Emergency Stop Triggered', True, '紧急停止已触发')
+            else:
+                self.record_test('Emergency Stop Triggered', False, '触发紧急停止失败')
+                return
+            
+            # 步骤4：立即检查机器人是否停止
+            print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 检查机器人是否立即停止 (1s)...")
+            time.sleep(1.0)
+            
+            for _ in range(10):
+                rclpy.spin_once(self, timeout_sec=0.1)
+            
+            is_stopped = not self.robot_monitor.is_robot_moving(threshold=0.01)
+            speed_after = self.robot_monitor.get_robot_speed()
+            
+            self.record_test(
+                'Robot Stopped After Emergency',
+                is_stopped,
+                f"机器人{'已停止' if is_stopped else '仍在移动'}",
+                f"Linear: {speed_after['linear']:.3f} m/s, Angular: {speed_after['angular']:.3f} rad/s"
+            )
+            
+            # 步骤5：检查所有任务状态
+            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 检查所有任务状态")
+            time.sleep(1.0)
+            
+            all_canceled = True
+            for task_id in task_ids:
+                status = self.get_task_status(task_id)
+                if status:
+                    is_canceled = status['state'] == 'CANCELED'
+                    all_canceled = all_canceled and is_canceled
+                    self.log_verbose(f"Task {task_id}: {status['state']}")
+            
+            self.record_test(
+                'All Tasks Canceled',
+                all_canceled,
+                f"{'所有任务已取消' if all_canceled else '部分任务未取消'}",
+                f"共 {len(task_ids)} 个任务"
+            )
+        
+        except Exception as e:
+            self.record_test('Emergency Stop Test', False, f'异常: {str(e)}')
+            self.get_logger().error(f'TEST 8 Exception: {e}')
 
 
 def main():

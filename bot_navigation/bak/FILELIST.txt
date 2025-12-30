@@ -1,0 +1,21 @@
+备份文件清单
+================
+
+归档日期: 2025-12-30
+
+navigation_service_handler.py
+  原位置: service_handlers/navigation_service_handler.py
+  废弃原因: 功能已移至 MissionPlanner 和 NavigationHandler
+  替代: MissionPlanner._handle_navigate_to_pose() + handlers/navigation_handler.py
+
+deprecated_task_handler.py
+  原位置: service_handlers/task_execution_handler.py (重构前)
+  废弃原因: 旧架构，已被新的 TaskExecutionHandler 基类替代
+  替代: service_handlers/task_execution_handler.py (新基类)
+
+deprecated/exploration_mapper_backup.py
+  原位置: exploration/exploration_mapper.py
+  废弃原因: 独立节点，无法统一调度
+  替代: handlers/exploration_handler.py
+
+详细说明请查看 README.md

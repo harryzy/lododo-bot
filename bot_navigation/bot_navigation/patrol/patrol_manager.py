@@ -261,7 +261,7 @@ class PatrolManager:
         - 循环控制
         """
         # 导入NavigationState
-        from ..navigation.navigation_executor import NavigationState
+        from ..mission.navigation_executor import NavigationState
         
         # 如果没有活动巡航，直接返回
         if self._current_route_id is None:

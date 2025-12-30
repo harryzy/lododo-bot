@@ -128,7 +128,27 @@ class NavigationServiceHandler:
         from ..navigation_executor import NavigationState
         from ..task_manager import TaskState
         
-        # 检查任务状态 - 如果任务被暂停，取消导航
+        # 1. WAITING_EXECUTION 状态 - 尝试获取 NavigationExecutor
+        if task.state == TaskState.WAITING_EXECUTION:
+            nav_state = self._navigation_executor.get_state()
+            
+            # 检查执行器是否空闲
+            if nav_state == NavigationState.IDLE and self._current_nav_task_id is None:
+                # 执行器空闲，可以获取
+                self._task_manager.update_task_state(task.task_id, TaskState.RUNNING)
+                self.node.get_logger().info(
+                    f"Task {task.task_id} acquired NavigationExecutor, state: WAITING_EXECUTION -> RUNNING"
+                )
+                # 继续执行下面的逻辑
+            else:
+                # 执行器忙碌，继续等待
+                self.node.get_logger().debug(
+                    f"Task {task.task_id} waiting for NavigationExecutor "
+                    f"(nav_state={nav_state.name}, current_nav_task={self._current_nav_task_id})"
+                )
+                return
+        
+        # 2. 检查任务状态 - 如果任务被暂停，取消导航
         if task.state == TaskState.PAUSED:
             if self._current_nav_task_id == task.task_id:
                 nav_state = self._navigation_executor.get_state()

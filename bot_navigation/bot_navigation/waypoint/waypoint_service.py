@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-waypoint_service_handler.py - 路点相关服务处理器
+waypoint_service.py - 路点工具模块
 
-处理路点录制、保存、加载等服务请求
+提供路点录制、保存、加载等工具功能
+这是独立的工具模块，不依赖任务系统
 
 重构说明:
+- 从 waypoint_service_handler 重命名为 waypoint_service
+- 更清晰地表明这是工具而不是任务处理器
 - 内置 WaypointRecorder 实例，不依赖外部服务
 - 订阅定位话题获取实时位姿
 - 统一状态管理和异常处理
@@ -17,15 +20,15 @@ from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from bot_navigation_msgs.srv import WaypointControl, RecordWaypoints
 from std_srvs.srv import Trigger
-from ..waypoint_recorder import WaypointRecorder
+from .waypoint_recorder import WaypointRecorder
 import os
 
 
-class WaypointServiceHandler:
+class WaypointTools:
     """
-    路点服务处理器
+    路点工具类
     
-    提供路点录制、保存、加载等服务的统一接口
+    提供路点录制、保存、加载等工具功能的统一接口
     内置 WaypointRecorder 实例，直接处理录制逻辑
     """
     

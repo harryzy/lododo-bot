@@ -52,18 +52,22 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            # Exploration / 探索模块
-            'exploration_mapper = bot_navigation.exploration.exploration_mapper:main',
+            # === Core Services (Unified Task Management) ===
+            'mission_planner = bot_navigation.mission.mission_planner:main',
+            
+            # === Tool Services ===
+            # Waypoint tools / 路点工具
+            'waypoint_recorder = bot_navigation.waypoint.waypoint_recorder_node:main',
             # Map management / 地图管理模块
             'map_saver_node = bot_navigation.map.map_saver_node:main',
             'map_loader_node = bot_navigation.map.map_loader_node:main',
-            # Patrol / 巡逻模块
-            'patrol_node = bot_navigation.patrol.patrol_node:main',
-            # Navigation / 导航模块
-            'mission_planner = bot_navigation.navigation.mission_planner:main',
-            'waypoint_recorder = bot_navigation.navigation.waypoint_recorder_node:main',
-            # Test scripts / 测试脚本
+            
+            # === Test Scripts ===
             'clear_tasks_test = scripts.clear_tasks_test:main',
+            
+            # === REMOVED (Deprecated Standalone Nodes) ===
+            # 'exploration_mapper' - Use MissionPlanner service instead
+            # 'patrol_node' - Use MissionPlanner service instead
         ],
     },
 )
