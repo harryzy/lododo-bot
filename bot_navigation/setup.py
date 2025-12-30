@@ -35,6 +35,9 @@ setup(
         # 地图文件 / Map files
         (os.path.join('share', package_name, 'maps'), 
             glob(os.path.join('maps', '*'))),
+        # 测试脚本 / Test scripts
+        (os.path.join('share', package_name, 'scripts'), 
+            glob(os.path.join('scripts', '*.py'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -59,6 +62,9 @@ setup(
             # Navigation / 导航模块
             'mission_planner = bot_navigation.navigation.mission_planner:main',
             'waypoint_recorder = bot_navigation.navigation.waypoint_recorder_node:main',
+            # Test scripts / 测试脚本
+            'clear_tasks_test = scripts.clear_tasks_test:main',
         ],
     },
 )
+

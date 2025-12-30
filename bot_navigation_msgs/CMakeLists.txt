@@ -17,6 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/TaskControl.srv"
   "srv/GetTaskStatus.srv"
   "srv/ListTasks.srv"
+  "srv/ClearTasks.srv"
   "srv/StartExploration.srv"
   "srv/StartPatrol.srv"
   "srv/WaypointControl.srv"

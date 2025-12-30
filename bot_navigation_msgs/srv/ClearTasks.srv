@@ -1,0 +1,16 @@
+# ClearTasks.srv - 清除任务
+
+# 请求
+string[] task_ids             # 指定要清除的任务ID列表（如果为空则按状态过滤）
+string[] states               # 按状态清除（pending/running/completed/failed/canceled/timeout/blocked）
+                              # 支持多个状态，如 ["completed", "failed", "canceled"]
+                              # 如果为 ["all"]，则清除所有任务
+bool clear_history            # 是否同时清除历史记录
+
+---
+
+# 响应
+bool success                  # 操作是否成功
+string message                # 返回消息
+int32 cleared_count           # 清除的任务数量
+string[] cleared_task_ids     # 被清除的任务ID列表

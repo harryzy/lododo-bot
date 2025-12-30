@@ -108,8 +108,8 @@ class TaskManager:
         
         # 持久化目录
         if persistence_dir is None:
-            home = os.path.expanduser('~')
-            persistence_dir = os.path.join(home, '.ros', 'lekiwi_bot', 'navigation', 'tasks')
+            # 如果未指定，使用~/lododo_bot/mission/tasks作为fallback
+            persistence_dir = os.path.expanduser('~/lododo_bot/mission/tasks')
         
         self._persistence_dir = persistence_dir
         os.makedirs(self._persistence_dir, exist_ok=True)
@@ -321,6 +321,112 @@ class TaskManager:
             del self._tasks[tid]
         
         self._save_active_tasks()
+    
+    def clear_tasks_by_ids(self, task_ids: List[str], clear_history: bool = False) -> tuple[int, List[str]]:
+        """
+        根据任务ID清除任务
+        
+        Args:
+            task_ids: 要清除的任务ID列表
+            clear_history: 是否同时清除历史记录
+            
+        Returns:
+            (清除数量, 被清除的任务ID列表)
+        """
+        cleared_ids = []
+        
+        for task_id in task_ids:
+            if task_id in self._tasks:
+                task = self._tasks[task_id]
+                
+                # 如果是当前任务，清除当前任务ID
+                if task_id == self._current_task_id:
+                    self._current_task_id = None
+                
+                # 从队列中移除
+                self._remove_from_queue(task_id)
+                
+                # 如果不清除历史，先保存到历史
+                if not clear_history and task.state in [TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELED]:
+                    self._save_to_history(task)
+                
+                # 从内存中删除
+                del self._tasks[task_id]
+                cleared_ids.append(task_id)
+        
+        # 保存活动任务
+        if cleared_ids:
+            self._save_active_tasks()
+        
+        # 如果需要清除历史，删除历史文件中的记录
+        if clear_history and cleared_ids:
+            self._clear_from_history(cleared_ids)
+        
+        return len(cleared_ids), cleared_ids
+    
+    def clear_tasks_by_states(self, states: List[TaskState], clear_history: bool = False) -> tuple[int, List[str]]:
+        """
+        根据任务状态批量清除任务
+        
+        Args:
+            states: 要清除的任务状态列表
+            clear_history: 是否同时清除历史记录
+            
+        Returns:
+            (清除数量, 被清除的任务ID列表)
+        """
+        # 找出匹配状态的任务
+        matching_ids = [
+            tid for tid, task in self._tasks.items()
+            if task.state in states
+        ]
+        
+        return self.clear_tasks_by_ids(matching_ids, clear_history)
+    
+    def clear_all_tasks(self, clear_history: bool = False) -> tuple[int, List[str]]:
+        """
+        清除所有任务
+        
+        Args:
+            clear_history: 是否同时清除历史记录
+            
+        Returns:
+            (清除数量, 被清除的任务ID列表)
+        """
+        all_ids = list(self._tasks.keys())
+        return self.clear_tasks_by_ids(all_ids, clear_history)
+    
+    def _clear_from_history(self, task_ids: List[str]):
+        """从历史记录中清除指定任务"""
+        if not os.path.exists(self._history_dir):
+            return
+        
+        # 遍历历史文件
+        for filename in os.listdir(self._history_dir):
+            if not filename.startswith('tasks_') or not filename.endswith('.json'):
+                continue
+            
+            history_file = os.path.join(self._history_dir, filename)
+            try:
+                # 读取历史
+                with open(history_file, 'r') as f:
+                    history = json.load(f)
+                
+                # 过滤掉要删除的任务
+                original_count = len(history)
+                history = [task for task in history if task.get('task_id') not in task_ids]
+                
+                # 如果有变化，重新保存或删除空文件
+                if len(history) != original_count:
+                    if history:
+                        with open(history_file, 'w') as f:
+                            json.dump(history, f, indent=2)
+                    else:
+                        # 如果历史文件为空，删除该文件
+                        os.remove(history_file)
+            except Exception as e:
+                print(f"Failed to clear history from {filename}: {e}")
+
     
     def _save_active_tasks(self):
         """保存活动任务到文件"""

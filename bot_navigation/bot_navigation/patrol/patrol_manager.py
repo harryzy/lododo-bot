@@ -4,20 +4,35 @@ PatrolManager - 巡航管理器
 
 功能 / Features:
   - 巡航路线管理
-  - 巡航执行逻辑
+  - 巡航执行逻辑（使用NavigationExecutor）
   - 循环模式支持
   - 巡航路线持久化
+  - 停留时间（dwell_time）支持
 
 Author: LeKiwi Bot Development Team
 Date: 2025-12-22
 """
 
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Callable
 from dataclasses import dataclass, asdict
 from geometry_msgs.msg import PoseStamped
-import json
+from rclpy.node import Node
+from enum import Enum
+import yaml
 import os
+import math
+import time
 from datetime import datetime
+
+
+class PatrolState(Enum):
+    """巡航状态"""
+    IDLE = "idle"                    # 空闲
+    NAVIGATING = "navigating"        # 正在导航到路点
+    DWELLING = "dwelling"            # 在路点停留
+    COMPLETED = "completed"          # 巡航完成（非循环模式）
+    PAUSED = "paused"               # 暂停
+    FAILED = "failed"               # 失败
 
 
 @dataclass
@@ -48,27 +63,49 @@ class PatrolManager:
     巡航管理器
     
     负责巡航路线的创建、管理和执行
+    集成NavigationExecutor实现实际导航
     """
     
-    def __init__(self, persistence_dir: str = None):
+    def __init__(self, node: Node, navigation_executor, persistence_dir: str = None):
         """
         初始化巡航管理器
         
         Args:
+            node: ROS2 Node实例
+            navigation_executor: NavigationExecutor实例（用于执行导航）
             persistence_dir: 巡航数据持久化目录
         """
+        self._node = node
+        self._nav_executor = navigation_executor
         self._routes: Dict[str, PatrolRoute] = {}
         self._current_route_id: Optional[str] = None
         self._current_waypoint_index: int = 0
-        self._is_patrolling: bool = False
+        self._patrol_state: PatrolState = PatrolState.IDLE
+        
+        # 停留控制
+        self._dwell_start_time: Optional[float] = None
+        self._current_dwell_time: float = 0.0
+        
+        # 完成回调
+        self._on_complete_callback: Optional[Callable] = None
+        self._on_failed_callback: Optional[Callable] = None
         
         # 持久化目录
         if persistence_dir is None:
-            home = os.path.expanduser('~')
-            persistence_dir = os.path.join(home, '.ros', 'lekiwi_bot', 'navigation', 'patrol_routes')
+            persistence_dir = os.path.expanduser('~/lododo_bot/mission/patrol_routes')
         
         self._persistence_dir = persistence_dir
         os.makedirs(self._persistence_dir, exist_ok=True)
+        
+        self._node.get_logger().info(f'PatrolManager initialized with persistence_dir: {self._persistence_dir}')
+    
+    def set_complete_callback(self, callback: Callable):
+        """设置巡航完成回调"""
+        self._on_complete_callback = callback
+    
+    def set_failed_callback(self, callback: Callable):
+        """设置巡航失败回调"""
+        self._on_failed_callback = callback
     
     def create_route(self, 
                     name: str,
@@ -121,7 +158,7 @@ class PatrolManager:
         del self._routes[route_id]
         
         # 删除持久化文件
-        route_file = os.path.join(self._persistence_dir, f'{route_id}.json')
+        route_file = os.path.join(self._persistence_dir, f'{route_id}.yaml')
         if os.path.exists(route_file):
             os.remove(route_file)
         
@@ -138,78 +175,256 @@ class PatrolManager:
             bool: 成功返回True
         """
         if route_id not in self._routes:
+            self._node.get_logger().error(f"Route {route_id} not found")
+            return False
+        
+        route = self._routes[route_id]
+        if not route.waypoints or len(route.waypoints) == 0:
+            self._node.get_logger().error(f"Route {route_id} has no waypoints")
             return False
         
         self._current_route_id = route_id
         self._current_waypoint_index = 0
-        self._is_patrolling = True
+        self._patrol_state = PatrolState.IDLE
+        self._dwell_start_time = None
+        
+        self._node.get_logger().info(
+            f"Starting patrol: route={route.name}, waypoints={len(route.waypoints)}, loop={route.loop}"
+        )
         
         return True
     
     def stop_patrol(self):
         """停止巡航"""
-        self._is_patrolling = False
+        if self._patrol_state == PatrolState.NAVIGATING:
+            # 取消当前导航
+            self._nav_executor.cancel_navigation()
+        
+        self._patrol_state = PatrolState.IDLE
         self._current_route_id = None
         self._current_waypoint_index = 0
+        self._dwell_start_time = None
+        
+        self._node.get_logger().info("Patrol stopped")
     
-    def get_next_waypoint(self) -> Optional[Dict]:
+    def pause_patrol(self):
+        """暂停巡航（保留当前路线和进度）"""
+        if self._patrol_state == PatrolState.NAVIGATING:
+            # 取消当前导航
+            self._nav_executor.cancel_navigation()
+        
+        self._patrol_state = PatrolState.PAUSED
+        self._dwell_start_time = None
+        
+        self._node.get_logger().info(
+            f"Patrol paused at waypoint {self._current_waypoint_index}"
+        )
+    
+    def resume_patrol(self) -> bool:
+        """恢复巡航（从当前路线和进度继续）"""
+        if self._current_route_id is None:
+            self._node.get_logger().warn("No patrol route to resume")
+            return False
+        
+        if self._patrol_state != PatrolState.PAUSED:
+            self._node.get_logger().warn(f"Cannot resume from state: {self._patrol_state.value}")
+            return False
+        
+        self._patrol_state = PatrolState.IDLE
+        self._node.get_logger().info(
+            f"Patrol resumed at waypoint {self._current_waypoint_index}"
+        )
+        return True
+    
+    def is_patrolling(self) -> bool:
         """
-        获取下一个巡航点
+        检查是否正在巡航
         
         Returns:
-            Dict: 路点字典，如果没有返回None
+            bool: 正在巡航返回True
         """
-        if not self._is_patrolling or self._current_route_id is None:
-            return None
+        return self._patrol_state not in (PatrolState.IDLE, PatrolState.COMPLETED, PatrolState.FAILED, PatrolState.PAUSED)
+    
+    def execute_patrol(self):
+        """
+        执行巡航逻辑（由MissionPlanner定期调用）
         
+        这是核心执行方法，处理：
+        - 发送导航目标
+        - 检查导航完成
+        - 停留时间管理
+        - 路点切换
+        - 循环控制
+        """
+        # 导入NavigationState
+        from ..navigation.navigation_executor import NavigationState
+        
+        # 如果没有活动巡航，直接返回
+        if self._current_route_id is None:
+            return
+        
+        # 如果暂停或完成，不执行
+        if self._patrol_state in (PatrolState.PAUSED, PatrolState.COMPLETED, PatrolState.FAILED):
+            return
+        
+        # 获取当前路线
         route = self._routes.get(self._current_route_id)
-        if route is None or len(route.waypoints) == 0:
-            return None
-        
-        # 获取当前路点
-        waypoint = route.waypoints[self._current_waypoint_index]
-        
-        # 更新索引
-        self._current_waypoint_index += 1
+        if route is None:
+            self._node.get_logger().error(f"Route {self._current_route_id} not found")
+            self._patrol_state = PatrolState.FAILED
+            if self._on_failed_callback:
+                self._on_failed_callback("Route not found")
+            return
         
         # 检查是否到达终点
         if self._current_waypoint_index >= len(route.waypoints):
             if route.loop:
-                self._current_waypoint_index = 0  # 循环
+                # 循环模式：重新开始
+                self._current_waypoint_index = 0
+                self._node.get_logger().info("Patrol loop completed, restarting...")
             else:
-                self._is_patrolling = False  # 结束
+                # 非循环模式：完成
+                self._patrol_state = PatrolState.COMPLETED
+                self._node.get_logger().info("Patrol completed (non-loop mode)")
+                if self._on_complete_callback:
+                    self._on_complete_callback()
+                return
         
-        return waypoint
+        # 获取导航状态
+        nav_state = self._nav_executor.get_state()
+        
+        # 状态机处理
+        if self._patrol_state == PatrolState.IDLE:
+            # 空闲状态：发送下一个导航目标
+            waypoint = route.waypoints[self._current_waypoint_index]
+            
+            # 转换waypoint为PoseStamped
+            goal_pose = self._waypoint_to_pose(waypoint)
+            
+            # 发送导航目标
+            success = self._nav_executor.navigate_to_pose(goal_pose)
+            
+            if success:
+                self._patrol_state = PatrolState.NAVIGATING
+                wp_name = waypoint.get('name', f"waypoint_{self._current_waypoint_index}")
+                self._node.get_logger().info(
+                    f"Navigating to waypoint {self._current_waypoint_index + 1}/{len(route.waypoints)}: "
+                    f"{wp_name} ({waypoint['x']:.2f}, {waypoint['y']:.2f})"
+                )
+            else:
+                self._node.get_logger().error("Failed to send navigation goal")
+                self._patrol_state = PatrolState.FAILED
+                if self._on_failed_callback:
+                    self._on_failed_callback("Failed to send navigation goal")
+        
+        elif self._patrol_state == PatrolState.NAVIGATING:
+            # 导航中：检查导航状态
+            if nav_state == NavigationState.SUCCESS:
+                # 导航成功：进入停留状态
+                waypoint = route.waypoints[self._current_waypoint_index]
+                self._current_dwell_time = waypoint.get('dwell_time', 0.0)
+                
+                if self._current_dwell_time > 0:
+                    self._patrol_state = PatrolState.DWELLING
+                    self._dwell_start_time = time.time()
+                    self._node.get_logger().info(
+                        f"Arrived at waypoint {self._current_waypoint_index + 1}, "
+                        f"dwelling for {self._current_dwell_time}s"
+                    )
+                else:
+                    # 无需停留，直接进入下一个路点
+                    self._current_waypoint_index += 1
+                    self._patrol_state = PatrolState.IDLE
+                    
+            elif nav_state == NavigationState.FAILED:
+                # 导航失败
+                error_msg = self._nav_executor.get_last_error() or "Navigation failed"
+                self._node.get_logger().error(f"Navigation to waypoint {self._current_waypoint_index} failed: {error_msg}")
+                self._patrol_state = PatrolState.FAILED
+                if self._on_failed_callback:
+                    self._on_failed_callback(error_msg)
+        
+        elif self._patrol_state == PatrolState.DWELLING:
+            # 停留中：检查停留时间
+            if self._dwell_start_time is None:
+                # 异常：没有开始时间，跳过停留
+                self._current_waypoint_index += 1
+                self._patrol_state = PatrolState.IDLE
+            else:
+                elapsed = time.time() - self._dwell_start_time
+                if elapsed >= self._current_dwell_time:
+                    # 停留时间结束，进入下一个路点
+                    self._node.get_logger().info(
+                        f"Dwell completed at waypoint {self._current_waypoint_index + 1}"
+                    )
+                    self._current_waypoint_index += 1
+                    self._patrol_state = PatrolState.IDLE
+                    self._dwell_start_time = None
+    
+    def _waypoint_to_pose(self, waypoint: Dict) -> PoseStamped:
+        """
+        将waypoint字典转换为PoseStamped
+        
+        Args:
+            waypoint: 包含x, y, yaw的字典
+            
+        Returns:
+            PoseStamped: ROS消息
+        """
+        pose = PoseStamped()
+        pose.header.frame_id = 'map'
+        pose.header.stamp = self._node.get_clock().now().to_msg()
+        
+        pose.pose.position.x = float(waypoint['x'])
+        pose.pose.position.y = float(waypoint['y'])
+        pose.pose.position.z = 0.0
+        
+        # 将yaw转换为四元数
+        yaw = float(waypoint['yaw'])
+        pose.pose.orientation.z = math.sin(yaw / 2.0)
+        pose.pose.orientation.w = math.cos(yaw / 2.0)
+        
+        return pose
+    
     
     def get_current_progress(self) -> Dict:
         """
         获取当前巡航进度
         
         Returns:
-            Dict: 进度信息
+            Dict: 包含当前路线信息和进度
         """
-        if not self._is_patrolling or self._current_route_id is None:
+        if self._current_route_id is None:
             return {
-                'is_patrolling': False,
+                'status': 'inactive',
                 'route_id': None,
-                'progress': 0.0
+                'route_name': None,
+                'current_waypoint': 0,
+                'total_waypoints': 0,
+                'patrol_state': PatrolState.IDLE.value
             }
         
         route = self._routes.get(self._current_route_id)
         if route is None:
-            return {'is_patrolling': False}
+            return {
+                'status': 'error',
+                'route_id': self._current_route_id,
+                'patrol_state': PatrolState.FAILED.value
+            }
         
         progress = self._current_waypoint_index / len(route.waypoints) if len(route.waypoints) > 0 else 0.0
         
         return {
-            'is_patrolling': True,
-            'route_id': self._current_route_id,
+            'status': 'active',
+            'route_id': route.route_id,
             'route_name': route.name,
             'current_waypoint': self._current_waypoint_index,
             'total_waypoints': len(route.waypoints),
             'progress': progress,
-            'loop': route.loop
+            'loop': route.loop,
+            'patrol_state': self._patrol_state.value
         }
+
     
     def load_all_routes(self):
         """从持久化目录加载所有路线"""
@@ -217,21 +432,83 @@ class PatrolManager:
             return
         
         for filename in os.listdir(self._persistence_dir):
-            if filename.endswith('.json'):
+            if filename.endswith('.yaml'):
                 filepath = os.path.join(self._persistence_dir, filename)
                 try:
-                    with open(filepath, 'r') as f:
-                        data = json.load(f)
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        data = yaml.safe_load(f)
                     route = PatrolRoute.from_dict(data)
                     self._routes[route.route_id] = route
                 except Exception as e:
                     print(f"Failed to load route from {filename}: {e}")
     
+    def load_route_from_waypoints_file(self, filepath: str, route_name: str = None) -> Optional[str]:
+        """
+        从简单的waypoints YAML文件加载路线（patrol_node格式）
+        
+        Args:
+            filepath: waypoints YAML文件路径
+            route_name: 路线名称（可选，默认使用文件名）
+            
+        Returns:
+            str: 创建的路线ID，失败返回None
+            
+        YAML格式示例:
+            waypoints:
+              - name: "point1"
+                x: 1.0
+                y: 0.5
+                yaw: 0.0
+                dwell_time: 2.0
+        """
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            
+            waypoints_data = data.get('waypoints', [])
+            if not waypoints_data:
+                print(f"No waypoints found in {filepath}")
+                return None
+            
+            # 生成路线ID和名称
+            route_id = f"route_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:24]}"
+            if route_name is None:
+                route_name = os.path.splitext(os.path.basename(filepath))[0]
+            
+            # 转换为PatrolRoute格式的waypoints
+            # 注意：这里的waypoints应该是PoseStamped的字典表示，但为了兼容简单格式，
+            # 我们直接存储简化的waypoint数据
+            route_waypoints = []
+            for wp_data in waypoints_data:
+                # 保持简单格式，后续可以转换为PoseStamped
+                route_waypoints.append({
+                    'name': wp_data.get('name', ''),
+                    'x': float(wp_data['x']),
+                    'y': float(wp_data['y']),
+                    'yaw': float(wp_data['yaw']),
+                    'dwell_time': float(wp_data.get('dwell_time', 2.0))
+                })
+            
+            # 创建PatrolRoute
+            route = PatrolRoute(
+                route_id=route_id,
+                name=route_name,
+                waypoints=route_waypoints,
+                loop=True
+            )
+            
+            self._routes[route_id] = route
+            return route_id
+            
+        except Exception as e:
+            print(f"Failed to load route from waypoints file {filepath}: {e}")
+            return None
+    
     def _save_route(self, route: PatrolRoute):
         """保存路线到文件"""
-        filepath = os.path.join(self._persistence_dir, f'{route.route_id}.json')
-        with open(filepath, 'w') as f:
-            json.dump(route.to_dict(), f, indent=2)
+        filepath = os.path.join(self._persistence_dir, f'{route.route_id}.yaml')
+        with open(filepath, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(route.to_dict(), f, allow_unicode=True, default_flow_style=False, sort_keys=False)
     
     @staticmethod
     def _pose_to_dict(pose: PoseStamped) -> Dict:

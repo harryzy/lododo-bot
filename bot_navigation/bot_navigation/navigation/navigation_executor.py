@@ -261,11 +261,13 @@ class NavigationExecutor:
         
         # 验证目标点
         if not self.is_goal_valid(goal):
+            self._last_error = 'Goal validation failed (check logs for details)'
             self.logger.warning('Goal validation failed')
             return False
         
         # 等待action服务器
         if not self._nav_action_client.wait_for_server(timeout_sec=5.0):
+            self._last_error = 'Nav2 action server not available'
             self.logger.error('Nav2 action server not available')
             return False
         
@@ -295,6 +297,7 @@ class NavigationExecutor:
         goal_handle = future.result()
         
         if not goal_handle.accepted:
+            self._last_error = 'Navigation goal rejected by Nav2 (check Nav2 logs for details)'
             self.logger.warning('Navigation goal rejected')
             self._nav_state = NavigationState.FAILED
             self._current_goal_handle = None
@@ -362,8 +365,10 @@ class NavigationExecutor:
         if len(cancel_response.goals_canceling) > 0:
             self.logger.info('Navigation cancel request accepted')
         else:
-            self.logger.warning('Navigation cancel request failed')
-            self._nav_state = NavigationState.FAILED
+            # 即使取消请求失败，也认为已取消（目标可能已经完成或不存在）
+            self.logger.warning('Navigation cancel request failed - goal may already be completed')
+            # 仍然设置为CANCELED而不是FAILED，以便恢复逻辑可以工作
+            # self._nav_state = NavigationState.CANCELED  # 由result_callback设置
     
     def get_state(self) -> NavigationState:
         """
@@ -373,6 +378,17 @@ class NavigationExecutor:
             NavigationState: 当前状态
         """
         return self._nav_state
+    
+    def get_last_error(self) -> str:
+        """
+        获取最后一次错误消息
+        
+        Returns:
+            str: 错误消息
+        """
+        # 简单实现，返回空字符串
+        # TODO: 实现错误消息存储机制
+        return ""
     
     def reset_state(self):
         """重置状态到IDLE（在处理完SUCCESS/FAILED后调用）"""

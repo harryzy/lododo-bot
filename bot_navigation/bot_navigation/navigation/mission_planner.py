@@ -17,6 +17,8 @@ Author: LeKiwi Bot Development Team
 Date: 2025-12-26
 """
 
+import os
+import subprocess
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -26,7 +28,7 @@ from std_msgs.msg import String, Bool
 
 # 导入自定义服务消息
 from bot_navigation_msgs.srv import (
-    CreateTask, TaskControl, GetTaskStatus, ListTasks,
+    CreateTask, TaskControl, GetTaskStatus, ListTasks, ClearTasks,
     StartExploration, StartPatrol, WaypointControl,
     RecordWaypoints, NavigateToPose, EmergencyStop
 )
@@ -71,6 +73,7 @@ class MissionPlanner(Node):
                 ('update_rate', 10.0),
                 ('enable_auto_recovery', True),
                 ('task_timeout', 300.0),
+                ('persistence_dir', ''),  # 持久化目录，空则使用默认值
             ]
         )
         
@@ -78,21 +81,61 @@ class MissionPlanner(Node):
         self._enable_auto_recovery = self.get_parameter('enable_auto_recovery').value
         self._task_timeout = self.get_parameter('task_timeout').value
         
+        # 持久化目录配置
+        persistence_dir = self.get_parameter('persistence_dir').value
+        if not persistence_dir:
+            # 默认使用工作空间下的mission目录
+            import subprocess
+            try:
+                ws_path = subprocess.check_output(
+                    ['ros2', 'pkg', 'prefix', 'bot_navigation'],
+                    text=True
+                ).strip()
+                # 从install/bot_navigation返回到工作空间根目录
+                ws_root = os.path.abspath(os.path.join(ws_path, '..', '..'))
+                persistence_dir = os.path.join(ws_root, 'mission')
+            except Exception as e:
+                self.get_logger().warn(f'Failed to get workspace path: {e}, using fallback')
+                persistence_dir = os.path.expanduser('~/lododo_bot/mission')
+        else:
+            persistence_dir = os.path.expanduser(persistence_dir)
+        
+        os.makedirs(persistence_dir, exist_ok=True)
+        self.get_logger().info(f'Mission persistence directory: {persistence_dir}')
+        
+        # 创建子目录
+        tasks_dir = os.path.join(persistence_dir, 'tasks')
+        patrol_dir = os.path.join(persistence_dir, 'patrol_routes')
+        waypoints_dir = os.path.join(persistence_dir, 'waypoints')
+        
         # ========== 核心组件 ==========
-        self._task_manager = TaskManager()
-        self._patrol_manager = PatrolManager()
-        self._waypoint_recorder = WaypointRecorder()
+        self._task_manager = TaskManager(persistence_dir=tasks_dir)
+        
+        # 先创建NavigationExecutor（PatrolManager需要依赖它）
         self._navigation_executor = NavigationExecutor(self)
+        
+        # 创建PatrolManager，传入node和navigation_executor
+        self._patrol_manager = PatrolManager(
+            node=self,
+            navigation_executor=self._navigation_executor,
+            persistence_dir=patrol_dir
+        )
+        
+        self._waypoint_recorder = WaypointRecorder(persistence_dir=waypoints_dir)
         
         # 加载持久化数据
         self._task_manager.load_active_tasks()
         self._patrol_manager.load_all_routes()
         
-        # ========== WaypointRecorder 服务客户端 ==========
-        waypoint_clients = self._create_waypoint_clients()
-        
         # ========== 服务处理器 ==========
-        self._waypoint_handler = WaypointServiceHandler(self, waypoint_clients)
+        # 路点服务处理器（内置WaypointRecorder实例，不再依赖外部服务）
+        self._waypoint_handler = WaypointServiceHandler(
+            self,
+            pose_topic='/rtabmap/localization_pose',
+            backup_pose_topic='/wheel/odom',
+            persistence_dir=waypoints_dir
+        )
+        
         self._navigation_handler = NavigationServiceHandler(
             self, self._task_manager, self._navigation_executor
         )
@@ -121,17 +164,6 @@ class MissionPlanner(Node):
         )
         
         self.get_logger().info('MissionPlanner initialized successfully')
-    
-    def _create_waypoint_clients(self) -> Dict:
-        """创建 WaypointRecorder 服务客户端"""
-        return {
-            'save': self.create_client(WaypointControl, '/waypoint_recorder/save_waypoints'),
-            'load': self.create_client(WaypointControl, '/waypoint_recorder/load_waypoints'),
-            'record_current': self.create_client(Trigger, '/waypoint_recorder/record_current'),
-            'start_recording': self.create_client(Trigger, '/waypoint_recorder/start_recording'),
-            'stop_recording': self.create_client(Trigger, '/waypoint_recorder/stop_recording'),
-            'clear': self.create_client(Trigger, '/waypoint_recorder/clear_waypoints'),
-        }
     
     def _create_service_servers(self):
         """创建所有服务接口"""
@@ -163,6 +195,10 @@ class MissionPlanner(Node):
         self._list_tasks_srv = self.create_service(
             ListTasks, '/mission/list_tasks',
             self._handle_list_tasks, callback_group=self._callback_group
+        )
+        self._clear_tasks_srv = self.create_service(
+            ClearTasks, '/mission/clear_tasks',
+            self._handle_clear_tasks, callback_group=self._callback_group
         )
         
         # 任务执行服务（委托给 TaskExecutionHandler）
@@ -208,11 +244,17 @@ class MissionPlanner(Node):
     def _handle_create_task(self, request, response):
         """处理创建任务请求"""
         try:
+            # 将参数键值对数组转换为字典
+            parameters = {}
+            if hasattr(request, 'parameters_keys') and hasattr(request, 'parameters_values'):
+                for key, value in zip(request.parameters_keys, request.parameters_values):
+                    parameters[key] = value
+            
             task = self._task_manager.create_task(
                 task_id=request.task_id,
                 task_type=TaskType(request.task_type),
                 priority=request.priority,
-                parameters=self._parse_parameters(request.parameters)
+                parameters=parameters
             )
             
             response.success = True
@@ -288,9 +330,24 @@ class MissionPlanner(Node):
             if task:
                 response.success = True
                 response.task_id = task.task_id
+                response.task_type = task.task_type.name  # 添加任务类型
                 response.state = task.state.name
                 response.progress = task.progress
-                response.message = task.error_message if task.error_message else "Task running"
+                # 根据任务状态返回不同的消息
+                if task.state == TaskState.FAILED:
+                    response.message = f"Task failed: {task.error_message or 'Unknown error'}"
+                elif task.state == TaskState.COMPLETED:
+                    response.message = "Task completed successfully"
+                elif task.state == TaskState.RUNNING:
+                    response.message = "Task is running"
+                elif task.state == TaskState.PENDING:
+                    response.message = "Task is pending"
+                elif task.state == TaskState.PAUSED:
+                    response.message = "Task is paused"
+                elif task.state == TaskState.CANCELED:
+                    response.message = "Task was canceled"
+                else:
+                    response.message = f"Task state: {task.state.name}"
             else:
                 response.success = False
                 response.message = f"Task '{request.task_id}' not found"
@@ -304,8 +361,9 @@ class MissionPlanner(Node):
     def _handle_list_tasks(self, request, response):
         """处理列出任务请求"""
         try:
-            if request.filter_state:
-                filter_state = TaskState[request.filter_state.upper()]
+            # 使用正确的字段名 'filter' 而不是 'filter_state'
+            if request.filter and request.filter.lower() not in ['all', '']:
+                filter_state = TaskState[request.filter.upper()]
                 tasks = self._task_manager.get_tasks_by_state(filter_state)
             else:
                 tasks = self._task_manager.get_all_tasks()
@@ -328,6 +386,69 @@ class MissionPlanner(Node):
         
         return response
     
+    def _handle_clear_tasks(self, request, response):
+        """处理清除任务请求"""
+        try:
+            cleared_count = 0
+            cleared_ids = []
+            
+            # 如果指定了任务ID，按ID清除
+            if request.task_ids:
+                cleared_count, cleared_ids = self._task_manager.clear_tasks_by_ids(
+                    request.task_ids,
+                    request.clear_history
+                )
+                
+            # 如果指定了状态，按状态清除
+            elif request.states:
+                # 检查是否是清除所有任务
+                if len(request.states) == 1 and request.states[0].lower() == 'all':
+                    cleared_count, cleared_ids = self._task_manager.clear_all_tasks(
+                        request.clear_history
+                    )
+                else:
+                    # 按指定状态清除
+                    states_to_clear = []
+                    for state_str in request.states:
+                        try:
+                            states_to_clear.append(TaskState[state_str.upper()])
+                        except KeyError:
+                            response.success = False
+                            response.message = f"Invalid state: {state_str}"
+                            response.cleared_count = 0
+                            response.cleared_task_ids = []
+                            return response
+                    
+                    cleared_count, cleared_ids = self._task_manager.clear_tasks_by_states(
+                        states_to_clear,
+                        request.clear_history
+                    )
+            else:
+                # 没有指定任何条件
+                response.success = False
+                response.message = "Must specify either task_ids or states"
+                response.cleared_count = 0
+                response.cleared_task_ids = []
+                return response
+            
+            response.success = True
+            response.cleared_count = cleared_count
+            response.cleared_task_ids = cleared_ids
+            response.message = f"Successfully cleared {cleared_count} task(s)"
+            
+            self.get_logger().info(
+                f"Cleared {cleared_count} task(s): {', '.join(cleared_ids) if cleared_ids else 'none'}"
+            )
+            
+        except Exception as e:
+            response.success = False
+            response.message = f"Error clearing tasks: {str(e)}"
+            response.cleared_count = 0
+            response.cleared_task_ids = []
+            self.get_logger().error(f"Error clearing tasks: {str(e)}")
+        
+        return response
+    
     # ========== 任务执行调度 ==========
     
     def _update_callback(self):
@@ -344,18 +465,45 @@ class MissionPlanner(Node):
             
         except Exception as e:
             self.get_logger().error(f"Error in update callback: {str(e)}")
+            # 如果有当前任务，标记为失败
+            current_task = self._task_manager.get_current_task()
+            if current_task:
+                self._task_manager.fail_task(current_task.task_id, f"Update callback error: {str(e)}")
+                self.get_logger().error(f"Marked task {current_task.task_id} as failed due to error")
     
     def _execute_pending_tasks(self):
         """执行待执行的任务"""
+        # 获取RUNNING、PAUSED和CANCELED状态的任务
+        # RUNNING: 正常执行
+        # PAUSED: 需要让handler有机会响应暂停状态（取消Nav2导航）
+        # CANCELED: 需要让handler有机会清理资源
         running_tasks = self._task_manager.get_tasks_by_state(TaskState.RUNNING)
+        paused_tasks = self._task_manager.get_tasks_by_state(TaskState.PAUSED)
+        canceled_tasks = self._task_manager.get_tasks_by_state(TaskState.CANCELED)
         
-        for task in running_tasks:
-            if task.task_type == TaskType.FRONTIER_EXPLORATION:
-                self._task_execution_handler.execute_exploration_task(task)
-            elif task.task_type == TaskType.WAYPOINT_PATROL:
-                self._task_execution_handler.execute_patrol_task(task)
-            elif task.task_type == TaskType.POINT_TO_POINT:
-                self._navigation_handler.execute_navigation_task(task)
+        # 合并三个列表
+        tasks_to_process = running_tasks + paused_tasks + canceled_tasks
+        
+        for task in tasks_to_process:
+            try:
+                # 任务类型路由
+                if task.task_type == TaskType.FRONTIER_EXPLORATION:
+                    self._task_execution_handler.execute_exploration_task(task)
+                elif task.task_type == TaskType.PATH_PATROL:
+                    self._task_execution_handler.execute_patrol_task(task)
+                elif task.task_type == TaskType.POINT_TO_POINT:
+                    self._navigation_handler.execute_navigation_task(task)
+                else:
+                    # 未知任务类型
+                    error_msg = f"Unknown task type: {task.task_type}"
+                    self.get_logger().error(error_msg)
+                    self._task_manager.fail_task(task.task_id, error_msg)
+                    
+            except Exception as e:
+                # 捕获任务执行中的异常并标记任务失败
+                error_msg = f"Task execution error: {str(e)}"
+                self.get_logger().error(f"Task {task.task_id} failed: {error_msg}")
+                self._task_manager.fail_task(task.task_id, error_msg)
     
     def _publish_system_state(self):
         """发布系统状态"""
@@ -384,7 +532,7 @@ class MissionPlanner(Node):
         """关闭节点"""
         self.get_logger().info('Shutting down MissionPlanner...')
         self._task_execution_handler.stop_all_tasks()
-        self._task_manager.save_active_tasks()
+        self._task_manager._save_active_tasks()
 
 
 def main(args=None):
