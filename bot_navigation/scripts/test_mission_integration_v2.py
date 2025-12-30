@@ -133,22 +133,24 @@ class RobotStateMonitor:
         
         return is_moving
     
-    def is_robot_stopped(self, threshold=0.005, window=0.5):
+    def is_robot_stopped(self, threshold=0.005, window=1.0):
         """
         检测机器人是否已停止
         
         Args:
             threshold: 速度阈值
-            window: 时间窗口（秒）
+            window: 时间窗口（秒），增加到1.0以匹配get_robot_speed
         
         Returns:
             bool: True表示机器人已停止
         """
+        # 使用更长的时间窗口，确保与get_robot_speed一致
         return not self.is_robot_moving(threshold, window)
     
     def get_robot_speed(self):
         """
         获取机器人当前速度（基于cmd_vel）
+        使用最近1秒的平均速度，与is_robot_moving保持一致
         
         Returns:
             dict: {'linear': float, 'angular': float}
@@ -166,16 +168,19 @@ class RobotStateMonitor:
         if not recent_cmd_vel:
             return {'linear': 0.0, 'angular': 0.0, 'linear_x': 0.0, 'linear_y': 0.0, 'angular_z': 0.0}
         
-        latest = recent_cmd_vel[-1]
-        linear_speed = math.sqrt(latest['linear_x']**2 + latest['linear_y']**2)
-        angular_speed = abs(latest['angular_z'])
+        # 计算平均速度（使用绝对值，与is_robot_moving一致）
+        avg_linear_x = sum(abs(cmd['linear_x']) for cmd in recent_cmd_vel) / len(recent_cmd_vel)
+        avg_linear_y = sum(abs(cmd['linear_y']) for cmd in recent_cmd_vel) / len(recent_cmd_vel)
+        avg_angular_z = sum(abs(cmd['angular_z']) for cmd in recent_cmd_vel) / len(recent_cmd_vel)
+        
+        linear_speed = math.sqrt(avg_linear_x**2 + avg_linear_y**2)
         
         return {
             'linear': linear_speed,
-            'angular': angular_speed,
-            'linear_x': latest['linear_x'],
-            'linear_y': latest['linear_y'],
-            'angular_z': latest['angular_z']
+            'angular': avg_angular_z,
+            'linear_x': avg_linear_x,
+            'linear_y': avg_linear_y,
+            'angular_z': avg_angular_z
         }
     
     def get_position_change(self, duration=1.0):
@@ -753,20 +758,20 @@ class MissionIntegrationTesterV2(Node):
             
             # 步骤4：验证机器人立即停止
             print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 验证机器人是否停止...")
-            time.sleep(2.0)
+            time.sleep(3.0)  # 增加等待时间，确保取消命令完全生效
             
             for _ in range(10):
                 rclpy.spin_once(self, timeout_sec=0.1)
             
             is_stopped = self.robot_monitor.is_robot_stopped()
             speed = self.robot_monitor.get_robot_speed()
-            self.log_verbose(f"Robot stopped: {is_stopped}, Speed: {speed}")
+            self.log_verbose(f"Robot stopped: {is_stopped}, Linear: {speed['linear']:.3f} m/s, Angular: {speed['angular']:.3f} rad/s")
             
             self.record_test(
                 'Robot Stopped After Emergency Stop',
                 is_stopped,
                 f"机器人{'已停止' if is_stopped else '仍在移动'}",
-                f"Linear: {speed['linear']:.3f} m/s"
+                f"Linear: {speed['linear']:.3f} m/s, Angular: {speed['angular']:.3f} rad/s"
             )
             
             # 步骤5：验证任务被取消
@@ -843,17 +848,22 @@ class MissionIntegrationTesterV2(Node):
             for _ in range(10):
                 rclpy.spin_once(self, timeout_sec=0.1)
             
+            # 获取速度信息
+            speed = self.robot_monitor.get_robot_speed()
             is_moving = self.robot_monitor.is_robot_moving()
-            self.log_verbose(f"Robot moving: {is_moving}")
+            self.log_verbose(f"Robot moving: {is_moving}, Linear: {speed['linear']:.3f} m/s, Angular: {speed['angular']:.3f} rad/s")
             
             self.record_test(
                 'Robot Moving During Patrol',
                 is_moving,
-                f"机器人{'正在巡航' if is_moving else '未移动'}"
+                f"机器人{'正在巡航' if is_moving else '未移动'}",
+                f"Linear: {speed['linear']:.3f} m/s, Angular: {speed['angular']:.3f} rad/s"
             )
             
             # 步骤4：暂停巡航
             print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 暂停巡航")
+            time.sleep(2.0)  # 等待2秒让状态稳定
+            
             pause_req = TaskControl.Request()
             pause_req.task_id = task_id
             
@@ -866,22 +876,27 @@ class MissionIntegrationTesterV2(Node):
             
             # 步骤5：验证机器人停止
             print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 验证机器人是否停止...")
-            time.sleep(2.0)
+            time.sleep(2.5)  # 给MissionPlanner时间处理PAUSED状态
             
             for _ in range(10):
                 rclpy.spin_once(self, timeout_sec=0.1)
             
+            # 获取停止后的速度信息
+            speed_after_pause = self.robot_monitor.get_robot_speed()
             is_stopped = self.robot_monitor.is_robot_stopped()
-            self.log_verbose(f"Robot stopped: {is_stopped}")
+            self.log_verbose(f"Robot stopped: {is_stopped}, Linear: {speed_after_pause['linear']:.3f} m/s, Angular: {speed_after_pause['angular']:.3f} rad/s")
             
             self.record_test(
                 'Robot Stopped After Pause',
                 is_stopped,
-                f"机器人{'已停止' if is_stopped else '仍在移动'}"
+                f"机器人{'已停止' if is_stopped else '仍在移动'}",
+                f"Linear: {speed_after_pause['linear']:.3f} m/s, Angular: {speed_after_pause['angular']:.3f} rad/s"
             )
             
             # 步骤6：恢复巡航
             print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 恢复巡航")
+            time.sleep(2.0)  # 等待2秒确保停止状态稳定
+            
             resume_req = TaskControl.Request()
             resume_req.task_id = task_id
             
@@ -899,17 +914,22 @@ class MissionIntegrationTesterV2(Node):
             for _ in range(10):
                 rclpy.spin_once(self, timeout_sec=0.1)
             
+            # 获取恢复后的速度信息
+            speed_after_resume = self.robot_monitor.get_robot_speed()
             is_moving_again = self.robot_monitor.is_robot_moving()
-            self.log_verbose(f"Robot moving: {is_moving_again}")
+            self.log_verbose(f"Robot moving: {is_moving_again}, Linear: {speed_after_resume['linear']:.3f} m/s, Angular: {speed_after_resume['angular']:.3f} rad/s")
             
             self.record_test(
                 'Robot Moving After Resume',
                 is_moving_again,
-                f"机器人{'继续巡航' if is_moving_again else '未移动'}"
+                f"机器人{'继续巡航' if is_moving_again else '未移动'}",
+                f"Linear: {speed_after_resume['linear']:.3f} m/s, Angular: {speed_after_resume['angular']:.3f} rad/s"
             )
             
             # 步骤8：取消巡航（清理）
             print(f"{Fore.BLUE}[Step 7]{Style.RESET_ALL} 取消巡航任务")
+            time.sleep(2.0)  # 等待2秒让巡航状态稳定
+            
             cancel_req = TaskControl.Request()
             cancel_req.task_id = task_id
             self.call_service('/mission/cancel_task', TaskControl, cancel_req)

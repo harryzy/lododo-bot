@@ -300,6 +300,22 @@ class PatrolManager:
         # 状态机处理
         if self._patrol_state == PatrolState.IDLE:
             # 空闲状态：发送下一个导航目标
+            
+            # 检查NavigationExecutor状态，如果不是IDLE则重置
+            if nav_state != NavigationState.IDLE:
+                self._node.get_logger().warn(
+                    f"NavigationExecutor in state {nav_state.name} before starting patrol, resetting..."
+                )
+                if nav_state == NavigationState.EXECUTING or nav_state == NavigationState.CANCELING:
+                    # 如果有导航正在执行，先取消
+                    self._nav_executor.cancel_navigation()
+                    # 等待取消完成（在下个周期重试）
+                    return
+                else:
+                    # FAILED/CANCELED/SUCCESS等终止状态，直接重置
+                    self._nav_executor.reset_state()
+                    self._node.get_logger().info("NavigationExecutor state reset")
+            
             waypoint = route.waypoints[self._current_waypoint_index]
             
             # 转换waypoint为PoseStamped

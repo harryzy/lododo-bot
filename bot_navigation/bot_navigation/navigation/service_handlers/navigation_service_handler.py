@@ -83,6 +83,13 @@ class NavigationServiceHandler:
         服务: /mission/emergency_stop
         """
         try:
+            # 立即取消当前导航（如果有）
+            from ..navigation_executor import NavigationState
+            nav_state = self._navigation_executor.get_state()
+            if nav_state == NavigationState.EXECUTING or nav_state == NavigationState.CANCELING:
+                self._navigation_executor.cancel_navigation()
+                self.node.get_logger().warn("Emergency stop: cancelled active navigation")
+            
             # 取消所有正在运行的任务
             from ..task_manager import TaskState
             active_tasks = self._task_manager.get_tasks_by_state(TaskState.RUNNING)
