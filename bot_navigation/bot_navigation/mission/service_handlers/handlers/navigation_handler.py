@@ -32,6 +32,11 @@ class NavigationHandler(TaskExecutionHandler):
         状态流转：
         WAITING_EXECUTION → (acquire executor) → RUNNING → (navigate) → COMPLETED/FAILED
         """
+        self._node.get_logger().debug(
+            f"[NavigationHandler.execute] task_id={task.task_id}, "
+            f"state={task.state.name}, is_owner={self.is_executor_owner(task.task_id)}"
+        )
+        
         # 1. WAITING_EXECUTION 状态 - 尝试获取 NavigationExecutor
         if task.state == TaskState.WAITING_EXECUTION:
             nav_state = self._nav_executor.get_state()
@@ -62,11 +67,16 @@ class NavigationHandler(TaskExecutionHandler):
             if self.is_executor_owner(task.task_id):
                 nav_state = self._nav_executor.get_state()
                 if nav_state not in [NavigationState.IDLE, NavigationState.CANCELED]:
-                    # 取消当前导航
-                    self._nav_executor.cancel_navigation()
-                    self._node.get_logger().info(
-                        f"[NavigationHandler] Navigation paused for task {task.task_id}"
-                    )
+                    # 取消当前导航（只在首次取消时成功）
+                    cancel_success = self._nav_executor.cancel_navigation()
+                    if cancel_success:
+                        self._node.get_logger().info(
+                            f"[NavigationHandler] Navigation paused for task {task.task_id}"
+                        )
+                    else:
+                        self._node.get_logger().debug(
+                            f"[NavigationHandler] Task {task.task_id} already paused (no active goal)"
+                        )
             return
         
         # 3. CANCELED 状态 - 取消处理
@@ -81,6 +91,9 @@ class NavigationHandler(TaskExecutionHandler):
                     )
                 # 释放执行器
                 self.release_executor(task.task_id)
+            
+            # 清理完毕，从活动任务中删除
+            self._task_manager.remove_task(task.task_id)
             return
         
         # 4. RUNNING 状态 - 执行导航
@@ -101,26 +114,45 @@ class NavigationHandler(TaskExecutionHandler):
                 self._node.get_logger().info(
                     f"[NavigationHandler] Task {task.task_id} completed successfully"
                 )
+                # 清理完毕，删除任务
+                self._task_manager.remove_task(task.task_id)
                 return
             
             elif nav_state == NavigationState.FAILED:
-                # 导航失败
-                error_msg = self._nav_executor.get_last_error() or "Navigation failed"
-                self._task_manager.fail_task(task.task_id, error_msg)
-                self.release_executor(task.task_id)
-                self._node.get_logger().warn(
-                    f"[NavigationHandler] Task {task.task_id} failed: {error_msg}"
+                # 导航失败 - 但可能是从PAUSED恢复后的旧状态
+                # 检查任务是否是刚从PAUSED恢复（task之前是PAUSED）
+                # 这种情况下应该重置状态并重新发送导航
+                self._node.get_logger().info(
+                    f"[NavigationHandler] Detected FAILED state for task {task.task_id}, will reset and resend goal"
                 )
-                return
+                # 重置执行器状态
+                self._nav_executor.reset_state()
+                new_state = self._nav_executor.get_state()
+                self._node.get_logger().info(
+                    f"[NavigationHandler] Executor state after reset: {new_state.name}"
+                )
+                # 继续到发送导航目标
+                # 不return，让代码继续执行到_send_navigation_goal
             
             elif nav_state in [NavigationState.IDLE, NavigationState.CANCELED]:
                 # 导航已经结束（可能是恢复操作）
                 self._node.get_logger().info(
-                    f"[NavigationHandler] Resuming navigation for task {task.task_id}"
+                    f"[NavigationHandler] Detected resume condition: nav_state={nav_state.value}, task_id={task.task_id}"
                 )
                 # 重置状态并重新发送目标
                 if nav_state != NavigationState.IDLE:
+                    self._node.get_logger().info(
+                        f"[NavigationHandler] Resetting executor state from {nav_state.value} to IDLE"
+                    )
                     self._nav_executor.reset_state()
+                    # 确认状态已重置
+                    new_state = self._nav_executor.get_state()
+                    self._node.get_logger().info(
+                        f"[NavigationHandler] Executor state after reset: {new_state.name}"
+                    )
+                self._node.get_logger().info(
+                    f"[NavigationHandler] Will resend navigation goal..."
+                )
                 # 继续发送导航目标
             elif nav_state == NavigationState.EXECUTING:
                 # 导航正在进行中
@@ -138,6 +170,13 @@ class NavigationHandler(TaskExecutionHandler):
     def _send_navigation_goal(self, task: Task):
         """发送导航目标"""
         params = task.parameters
+        
+        # 记录当前executor状态
+        current_nav_state = self._nav_executor.get_state()
+        self._node.get_logger().info(
+            f"[NavigationHandler._send_navigation_goal] task_id={task.task_id}, "
+            f"executor_state={current_nav_state.name}, is_owner={self.is_executor_owner(task.task_id)}"
+        )
         
         try:
             # 构造目标位姿
@@ -169,6 +208,8 @@ class NavigationHandler(TaskExecutionHandler):
                 self._node.get_logger().error(
                     f"[NavigationHandler] Failed to start navigation for task {task.task_id}: {error_msg}"
                 )
+                # 清理完毕，删除任务
+                self._task_manager.remove_task(task.task_id)
         
         except Exception as e:
             self._node.get_logger().error(
@@ -176,6 +217,8 @@ class NavigationHandler(TaskExecutionHandler):
             )
             self._task_manager.fail_task(task.task_id, str(e))
             self.release_executor(task.task_id)
+            # 清理完毕，删除任务
+            self._task_manager.remove_task(task.task_id)
     
     def pause(self, task: Task) -> bool:
         """暂停导航任务"""

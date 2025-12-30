@@ -341,11 +341,11 @@ class MissionIntegrationTesterV2(Node):
         
         success, response = self.call_service('/mission/get_task_status', GetTaskStatus, req)
         
-        if success and response.found:
+        if success and response.success:
             return {
                 'state': response.state,
                 'progress': response.progress,
-                'error': response.error_message
+                'task_type': response.task_type
             }
         return None
     
@@ -505,14 +505,23 @@ class MissionIntegrationTesterV2(Node):
             cancel_req.task_id = task_id
             
             self.call_service('/mission/cancel_task', TaskControl, cancel_req)
+            
+            # 等待取消处理完成（给handler时间执行CANCELED状态清理）
+            time.sleep(0.5)
+            
+            # 验证任务状态是否为CANCELED或已被删除
+            task_status = self.get_task_status(task_id)
+            task_canceled = (task_status is None or task_status['state'] == 'CANCELED')
+            
+            # 等待机器人停止（Nav2取消导航需要时间）
             time.sleep(1.0)
             
             # 验证机器人停止
-            is_stopped_final = self.robot_monitor.is_robot_stopped()
+            is_stopped_final = self.robot_monitor.is_robot_stopped(threshold=0.01)
             self.record_test(
                 'Robot Stopped After Cancel',
-                is_stopped_final,
-                f"机器人{'已停止' if is_stopped_final else '仍在移动'}"
+                is_stopped_final and task_canceled,
+                f"任务{'已取消' if task_canceled else '未取消'}, 机器人{'已停止' if is_stopped_final else '仍在移动'}"
             )
             
         except Exception as e:

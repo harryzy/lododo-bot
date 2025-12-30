@@ -36,12 +36,12 @@ from std_srvs.srv import Trigger
 
 from .task_manager import TaskManager, TaskType, TaskState
 from ..patrol.patrol_manager import PatrolManager
-from .waypoint_recorder import WaypointRecorder
+from ..waypoint.waypoint_recorder import WaypointRecorder
 from .navigation_executor import NavigationExecutor, NavigationState
 
 # 导入工具模块和任务处理器
-from .service_handlers import (
-    WaypointTools,
+from ..waypoint.waypoint_service import WaypointTools
+from .service_handlers.handlers import (
     NavigationHandler,
     PatrolHandler,
     ExplorationHandler  # Phase 3

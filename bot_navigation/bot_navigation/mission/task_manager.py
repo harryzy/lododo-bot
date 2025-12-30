@@ -304,6 +304,10 @@ class TaskManager:
         
         self._remove_from_queue(task_id)
         self._save_to_history(task)
+        
+        # 注意：不在这里删除任务，留给handler清理资源
+        # handler处理完COMPLETED状态后，会调用remove_task删除
+        
         self._save_active_tasks()
         
         return True
@@ -328,6 +332,9 @@ class TaskManager:
                 self._current_task_id = None
             self._remove_from_queue(task_id)
             self._save_to_history(task)
+            
+            # 注意：不在这里删除任务，留给handler清理资源
+            # handler处理完FAILED状态后，会调用remove_task删除
         
         self._save_active_tasks()
         return True
@@ -346,8 +353,29 @@ class TaskManager:
         
         self._remove_from_queue(task_id)
         self._save_to_history(task)
+        
+        # 注意：不在这里删除任务，留给handler清理资源（如取消Nav2导航）
+        # handler处理完CANCELED状态后，会调用remove_task删除
+        
         self._save_active_tasks()
         
+        return True
+    
+    def remove_task(self, task_id: str) -> bool:
+        """
+        从活动任务中删除任务（由handler在处理完终态任务后调用）
+        
+        Args:
+            task_id: 任务ID
+            
+        Returns:
+            bool: 成功返回True
+        """
+        if task_id not in self._tasks:
+            return False
+        
+        del self._tasks[task_id]
+        self._save_active_tasks()
         return True
     
     def update_progress(self, task_id: str, progress: float) -> bool:
@@ -509,19 +537,41 @@ class TaskManager:
             with open(self._active_tasks_file, 'r') as f:
                 data = json.load(f)
             
-            self._tasks = {
+            # 加载所有任务，但过滤掉终态任务（COMPLETED, FAILED, CANCELED）
+            # 这些任务应该已经在历史记录中，不应该继续执行
+            terminal_states = {TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELED}
+            all_tasks = {
                 tid: Task.from_dict(task_data)
                 for tid, task_data in data['tasks'].items()
                 if tid  # 跳过空字符串task_id
             }
+            
+            # 过滤掉终态任务
+            self._tasks = {
+                tid: task
+                for tid, task in all_tasks.items()
+                if task.state not in terminal_states
+            }
+            
+            # 只保留有效且非终态的任务ID
             self._task_queue = [
                 tid for tid in data['queue']
                 if tid and tid in self._tasks  # 只保留有效的任务ID
             ]
-            self._current_task_id = data.get('current_task_id')
             
-            # 如果加载后发现队列被清理了，保存更新
-            if len(self._task_queue) != len(data['queue']):
+            # 检查current_task是否是终态
+            loaded_current = data.get('current_task_id')
+            if loaded_current and loaded_current in self._tasks:
+                self._current_task_id = loaded_current
+            else:
+                self._current_task_id = None
+            
+            # 如果过滤了任务，打印信息并保存更新
+            filtered_count = len(all_tasks) - len(self._tasks)
+            if filtered_count > 0:
+                print(f"Filtered {filtered_count} terminal state tasks (COMPLETED/FAILED/CANCELED) from active tasks")
+                self._save_active_tasks()
+            elif len(self._task_queue) != len(data['queue']):
                 print(f"Cleaned {len(data['queue']) - len(self._task_queue)} invalid task IDs from queue")
                 self._save_active_tasks()
             

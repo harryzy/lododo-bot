@@ -343,7 +343,7 @@ class NavigationExecutor:
             bool: 取消成功返回True
         """
         if self._current_goal_handle is None:
-            self.logger.warning('No active goal to cancel')
+            self.logger.debug('No active goal to cancel')
             return False
         
         if self._nav_state == NavigationState.CANCELING:
