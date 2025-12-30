@@ -65,10 +65,14 @@ class NavigationServiceHandler:
             self.node.get_logger().info(f"Started navigation task: {task_id}")
             
         except Exception as e:
+            import traceback
             response.success = False
-            response.message = f"Failed to start navigation: {str(e)}"
+            error_str = str(e) if str(e) else f"{type(e).__name__}"
+            response.message = f"Failed to start navigation: {error_str}"
             response.task_id = ""
-            self.node.get_logger().error(f"Error starting navigation: {str(e)}")
+            self.node.get_logger().error(f"Error starting navigation: {error_str}")
+            self.node.get_logger().error(f"Exception type: {type(e).__name__}")
+            self.node.get_logger().error(f"Traceback:\n{traceback.format_exc()}")
         
         return response
     

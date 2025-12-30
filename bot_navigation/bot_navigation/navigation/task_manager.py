@@ -158,6 +158,9 @@ class TaskManager:
         # 找到合适的插入位置
         insert_index = len(self._task_queue)
         for i, tid in enumerate(self._task_queue):
+            # 跳过无效的任务ID（防止KeyError）
+            if not tid or tid not in self._tasks:
+                continue
             if self._tasks[tid].priority > task.priority:
                 insert_index = i
                 break
@@ -451,9 +454,18 @@ class TaskManager:
             self._tasks = {
                 tid: Task.from_dict(task_data)
                 for tid, task_data in data['tasks'].items()
+                if tid  # 跳过空字符串task_id
             }
-            self._task_queue = data['queue']
+            self._task_queue = [
+                tid for tid in data['queue']
+                if tid and tid in self._tasks  # 只保留有效的任务ID
+            ]
             self._current_task_id = data.get('current_task_id')
+            
+            # 如果加载后发现队列被清理了，保存更新
+            if len(self._task_queue) != len(data['queue']):
+                print(f"Cleaned {len(data['queue']) - len(self._task_queue)} invalid task IDs from queue")
+                self._save_active_tasks()
             
         except Exception as e:
             print(f"Failed to load active tasks: {e}")

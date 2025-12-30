@@ -241,9 +241,13 @@ class PatrolManager:
         检查是否正在巡航
         
         Returns:
-            bool: 正在巡航返回True
+            bool: 正在巡航返回True（包括IDLE/NAVIGATING/DWELLING状态，但不包括暂停）
         """
-        return self._patrol_state not in (PatrolState.IDLE, PatrolState.COMPLETED, PatrolState.FAILED, PatrolState.PAUSED)
+        # 有活动路线且未完成/失败即为"正在巡航"
+        # IDLE状态表示等待发送下一个导航目标，仍然算作"正在巡航"
+        if self._current_route_id is None:
+            return False
+        return self._patrol_state not in (PatrolState.COMPLETED, PatrolState.FAILED, PatrolState.PAUSED)
     
     def execute_patrol(self):
         """
