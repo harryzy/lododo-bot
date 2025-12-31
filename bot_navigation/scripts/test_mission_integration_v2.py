@@ -40,7 +40,7 @@ import math
 # 导入服务消息类型
 from bot_navigation_msgs.srv import (
     NavigateToPose, StartExploration, StartPatrol,
-    TaskControl, GetTaskStatus, EmergencyStop, ClearTasks
+    TaskControl, GetTaskStatus, EmergencyStop, ClearTasks, ListTasks
 )
 
 # 初始化colorama
@@ -349,6 +349,38 @@ class MissionIntegrationTesterV2(Node):
             }
         return None
     
+    def force_cleanup_all_tasks(self):
+        """强制清理所有任务（在测试间调用，确保状态干净）"""
+        self.log_verbose("Force cleanup: canceling all pending/running tasks...")
+        
+        # 1. 列出所有任务
+        list_req = ListTasks.Request()
+        list_req.filter = 'all'
+        success, response = self.call_service('/mission/list_tasks', ListTasks, list_req)
+        
+        if success and response.success and response.task_ids:
+            # 2. 取消所有待执行或运行中的任务
+            for i, task_id in enumerate(response.task_ids):
+                state = response.states[i]
+                if state in ['pending', 'waiting', 'running', 'paused']:
+                    self.log_verbose(f"Canceling task {task_id} (state: {state})")
+                    cancel_req = TaskControl.Request()
+                    cancel_req.task_id = task_id
+                    cancel_req.action = 'cancel'
+                    self.call_service('/mission/task_control', TaskControl, cancel_req)
+            
+            # 3. 等待取消处理
+            time.sleep(1.0)
+        
+        # 4. 清理所有任务
+        clear_req = ClearTasks.Request()
+        clear_req.states = ['all']
+        self.call_service('/mission/clear_tasks', ClearTasks, clear_req)
+        
+        # 5. 等待清理完成
+        time.sleep(0.5)
+        self.log_verbose("Force cleanup completed")
+    
     # ========== 测试用例 ==========
     
     def test_navigation_pause_resume(self):
@@ -362,7 +394,7 @@ class MissionIntegrationTesterV2(Node):
         4. 恢复后机器人重新开始移动
         """
         print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}TEST 1: Navigation Pause/Resume Control{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 1: Navigation Pause/Resume Control / 导航暂停恢复控制{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
         
         task_id = None
@@ -377,7 +409,7 @@ class MissionIntegrationTesterV2(Node):
             req.yaw = -0.9204096538260552
             req.frame_id = 'map'
             
-            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 启动导航到目标点 (1.789, 0.120)")
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} Start navigation to goal (1.789, 0.120) / Start navigation to goal / 启动导航到目标点 (1.789, 0.120)")
             
             success, response = self.call_service('/mission/navigate_to_pose', NavigateToPose, req)
             if not success or not response.success:
@@ -387,8 +419,8 @@ class MissionIntegrationTesterV2(Node):
             task_id = response.task_id
             self.record_test('Navigation Start', True, f'Task ID: {task_id}')
             
-            # 步骤2：等待机器人开始移动
-            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} 等待机器人开始移动...")
+            # 步骤2：Waiting for robot to start moving / 等待机器人开始移动
+            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} Waiting for robot to start moving / 等待机器人开始移动...")
             time.sleep(2.0)
             
             # 多次spin确保接收到cmd_vel消息
@@ -411,7 +443,7 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤3：暂停任务
-            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 暂停任务")
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} Pause task / Pause task / 暂停任务")
             pause_req = TaskControl.Request()
             pause_req.task_id = task_id
             
@@ -423,7 +455,7 @@ class MissionIntegrationTesterV2(Node):
             self.record_test('Pause Task', True, '暂停命令发送成功')
             
             # 步骤4：验证机器人停止
-            print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 验证机器人是否停止...")
+            print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} Verify robot stopped / 验证机器人是否停止...")
             time.sleep(2.5)  # 给MissionPlanner时间处理PAUSED状态并取消导航
             
             # 多次spin确保接收最新cmd_vel
@@ -449,7 +481,7 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤5：保持暂停，验证机器人保持静止
-            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 保持暂停3秒，验证机器人保持静止...")
+            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} Keep paused for 3s, verify robot remains still / 保持暂停3秒，验证机器人保持静止...")
             time.sleep(3.0)
             
             position_change = self.robot_monitor.get_position_change(duration=3.0)
@@ -462,7 +494,7 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤6：恢复任务
-            print(f"{Fore.BLUE}[Step 6]{Style.RESET_ALL} 恢复任务")
+            print(f"{Fore.BLUE}[Step 6]{Style.RESET_ALL} Resume task / 恢复任务")
             resume_req = TaskControl.Request()
             resume_req.task_id = task_id
             
@@ -474,7 +506,7 @@ class MissionIntegrationTesterV2(Node):
             self.record_test('Resume Task', True, '恢复命令发送成功')
             
             # 步骤7：验证机器人重新开始移动
-            print(f"{Fore.BLUE}[Step 7]{Style.RESET_ALL} 验证机器人是否重新开始移动...")
+            print(f"{Fore.BLUE}[Step 7]{Style.RESET_ALL} Verify robot resumed moving / 验证机器人是否重新开始移动...")
             time.sleep(3.0)  # 给MissionPlanner时间检测CANCELED状态并重新发送导航目标
             
             # 多次spin确保接收cmd_vel
@@ -500,21 +532,21 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤8：取消任务（清理）
-            print(f"{Fore.BLUE}[Step 8]{Style.RESET_ALL} 取消任务（清理）")
+            print(f"{Fore.BLUE}[Step 8]{Style.RESET_ALL} Cancel task (cleanup) / 取消任务（清理）")
             cancel_req = TaskControl.Request()
             cancel_req.task_id = task_id
             
             self.call_service('/mission/cancel_task', TaskControl, cancel_req)
             
             # 等待取消处理完成（给handler时间执行CANCELED状态清理）
-            time.sleep(0.5)
+            time.sleep(1.0)
             
             # 验证任务状态是否为CANCELED或已被删除
             task_status = self.get_task_status(task_id)
             task_canceled = (task_status is None or task_status['state'] == 'CANCELED')
             
             # 等待机器人停止（Nav2取消导航需要时间）
-            time.sleep(1.0)
+            time.sleep(3.0)
             
             # 验证机器人停止
             is_stopped_final = self.robot_monitor.is_robot_stopped(threshold=0.01)
@@ -538,7 +570,7 @@ class MissionIntegrationTesterV2(Node):
         3. 任务状态变为CANCELED
         """
         print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}TEST 2: Navigation Cancel{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 2: Navigation Cancel / 导航取消{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
         
         task_id = None
@@ -551,7 +583,7 @@ class MissionIntegrationTesterV2(Node):
             req.yaw = 0.0
             req.frame_id = 'map'
             
-            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 启动导航到目标点 (2.0, 1.0)")
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} Start navigation to goal / 启动导航到目标点 (2.0, 1.0)")
             
             success, response = self.call_service('/mission/navigate_to_pose', NavigateToPose, req)
             if not success or not response.success:
@@ -561,8 +593,8 @@ class MissionIntegrationTesterV2(Node):
             task_id = response.task_id
             self.record_test('Navigation Start', True, f'Task ID: {task_id}')
             
-            # 步骤2：等待机器人开始移动
-            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} 等待机器人开始移动...")
+            # 步骤2：Waiting for robot to start moving / 等待机器人开始移动
+            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} Waiting for robot to start moving / 等待机器人开始移动...")
             time.sleep(2.0)
             
             for _ in range(10):
@@ -580,7 +612,7 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤3：取消任务
-            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 取消任务")
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} Cancel task / 取消任务")
             cancel_req = TaskControl.Request()
             cancel_req.task_id = task_id
             
@@ -610,7 +642,7 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤5：验证任务状态
-            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 检查任务状态")
+            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} Check task status / 检查任务状态")
             status_req = GetTaskStatus.Request()
             status_req.task_id = task_id
             
@@ -647,14 +679,14 @@ class MissionIntegrationTesterV2(Node):
         3. 第一个任务完成后自动开始第二个
         """
         print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}TEST 3: Multiple Navigation Tasks{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 3: Multiple Navigation Tasks / 多任务导航{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
         
         task_ids = []
         
         try:
-            # 步骤1：提交第一个导航任务
-            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 提交第一个导航任务")
+            # 步骤1：Submit first navigation task / 提交第一个导航任务
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} Submit first navigation task / 提交第一个导航任务")
             req1 = NavigateToPose.Request()
             req1.x = 1.0
             req1.y = 0.5
@@ -669,8 +701,8 @@ class MissionIntegrationTesterV2(Node):
                 self.record_test('Submit Task 1', False, '提交失败')
                 return
             
-            # 步骤2：立即提交第二个导航任务
-            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} 提交第二个导航任务")
+            # 步骤2：立即Submit second navigation task / 提交第二个导航任务
+            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} Submit second navigation task / 提交第二个导航任务")
             req2 = NavigateToPose.Request()
             req2.x = 1.5
             req2.y = 1.0
@@ -689,7 +721,7 @@ class MissionIntegrationTesterV2(Node):
                 self.record_test('Submit Task 2', False, '提交失败')
             
             # 步骤3：验证第一个任务正在执行
-            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 检查任务状态")
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} Check task status / 检查任务状态")
             time.sleep(1.0)
             
             status_req = GetTaskStatus.Request()
@@ -722,8 +754,8 @@ class MissionIntegrationTesterV2(Node):
                     f"状态: {response.state} ({'正常' if is_valid else '异常'})"
                 )
             
-            # 步骤5：取消所有任务（清理）
-            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 取消所有任务")
+            # 步骤5：Cancel all tasks / 取消所有任务（清理）
+            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} Cancel all tasks / 取消所有任务")
             for task_id in task_ids:
                 cancel_req = TaskControl.Request()
                 cancel_req.task_id = task_id
@@ -740,19 +772,19 @@ class MissionIntegrationTesterV2(Node):
         TEST 4: 紧急停止功能
         
         验证点：
-        1. 导航过程中可以触发紧急停止
+        1. 导航过程中可以Trigger emergency stop / 触发紧急停止
         2. 紧急停止后机器人立即停止
         3. 所有任务被取消
         """
         print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}TEST 4: Emergency Stop{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 4: Emergency Stop / 紧急停止{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
         
         task_id = None
         
         try:
             # 步骤1：启动导航
-            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 启动导航任务")
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} Start navigation task / 启动导航任务")
             req = NavigateToPose.Request()
             req.x = 2.5
             req.y = 1.5
@@ -767,8 +799,8 @@ class MissionIntegrationTesterV2(Node):
             task_id = response.task_id
             self.record_test('Navigation Start', True, f'Task ID: {task_id}')
             
-            # 步骤2：等待机器人开始移动
-            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} 等待机器人开始移动...")
+            # 步骤2：Waiting for robot to start moving / 等待机器人开始移动
+            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} Waiting for robot to start moving / 等待机器人开始移动...")
             time.sleep(2.0)
             
             for _ in range(10):
@@ -783,8 +815,8 @@ class MissionIntegrationTesterV2(Node):
                 f"机器人{'正在移动' if is_moving else '未移动'}"
             )
             
-            # 步骤3：触发紧急停止
-            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 触发紧急停止")
+            # 步骤3：Trigger emergency stop / 触发紧急停止
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} Trigger emergency stop / 触发紧急停止")
             estop_req = EmergencyStop.Request()
             estop_req.clear_tasks = True  # 清空所有任务
             
@@ -814,7 +846,7 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤5：验证任务被取消
-            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 检查任务状态")
+            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} Check task status / 检查任务状态")
             status_req = GetTaskStatus.Request()
             status_req.task_id = task_id
             
@@ -844,7 +876,7 @@ class MissionIntegrationTesterV2(Node):
                 )
             
             # 步骤6：清理
-            print(f"{Fore.BLUE}[Step 6]{Style.RESET_ALL} 清理所有任务")
+            print(f"{Fore.BLUE}[Step 6]{Style.RESET_ALL} Clear all tasks / 清理所有任务")
             clear_req = ClearTasks.Request()
             clear_req.states = ['all']  # 清除所有状态的任务
             self.call_service('/mission/clear_tasks', ClearTasks, clear_req)
@@ -865,7 +897,7 @@ class MissionIntegrationTesterV2(Node):
         注意：此测试需要预先准备好路点文件
         """
         print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}TEST 5: Patrol Pause/Resume{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 5: Patrol Pause/Resume / 巡航暂停恢复{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
         
         task_id = None
@@ -876,13 +908,14 @@ class MissionIntegrationTesterV2(Node):
             waypoint_file = os.path.expanduser('~/lododo_bot/waypoints/test_patrol_short.yaml')
             
             if not os.path.exists(waypoint_file):
-                print(f"{Fore.YELLOW}警告: 未找到测试路点文件 {waypoint_file}{Style.RESET_ALL}")
-                print(f"{Fore.YELLOW}跳过巡航测试，请先使用waypoint_recorder录制路点{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}WARNING / 警告: Waypoint file not found / 未找到测试路点文件 {waypoint_file}{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Skipping patrol test, please record waypoints first using waypoint_recorder{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Skipping patrol test \/ 跳过巡航测试，请先使用waypoint_recorder录制路点{Style.RESET_ALL}")
                 self.record_test('Patrol Test', False, '缺少路点文件，跳过测试')
                 return
             
             # 步骤2：启动巡航
-            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 启动巡航任务")
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} Start patrol task / 启动巡航任务")
             req = StartPatrol.Request()
             req.waypoint_file = waypoint_file
             req.patrol_mode = 'loop'  # 循环巡航模式
@@ -897,8 +930,8 @@ class MissionIntegrationTesterV2(Node):
             task_id = response.task_id
             self.record_test('Patrol Start', True, f'Task ID: {task_id}')
             
-            # 步骤3：等待机器人开始移动
-            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} 等待机器人开始巡航...")
+            # 步骤3：Waiting for robot to start moving / 等待机器人开始移动
+            print(f"{Fore.BLUE}[Step 2]{Style.RESET_ALL} Waiting for robot to start patrol / 等待机器人开始巡航...")
             time.sleep(3.0)
             
             for _ in range(10):
@@ -917,7 +950,7 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤4：暂停巡航
-            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 暂停巡航")
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} Pause patrol / 暂停巡航")
             time.sleep(2.0)  # 等待2秒让状态稳定
             
             pause_req = TaskControl.Request()
@@ -932,7 +965,7 @@ class MissionIntegrationTesterV2(Node):
             
             # 步骤5：验证机器人停止
             print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 验证机器人是否停止...")
-            time.sleep(2.5)  # 给MissionPlanner时间处理PAUSED状态
+            time.sleep(3.5)  # 增加等待时间，确保机器人完全停止（patrol 需要更多时间）
             
             for _ in range(10):
                 rclpy.spin_once(self, timeout_sec=0.1)
@@ -950,7 +983,7 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤6：恢复巡航
-            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 恢复巡航")
+            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} Resume patrol / 恢复巡航")
             time.sleep(2.0)  # 等待2秒确保停止状态稳定
             
             resume_req = TaskControl.Request()
@@ -964,7 +997,7 @@ class MissionIntegrationTesterV2(Node):
             self.record_test('Resume Patrol', True, '恢复命令发送成功')
             
             # 步骤7：验证机器人重新开始巡航
-            print(f"{Fore.BLUE}[Step 6]{Style.RESET_ALL} 验证机器人是否继续巡航...")
+            print(f"{Fore.BLUE}[Step 6]{Style.RESET_ALL} Verify robot continues patrol / 验证机器人是否继续巡航...")
             time.sleep(3.0)
             
             for _ in range(10):
@@ -983,14 +1016,17 @@ class MissionIntegrationTesterV2(Node):
             )
             
             # 步骤8：取消巡航（清理）
-            print(f"{Fore.BLUE}[Step 7]{Style.RESET_ALL} 取消巡航任务")
+            print(f"{Fore.BLUE}[Step 7]{Style.RESET_ALL} Cancel patrol task / 取消巡航任务")
             time.sleep(2.0)  # 等待2秒让巡航状态稳定
             
             cancel_req = TaskControl.Request()
             cancel_req.task_id = task_id
             self.call_service('/mission/cancel_task', TaskControl, cancel_req)
             
-            time.sleep(1.0)
+            # 等待巡航任务完全停止和清理（PatrolHandler 需要时间释放 executor）
+            self.log_verbose("Waiting for patrol cleanup...")
+            time.sleep(3.0)
+            self.log_verbose("Patrol test completed")
             
         except Exception as e:
             self.get_logger().error(f'Test failed with exception: {str(e)}')
@@ -1000,7 +1036,7 @@ class MissionIntegrationTesterV2(Node):
     
     def list_tests(self):
         """列出所有可用的测试"""
-        print(f"\n{Fore.CYAN}Available Tests:{Style.RESET_ALL}\n")
+        print(f"\n{Fore.CYAN}Available Tests / 可用测试:{Style.RESET_ALL}\n")
         for test in self.test_cases:
             print(f"  {test['id']}. {Fore.GREEN}{test['name']}{Style.RESET_ALL}")
             print(f"     {test['description']}\n")
@@ -1033,7 +1069,7 @@ class MissionIntegrationTesterV2(Node):
     def run_all_tests(self):
         """运行所有测试"""
         print(f"\n{Fore.MAGENTA}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.MAGENTA}Running All Integration Tests{Style.RESET_ALL}")
+        print(f"{Fore.MAGENTA}Running All Integration Tests / 运行所有集成测试{Style.RESET_ALL}")
         print(f"{Fore.MAGENTA}{'='*60}{Style.RESET_ALL}\n")
         
         for test in self.test_cases:
@@ -1043,7 +1079,7 @@ class MissionIntegrationTesterV2(Node):
     def print_summary(self):
         """打印测试摘要"""
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}Test Summary{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Test Summary / 测试摘要{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         
         total = self.test_results['total']
@@ -1052,12 +1088,12 @@ class MissionIntegrationTesterV2(Node):
         
         pass_rate = (passed / total * 100) if total > 0 else 0
         
-        print(f"Total Tests:  {total}")
-        print(f"{Fore.GREEN}Passed:       {passed}{Style.RESET_ALL}")
-        print(f"{Fore.RED}Failed:       {failed}{Style.RESET_ALL}")
-        print(f"Pass Rate:    {pass_rate:.1f}%")
+        print(f"Total Tests / 总测试数:  {total}")
+        print(f"{Fore.GREEN}Passed / 通过:       {passed}{Style.RESET_ALL}")
+        print(f"{Fore.RED}Failed / 失败:       {failed}{Style.RESET_ALL}")
+        print(f"Pass Rate / 通过率:    {pass_rate:.1f}%")
         
-        print(f"\n{Fore.CYAN}Detailed Results:{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}Detailed Results / 详细结果:{Style.RESET_ALL}")
         for result in self.test_results['details']:
             status_color = Fore.GREEN if result['status'] == 'PASS' else Fore.RED
             print(f"  {status_color}{result['status']}{Style.RESET_ALL} - {result['name']}")
@@ -1079,14 +1115,14 @@ class MissionIntegrationTesterV2(Node):
         4. 探索任务可以被取消
         """
         print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}TEST 6: Exploration Basic Execution{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 6: Exploration Basic Execution / 自主探索基础执行{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
         
         task_id = None
         
         try:
             # 步骤1：启动探索任务
-            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 启动探索任务")
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} Start exploration task / Start exploration task / 启动探索任务")
             
             req = StartExploration.Request()
             req.map_name = 'test_explore'
@@ -1108,8 +1144,8 @@ class MissionIntegrationTesterV2(Node):
             for _ in range(10):
                 rclpy.spin_once(self, timeout_sec=0.1)
             
-            # 步骤3：检查任务状态（应该是 RUNNING）
-            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 检查任务状态")
+            # 步骤3：Check task status / 检查任务状态（应该是 RUNNING）
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} Check task status / 检查任务状态")
             status = self.get_task_status(task_id)
             
             if status:
@@ -1142,8 +1178,8 @@ class MissionIntegrationTesterV2(Node):
                 f"Linear: {speed['linear']:.3f} m/s, Angular: {speed['angular']:.3f} rad/s"
             )
             
-            # 步骤5：取消探索任务
-            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} 取消探索任务")
+            # 步骤5：Cancel exploration task / 取消探索任务
+            print(f"{Fore.BLUE}[Step 5]{Style.RESET_ALL} Cancel exploration task / 取消探索任务")
             cancel_req = TaskControl.Request()
             cancel_req.task_id = task_id
             
@@ -1161,7 +1197,7 @@ class MissionIntegrationTesterV2(Node):
                         f"取消后状态: {status['state']}"
                     )
             else:
-                self.record_test('Exploration Cancel', False, '取消探索任务失败')
+                self.record_test('Exploration Cancel', False, 'Cancel exploration task / 取消探索任务失败')
         
         except Exception as e:
             self.record_test('Exploration Test', False, f'异常: {str(e)}')
@@ -1178,11 +1214,14 @@ class MissionIntegrationTesterV2(Node):
         4. 任务队列顺序正确
         """
         print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}TEST 7: WAITING_EXECUTION State & Executor Mutex{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 7: WAITING_EXECUTION State & Executor Mutex / 等待执行状态与执行器互斥{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
         
         task_id_1 = None
         task_id_2 = None
+        
+        # 等待前一个测试完全结束（确保 NavigationExecutor 已经释放）
+        time.sleep(2.0)
         
         try:
             # 步骤1：启动第一个导航任务（远距离）
@@ -1221,7 +1260,7 @@ class MissionIntegrationTesterV2(Node):
             self.record_test('Second Navigation Start', True, f'Task 2 ID: {task_id_2}')
             
             # 步骤3：检查两个任务的状态
-            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 检查任务状态 (2s)...")
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} Check task status / 检查任务状态 (2s)...")
             time.sleep(2.0)
             
             status_1 = self.get_task_status(task_id_1)
@@ -1288,20 +1327,20 @@ class MissionIntegrationTesterV2(Node):
         
         验证点：
         1. 创建多个不同类型的任务
-        2. 触发紧急停止
+        2. Trigger emergency stop / 触发紧急停止
         3. 所有任务立即转为 CANCELED 状态
         4. 机器人立即停止移动
         5. NavigationExecutor 被释放
         """
         print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}TEST 8: Emergency Stop Global Cancel{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}TEST 8: Emergency Stop Global Cancel / 紧急停止全局取消{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}\n")
         
         task_ids = []
         
         try:
             # 步骤1：创建多个任务
-            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} 创建多个导航任务")
+            print(f"{Fore.BLUE}[Step 1]{Style.RESET_ALL} Create multiple navigation tasks / 创建多个导航任务")
             
             # 任务1
             req1 = NavigateToPose.Request()
@@ -1365,8 +1404,8 @@ class MissionIntegrationTesterV2(Node):
                 f"Linear: {speed_before['linear']:.3f} m/s, Angular: {speed_before['angular']:.3f} rad/s"
             )
             
-            # 步骤3：触发紧急停止
-            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} 触发紧急停止")
+            # 步骤3：Trigger emergency stop / 触发紧急停止
+            print(f"{Fore.BLUE}[Step 3]{Style.RESET_ALL} Trigger emergency stop / 触发紧急停止")
             
             emergency_req = EmergencyStop.Request()
             emergency_req.clear_tasks = True  # 清空所有任务
@@ -1375,12 +1414,12 @@ class MissionIntegrationTesterV2(Node):
             if success and response.success:
                 self.record_test('Emergency Stop Triggered', True, '紧急停止已触发')
             else:
-                self.record_test('Emergency Stop Triggered', False, '触发紧急停止失败')
+                self.record_test('Emergency Stop Triggered', False, 'Trigger emergency stop / 触发紧急停止失败')
                 return
             
             # 步骤4：立即检查机器人是否停止
-            print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 检查机器人是否立即停止 (1s)...")
-            time.sleep(1.0)
+            print(f"{Fore.BLUE}[Step 4]{Style.RESET_ALL} 检查机器人是否停止 (3.5s)...")
+            time.sleep(3.5)  # 增加等待时间，确保惯性完全消除
             
             for _ in range(10):
                 rclpy.spin_once(self, timeout_sec=0.1)
@@ -1426,24 +1465,27 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # 运行所有测试
+  # Run all tests / 运行所有测试
   python3 test_mission_integration_v2.py
   
-  # 运行特定测试（按名称）
+  # Run specific test (by name) / 运行特定测试（按名称）
   python3 test_mission_integration_v2.py --test test_navigation_pause_resume
   
-  # 运行特定测试（按编号）
+  # Run specific test (by number) / 运行特定测试（按编号）
   python3 test_mission_integration_v2.py --test 1
   
-  # 列出所有测试
+  # Run multiple tests (comma-separated) / 运行多个测试（逗号分隔）
+  python3 test_mission_integration_v2.py --test 1,2,3,4,5,7,8
+  
+  # List all tests / 列出所有测试
   python3 test_mission_integration_v2.py --list
   
-  # 详细模式
+  # Verbose mode / 详细模式
   python3 test_mission_integration_v2.py --test 1 --verbose
         """
     )
     
-    parser.add_argument('--test', type=str, help='指定要运行的测试（名称或编号）')
+    parser.add_argument('--test', type=str, help='指定要运行的测试（名称或编号，可用逗号分隔多个测试）')
     parser.add_argument('--list', action='store_true', help='列出所有可用的测试')
     parser.add_argument('--verbose', action='store_true', help='详细模式（显示更多调试信息）')
     
@@ -1456,7 +1498,16 @@ Examples:
         if args.list:
             tester.list_tests()
         elif args.test:
-            tester.run_test(args.test)
+            # 支持逗号分隔的多个测试
+            test_ids = [t.strip() for t in args.test.split(',')]
+            for i, test_id in enumerate(test_ids):
+                tester.run_test(test_id)
+                # 多个测试之间增加间隔，让系统状态稳定
+                if i < len(test_ids) - 1:  # 不是最后一个测试
+                    print(f"\n{Fore.CYAN}--- Forcing cleanup before next test / 强制清理后开始下一个测试 ---{Style.RESET_ALL}")
+                    tester.force_cleanup_all_tasks()
+                    print(f"{Fore.CYAN}--- Waiting 2s before next test / 等待2秒后开始下一个测试 ---{Style.RESET_ALL}\n")
+                    time.sleep(2.0)
             tester.print_summary()
         else:
             tester.run_all_tests()

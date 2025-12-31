@@ -548,36 +548,58 @@ class MissionPlanner(Node):
     
     def _handle_emergency_stop(self, request, response):
         """
-        处理紧急停止请求
+        处理紧急停止请求（HARD_STOP 逻辑：清空所有队列）
         
         服务: /mission/emergency_stop
+        
+        行为（按照 HARD_STOP 设计）：
+        1. 立即停止机器人运动
+        2. 取消所有活跃任务（RUNNING/PAUSED）
+        3. 清空整个任务队列（包括 PENDING/WAITING_EXECUTION）
+        4. 释放 NavigationExecutor
+        5. 新任务可立即执行，不受旧规划干扰
         """
         try:
-            # 立即取消当前导航（如果有）
+            # 1. 立即停止机器人运动
             nav_state = self._navigation_executor.get_state()
             if nav_state == NavigationState.EXECUTING or nav_state == NavigationState.CANCELING:
+                self._navigation_executor.stop_robot()  # 发送 cmd_vel=0
                 self._navigation_executor.cancel_navigation()
-                self.get_logger().warn("Emergency stop: cancelled active navigation")
+                self.get_logger().warn("Emergency stop: stopped robot and cancelled navigation")
             
-            # 取消所有正在运行的任务
-            active_tasks = self._task_manager.get_tasks_by_state(TaskState.RUNNING)
+            # 2. 取消所有活跃任务（RUNNING/PAUSED）
+            all_tasks = self._task_manager.get_all_tasks()
             cancelled_count = 0
             
-            for task in active_tasks:
-                try:
-                    self._task_manager.cancel_task(task.task_id)
-                    cancelled_count += 1
-                except Exception as e:
-                    self.get_logger().error(f"Failed to cancel task {task.task_id}: {str(e)}")
+            for task in all_tasks:
+                if task.state in [TaskState.RUNNING, TaskState.PAUSED]:
+                    try:
+                        self._task_manager.cancel_task(task.task_id)
+                        cancelled_count += 1
+                        self.get_logger().warn(
+                            f"Emergency stop: cancelled task {task.task_id} (state: {task.state.value})"
+                        )
+                    except Exception as e:
+                        self.get_logger().error(f"Failed to cancel task {task.task_id}: {str(e)}")
             
-            # 如果请求清空任务队列
-            if request.clear_tasks:
-                self._task_manager.clear_all_tasks()
+            # 3. 清空整个任务队列（HARD_STOP 核心：包括 PENDING/WAITING）
+            cleared_count, cleared_ids = self._task_manager.clear_all_tasks(clear_history=False)
+            
+            # 4. 强制释放 NavigationExecutor（防止"僵尸"所有权）
+            self._navigation_handler.release_executor()
+            self.get_logger().warn("Emergency stop: force released NavigationExecutor")
+            
+            self.get_logger().warn(
+                f"Emergency stop (HARD_STOP): cancelled {cancelled_count} active tasks, "
+                f"cleared {cleared_count} total tasks from queue"
+            )
             
             response.success = True
-            response.message = f"Emergency stop executed. Cancelled {cancelled_count} tasks"
-            
-            self.get_logger().warn(f"Emergency stop: cancelled {cancelled_count} tasks")
+            response.message = (
+                f"Emergency stop executed (HARD_STOP). "
+                f"Cancelled {cancelled_count} active tasks, cleared {cleared_count} from queue. "
+                f"Ready for new task planning."
+            )
             
         except Exception as e:
             response.success = False
