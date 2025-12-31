@@ -230,9 +230,15 @@ class PatrolManager:
             self._node.get_logger().warn(f"Cannot resume from state: {self._patrol_state.value}")
             return False
         
+        # 获取当前导航状态
+        nav_state = self._nav_executor.get_state()
+        self._node.get_logger().info(
+            f"[DEBUG] resume_patrol: current nav_state={nav_state.name}, patrol_state={self._patrol_state.value}"
+        )
+        
         self._patrol_state = PatrolState.IDLE
         self._node.get_logger().info(
-            f"Patrol resumed at waypoint {self._current_waypoint_index}"
+            f"Patrol resumed at waypoint {self._current_waypoint_index}, patrol_state set to IDLE"
         )
         return True
     
@@ -268,7 +274,13 @@ class PatrolManager:
             return
         
         # 如果暂停或完成，不执行
-        if self._patrol_state in (PatrolState.PAUSED, PatrolState.COMPLETED, PatrolState.FAILED):
+        if self._patrol_state == PatrolState.PAUSED:
+            # 在暂停状态时持续发送停止命令，确保机器人完全停止
+            # （覆盖Nav2可能还在发送的速度命令）
+            self._nav_executor.stop_robot()
+            return
+        
+        if self._patrol_state in (PatrolState.COMPLETED, PatrolState.FAILED):
             return
         
         # 获取当前路线
@@ -301,6 +313,10 @@ class PatrolManager:
         if self._patrol_state == PatrolState.IDLE:
             # 空闲状态：发送下一个导航目标
             
+            self._node.get_logger().info(
+                f"[DEBUG] execute_patrol: IDLE state, nav_state={nav_state.name}, waypoint_index={self._current_waypoint_index}"
+            )
+            
             # 检查NavigationExecutor状态，如果不是IDLE则重置
             if nav_state != NavigationState.IDLE:
                 self._node.get_logger().warn(
@@ -310,11 +326,13 @@ class PatrolManager:
                     # 如果有导航正在执行，先取消
                     self._nav_executor.cancel_navigation()
                     # 等待取消完成（在下个周期重试）
+                    self._node.get_logger().info("[DEBUG] Waiting for navigation to cancel...")
                     return
                 else:
                     # FAILED/CANCELED/SUCCESS等终止状态，直接重置
+                    self._node.get_logger().info(f"[DEBUG] Resetting executor from {nav_state.name} to IDLE")
                     self._nav_executor.reset_state()
-                    self._node.get_logger().info("NavigationExecutor state reset")
+                    self._node.get_logger().info("NavigationExecutor state reset to IDLE")
             
             waypoint = route.waypoints[self._current_waypoint_index]
             
@@ -322,17 +340,21 @@ class PatrolManager:
             goal_pose = self._waypoint_to_pose(waypoint)
             
             # 发送导航目标
+            self._node.get_logger().info(f"[DEBUG] Sending navigation goal to waypoint {self._current_waypoint_index}...")
             success = self._nav_executor.navigate_to_pose(goal_pose)
             
             if success:
                 self._patrol_state = PatrolState.NAVIGATING
                 wp_name = waypoint.get('name', f"waypoint_{self._current_waypoint_index}")
                 self._node.get_logger().info(
+                    f"[DEBUG] Navigation goal sent successfully! State: IDLE -> NAVIGATING"
+                )
+                self._node.get_logger().info(
                     f"Navigating to waypoint {self._current_waypoint_index + 1}/{len(route.waypoints)}: "
                     f"{wp_name} ({waypoint['x']:.2f}, {waypoint['y']:.2f})"
                 )
             else:
-                self._node.get_logger().error("Failed to send navigation goal")
+                self._node.get_logger().error("[DEBUG] Failed to send navigation goal!")
                 self._patrol_state = PatrolState.FAILED
                 if self._on_failed_callback:
                     self._on_failed_callback("Failed to send navigation goal")

@@ -130,15 +130,13 @@ class TaskExecutionHandler(ABC):
                 )
                 return True
             else:
-                self._node.get_logger().debug(
-                    f"[TaskExecutionHandler] NavigationExecutor busy (state: {nav_state.name}), "
-                    f"task {task_id} waiting..."
+                self._node.get_logger().info(
+                    f"[DIAG] NavigationExecutor BUSY - state: {nav_state.name}, task {task_id} waiting"
                 )
         else:
             # 已经有其他任务持有执行器
-            self._node.get_logger().debug(
-                f"[TaskExecutionHandler] NavigationExecutor held by task {self._current_task_id}, "
-                f"task {task_id} waiting..."
+            self._node.get_logger().info(
+                f"[DIAG] NavigationExecutor HELD by task {self._current_task_id}, task {task_id} waiting"
             )
         
         return False
@@ -162,6 +160,21 @@ class TaskExecutionHandler(ABC):
             self._node.get_logger().info(
                 f"[TaskExecutionHandler] Task {self._current_task_id} released NavigationExecutor"
             )
+            
+            # 重置NavigationExecutor状态为IDLE（如果是终态或取消中）
+            nav_state = self._nav_executor.get_state()
+            self._node.get_logger().info(
+                f"[TaskExecutionHandler] NavigationExecutor state before release: {nav_state.name}"
+            )
+            
+            # 强制重置状态，避免异步回调导致状态遗留
+            # （Nav2 的 action 回调可能在 release 之后才到达，导致状态变为 FAILED）
+            if nav_state != NavigationState.IDLE:
+                self._nav_executor.reset_state()
+                self._node.get_logger().info(
+                    f"[TaskExecutionHandler] Reset NavigationExecutor state from {nav_state.name} to IDLE"
+                )
+            
             self._current_task_id = None
     
     def is_executor_owner(self, task_id: str) -> bool:

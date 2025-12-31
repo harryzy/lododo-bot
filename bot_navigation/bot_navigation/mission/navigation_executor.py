@@ -18,7 +18,7 @@ from rclpy.action import ActionClient
 from rclpy.duration import Duration
 
 from nav2_msgs.action import NavigateToPose, Spin
-from geometry_msgs.msg import PoseStamped, Quaternion
+from geometry_msgs.msg import PoseStamped, Quaternion, Twist
 from nav_msgs.msg import OccupancyGrid
 
 from tf2_ros import TransformException, Buffer, TransformListener
@@ -84,6 +84,9 @@ class NavigationExecutor:
         # TF 监听器
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, node)
+        
+        # cmd_vel 发布器（用于紧急停止）
+        self._cmd_vel_pub = node.create_publisher(Twist, 'cmd_vel', 10)
         
         # 状态管理
         self._nav_state = NavigationState.IDLE
@@ -321,12 +324,17 @@ class NavigationExecutor:
         elif result.status == 5:  # ABORTED
             self.logger.warning('Navigation aborted')
             self._nav_state = NavigationState.FAILED
+            # 导航失败时立即停止机器人，避免继续移动
+            self.stop_robot()
         elif result.status == 6:  # CANCELED
             self.logger.info('Navigation canceled')
             self._nav_state = NavigationState.CANCELED
+            # 取消时已经在cancel_navigation()中调用过stop_robot()，这里不需要重复
         else:
             self.logger.warning(f'Navigation ended with status: {result.status}')
             self._nav_state = NavigationState.FAILED
+            # 其他失败状态也需要停止
+            self.stop_robot()
         
         self._current_goal_handle = None
         self._current_goal = None
@@ -335,9 +343,26 @@ class NavigationExecutor:
         """导航反馈回调（子类可重写）"""
         pass
     
-    def cancel_navigation(self) -> bool:
+    def stop_robot(self):
+        """
+        立即停止机器人（发送零速度命令）
+        
+        注意：
+        - 这只是发送一个零速度命令，不会取消正在进行的导航目标
+        - 如果需要同时取消导航，请使用 cancel_navigation()
+        - 适用场景：紧急停止、暂停、导航失败后确保停止
+        """
+        stop_cmd = Twist()
+        self._cmd_vel_pub.publish(stop_cmd)
+        self.logger.info('Robot stop command sent (cmd_vel = 0)')
+    
+    def cancel_navigation(self, stop_immediately: bool = True) -> bool:
         """
         取消当前导航
+        
+        Args:
+            stop_immediately: 是否立即停止机器人（默认True）
+                            如果为False，机器人会由Nav2控制减速停止
         
         Returns:
             bool: 取消成功返回True
@@ -352,6 +377,10 @@ class NavigationExecutor:
         
         self.logger.info('Canceling navigation...')
         self._nav_state = NavigationState.CANCELING
+        
+        # 根据参数决定是否立即停止机器人
+        if stop_immediately:
+            self.stop_robot()
         
         cancel_future = self._current_goal_handle.cancel_goal_async()
         cancel_future.add_done_callback(self._cancel_response_callback)
@@ -391,10 +420,11 @@ class NavigationExecutor:
         return ""
     
     def reset_state(self):
-        """重置状态到IDLE（在处理完SUCCESS/FAILED后调用）"""
-        if self._nav_state in [NavigationState.SUCCESS, NavigationState.FAILED, NavigationState.CANCELED]:
+        """重置状态到IDLE（在处理完SUCCESS/FAILED/CANCELED或取消中调用）"""
+        if self._nav_state in [NavigationState.SUCCESS, NavigationState.FAILED, 
+                              NavigationState.CANCELED, NavigationState.CANCELING]:
             self._nav_state = NavigationState.IDLE
-            self.logger.debug('State reset to IDLE')
+            self.logger.debug(f'State reset from {self._nav_state.value} to IDLE')
         else:
             self.logger.warning(f'Cannot reset state from {self._nav_state.value}')
     

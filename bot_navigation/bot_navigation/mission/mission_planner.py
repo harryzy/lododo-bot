@@ -151,6 +151,15 @@ class MissionPlanner(Node):
             self, self._task_manager, self._navigation_executor
         )
         
+        # 创建任务类型到处理器的映射
+        self._handlers = {
+            TaskType.POINT_TO_POINT: self._navigation_handler,
+            TaskType.PATH_PATROL: self._patrol_handler,
+            TaskType.FRONTIER_EXPLORATION: self._exploration_handler,
+            TaskType.AREA_EXPLORATION: self._exploration_handler,
+            TaskType.SMART_EXPLORATION: self._exploration_handler,
+        }
+        
         self.get_logger().info('All task handlers initialized')
         
         # ========== 状态变量 ==========
@@ -298,6 +307,18 @@ class MissionPlanner(Node):
     def _handle_pause_task(self, request, response):
         """处理暂停任务请求"""
         try:
+            task = self._task_manager.get_task(request.task_id)
+            if task is None:
+                response.success = False
+                response.message = f"Task '{request.task_id}' not found"
+                return response
+            
+            # 调用handler的pause方法
+            handler = self._handlers.get(task.task_type)
+            if handler and hasattr(handler, 'pause'):
+                handler.pause(task)
+            
+            # 更新任务状态
             self._task_manager.pause_task(request.task_id)
             response.success = True
             response.message = f"Task '{request.task_id}' paused"
@@ -311,6 +332,18 @@ class MissionPlanner(Node):
     def _handle_resume_task(self, request, response):
         """处理恢复任务请求"""
         try:
+            task = self._task_manager.get_task(request.task_id)
+            if task is None:
+                response.success = False
+                response.message = f"Task '{request.task_id}' not found"
+                return response
+            
+            # 调用handler的resume方法
+            handler = self._handlers.get(task.task_type)
+            if handler and hasattr(handler, 'resume'):
+                handler.resume(task)
+            
+            # 更新任务状态
             self._task_manager.resume_task(request.task_id)
             response.success = True
             response.message = f"Task '{request.task_id}' resumed"
@@ -491,6 +524,11 @@ class MissionPlanner(Node):
             # 立即启动
             self._task_manager.start_task(task_id)
             
+            # 诊断：检查任务状态
+            task_after_start = self._task_manager.get_task(task_id)
+            if task_after_start:
+                self.get_logger().info(f"[DIAG] Task {task_id} state after start: {task_after_start.state}")
+            
             response.success = True
             response.message = "Navigation started"
             response.task_id = task_id
@@ -587,10 +625,41 @@ class MissionPlanner(Node):
         return response
     
     def _handle_start_patrol(self, request, response):
-        """处理开始巡航请求（暂时保留，Phase 3 重构）"""
-        # TODO: Phase 3 - 使用 PatrolHandler
-        response.success = False
-        response.message = "Patrol not yet implemented in new architecture"
+        """处理开始巡航请求"""
+        try:
+            # 创建巡航任务
+            task_id = f"patrol_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:21]}"
+            parameters = {
+                'waypoint_file': request.waypoint_file,
+                'patrol_mode': request.patrol_mode if request.patrol_mode else 'loop',
+                'speed_factor': request.speed_factor if request.speed_factor > 0 else 1.0
+            }
+            
+            task = self._task_manager.create_task(
+                task_id=task_id,
+                task_type=TaskType.PATH_PATROL,
+                priority=7,
+                parameters=parameters
+            )
+            
+            # 立即启动
+            self._task_manager.start_task(task_id)
+            
+            response.success = True
+            response.message = "Patrol started"
+            response.task_id = task_id
+            
+            self.get_logger().info(f"Started patrol task: {task_id}")
+            
+        except Exception as e:
+            import traceback
+            response.success = False
+            error_str = str(e) if str(e) else f"{type(e).__name__}"
+            response.message = f"Failed to start patrol: {error_str}"
+            response.task_id = ""
+            self.get_logger().error(f"Error starting patrol: {error_str}")
+            self.get_logger().error(f"Traceback:\n{traceback.format_exc()}")
+        
         return response
     
     # ========== 任务执行调度 ==========
@@ -627,6 +696,16 @@ class MissionPlanner(Node):
         paused_tasks = self._task_manager.get_tasks_by_state(TaskState.PAUSED)
         canceled_tasks = self._task_manager.get_tasks_by_state(TaskState.CANCELED)
         
+        # 诊断：记录任务队列状态
+        if waiting_tasks or running_tasks or paused_tasks or canceled_tasks:
+            self.get_logger().info(
+                f"[DIAG] Task queue - WAITING: {len(waiting_tasks)}, "
+                f"RUNNING: {len(running_tasks)}, PAUSED: {len(paused_tasks)}, "
+                f"CANCELED: {len(canceled_tasks)}"
+            )
+            if waiting_tasks:
+                self.get_logger().info(f"[DIAG] WAITING tasks: {[t.task_id for t in waiting_tasks]}")
+        
         # 合并所有需要处理的任务，优先执行 RUNNING，然后 WAITING_EXECUTION
         tasks_to_process = waiting_tasks + running_tasks + paused_tasks + canceled_tasks
         
@@ -634,6 +713,7 @@ class MissionPlanner(Node):
             try:
                 # 任务类型路由 - 使用新的 Handler 架构
                 handler = self._get_handler_for_task(task)
+                self.get_logger().info(f"[DIAG] Processing task {task.task_id}, type={task.task_type.value}, state={task.state.value}, handler={'Found' if handler else 'None'}")
                 if handler:
                     handler.execute(task)
                 else:

@@ -40,9 +40,25 @@ class NavigationHandler(TaskExecutionHandler):
         # 1. WAITING_EXECUTION 状态 - 尝试获取 NavigationExecutor
         if task.state == TaskState.WAITING_EXECUTION:
             nav_state = self._nav_executor.get_state()
+            current_owner = self._current_task_id
+            is_owner = self.is_executor_owner(task.task_id)
             
-            # 检查执行器是否空闲
-            if nav_state == NavigationState.IDLE and not self.is_executor_owner(task.task_id):
+            # 诊断：详细状态
+            self._node.get_logger().info(
+                f"[DIAG] Task {task.task_id} trying to acquire executor - "
+                f"nav_state={nav_state.name}, current_owner={current_owner}, is_owner={is_owner}"
+            )
+            
+            # 检查执行器是否可用（IDLE 或 FAILED 都可以）
+            # FAILED 状态可能是上次任务取消后 Nav2 的异步回调导致
+            if nav_state in [NavigationState.IDLE, NavigationState.FAILED] and not self.is_executor_owner(task.task_id):
+                # 如果是 FAILED 状态，先重置为 IDLE
+                if nav_state == NavigationState.FAILED:
+                    self._nav_executor.reset_state()
+                    self._node.get_logger().info(
+                        f"[NavigationHandler] Reset executor from FAILED to IDLE before task {task.task_id}"
+                    )
+                
                 if self.acquire_executor(task.task_id):
                     # 获取成功，转为 RUNNING
                     self._task_manager.update_task_state(task.task_id, TaskState.RUNNING)

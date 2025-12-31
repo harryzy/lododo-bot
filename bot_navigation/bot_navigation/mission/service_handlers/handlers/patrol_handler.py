@@ -39,12 +39,28 @@ class PatrolHandler(TaskExecutionHandler):
         状态流转：
         WAITING_EXECUTION → (acquire executor) → RUNNING → (patrol) → COMPLETED/FAILED
         """
+        self._node.get_logger().info(f"[PatrolHandler] execute() called for task {task.task_id}, state={task.state.value}")
+        
         # 1. WAITING_EXECUTION 状态 - 尝试获取 NavigationExecutor
         if task.state == TaskState.WAITING_EXECUTION:
             nav_state = self._nav_executor.get_state()
+            is_owner = self.is_executor_owner(task.task_id)
+            
+            self._node.get_logger().info(
+                f"[PatrolHandler] Task {task.task_id} in WAITING_EXECUTION: "
+                f"nav_state={nav_state.name}, is_owner={is_owner}"
+            )
+            
+            # 如果执行器处于FAILED状态，先重置它
+            if nav_state == NavigationState.FAILED and not is_owner:
+                self._node.get_logger().info(
+                    f"[PatrolHandler] Resetting NavigationExecutor from FAILED state for task {task.task_id}"
+                )
+                self._nav_executor.reset_state()
+                nav_state = NavigationState.IDLE
             
             # 检查执行器是否空闲
-            if nav_state == NavigationState.IDLE and not self.is_executor_owner(task.task_id):
+            if nav_state == NavigationState.IDLE and not is_owner:
                 if self.acquire_executor(task.task_id):
                     # 获取成功，转为 RUNNING
                     self._task_manager.update_task_state(task.task_id, TaskState.RUNNING)
@@ -68,9 +84,9 @@ class PatrolHandler(TaskExecutionHandler):
         if task.state == TaskState.PAUSED:
             if self.is_executor_owner(task.task_id):
                 # 暂停巡航
-                patrol_state = self._patrol_manager.get_state()
+                patrol_state = self._patrol_manager._patrol_state
                 if patrol_state != PatrolState.PAUSED:
-                    self._patrol_manager.pause()
+                    self._patrol_manager.pause_patrol()
                     self._node.get_logger().info(
                         f"[PatrolHandler] Patrol paused for task {task.task_id}"
                     )
@@ -80,11 +96,13 @@ class PatrolHandler(TaskExecutionHandler):
         if task.state == TaskState.CANCELED:
             if self.is_executor_owner(task.task_id):
                 # 停止巡航
-                self._patrol_manager.stop()
+                self._patrol_manager.stop_patrol()
                 self.release_executor(task.task_id)
                 self._node.get_logger().info(
                     f"[PatrolHandler] Patrol canceled for task {task.task_id}"
                 )
+            # 删除任务
+            self._task_manager.remove_task(task.task_id)
             return
         
         # 4. RUNNING 状态 - 执行巡航
@@ -95,15 +113,81 @@ class PatrolHandler(TaskExecutionHandler):
         """执行巡航逻辑"""
         # 使用 PatrolManager 执行巡航
         # 委托给原有的 execute_patrol 方法
-        # 注意：PatrolManager.execute_patrol 已经集成了完整的巡航逻辑
-        if hasattr(self, '_last_task_id') and self._last_task_id != task.task_id:
-            # 任务切换，重新初始化巡航
-            self._patrol_manager.stop()
+        # 注意：PatrolManager.execute_patrol 已绋集成了完整的巡航逻辑
+        if not hasattr(self, '_last_task_id') or self._last_task_id != task.task_id:
+            # 任务切换或首次启动，加载路点并初始化巡航
+            if hasattr(self, '_last_task_id'):
+                self._patrol_manager.stop_patrol()
+            
+            # 从任务参数中获取路点文件
+            waypoint_file = task.parameters.get('waypoint_file', '')
+            patrol_mode = task.parameters.get('patrol_mode', 'loop')
+            
+            if not waypoint_file:
+                error_msg = "No waypoint file specified"
+                self._task_manager.fail_task(task.task_id, error_msg)
+                self.release_executor(task.task_id)
+                self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
+                return
+            
+            # 加载路点文件
+            try:
+                import os
+                expanded_path = os.path.expanduser(waypoint_file)
+                
+                # 使用 PatrolManager 的路点加载方法
+                route_id = self._patrol_manager.load_route_from_waypoints_file(
+                    expanded_path,
+                    route_name=f"route_{task.task_id}"
+                )
+                
+                if not route_id:
+                    error_msg = f"Failed to load waypoints from {waypoint_file}"
+                    self._task_manager.fail_task(task.task_id, error_msg)
+                    self.release_executor(task.task_id)
+                    self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
+                    return
+                
+                # 获取加载的路线
+                route = self._patrol_manager._routes.get(route_id)
+                if not route:
+                    error_msg = "Route not found after loading"
+                    self._task_manager.fail_task(task.task_id, error_msg)
+                    self.release_executor(task.task_id)
+                    self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
+                    return
+                
+                # 设置巡航模式
+                route.loop = (patrol_mode == 'loop')
+                
+                # 启动巡航
+                if not self._patrol_manager.start_patrol(route_id):
+                    error_msg = "Failed to start patrol"
+                    self._task_manager.fail_task(task.task_id, error_msg)
+                    self.release_executor(task.task_id)
+                    self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
+                    return
+                
+                self._node.get_logger().info(
+                    f"[PatrolHandler] Started patrol with {len(route.waypoints)} waypoints, mode={patrol_mode}"
+                )
+                
+            except Exception as e:
+                error_msg = f"Error loading waypoints: {str(e)}"
+                self._task_manager.fail_task(task.task_id, error_msg)
+                self.release_executor(task.task_id)
+                self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
+                import traceback
+                self._node.get_logger().error(traceback.format_exc())
+                return
         
         self._last_task_id = task.task_id
         
         # 执行巡航（使用现有的 PatrolManager 方法）
-        patrol_state = self._patrol_manager.get_state()
+        patrol_state = self._patrol_manager._patrol_state
+        self._node.get_logger().info(
+            f"[DEBUG] PatrolHandler._execute_patrol: patrol_state={patrol_state.value}, task_id={task.task_id}"
+        )
         
         # 检查巡航状态
         if patrol_state == PatrolState.COMPLETED:
@@ -113,6 +197,8 @@ class PatrolHandler(TaskExecutionHandler):
             self._node.get_logger().info(
                 f"[PatrolHandler] Task {task.task_id} completed"
             )
+            # 删除任务
+            self._task_manager.remove_task(task.task_id)
             return
         
         elif patrol_state == PatrolState.FAILED:
@@ -123,16 +209,17 @@ class PatrolHandler(TaskExecutionHandler):
             self._node.get_logger().warn(
                 f"[PatrolHandler] Task {task.task_id} failed"
             )
+            # 删除任务
+            self._task_manager.remove_task(task.task_id)
             return
         
-        # 继续执行巡航
-        # 注意：实际的巡航执行逻辑在 PatrolManager 中
-        # 这里只需要调用 PatrolManager 的更新方法
+        # 继续执行巡航 - 调用 PatrolManager 的执行循环
+        self._patrol_manager.execute_patrol()
     
     def pause(self, task: Task) -> bool:
         """暂停巡航任务"""
         if self.is_executor_owner(task.task_id):
-            self._patrol_manager.pause()
+            self._patrol_manager.pause_patrol()
             self._node.get_logger().info(
                 f"[PatrolHandler] Paused task {task.task_id}"
             )
@@ -142,7 +229,7 @@ class PatrolHandler(TaskExecutionHandler):
     def resume(self, task: Task) -> bool:
         """恢复巡航任务"""
         if self.is_executor_owner(task.task_id):
-            self._patrol_manager.resume()
+            self._patrol_manager.resume_patrol()
             self._node.get_logger().info(
                 f"[PatrolHandler] Resuming task {task.task_id}"
             )
@@ -152,7 +239,7 @@ class PatrolHandler(TaskExecutionHandler):
     def cancel(self, task: Task) -> bool:
         """取消巡航任务"""
         if self.is_executor_owner(task.task_id):
-            self._patrol_manager.stop()
+            self._patrol_manager.stop_patrol()
             self.release_executor(task.task_id)
             self._node.get_logger().info(
                 f"[PatrolHandler] Canceled task {task.task_id}"
