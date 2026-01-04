@@ -188,23 +188,26 @@ class ExplorationHandler(TaskExecutionHandler):
         """处理边界检测"""
         # 使用 FrontierDetector 检测边界
         try:
-            # 转换地图数据为 numpy 数组
-            import numpy as np
-            map_array = np.array(self._current_map.data).reshape(
-                (self._current_map.info.height, self._current_map.info.width)
-            )
+            # 更新地图数据 / Update map data
+            self._frontier_detector.update_map(self._current_map)
             
-            # 检测边界
-            frontiers = self._frontier_detector.detect_frontiers(
-                map_array,
-                self._map_resolution,
-                self._map_origin,
-                self._current_map.info.width,
-                self._current_map.info.height
-            )
+            # 检测边界 / Detect frontiers (returns raw grid points)
+            raw_frontiers = self._frontier_detector.find_frontiers()
             
-            if not frontiers or len(frontiers) == 0:
+            if not raw_frontiers or len(raw_frontiers) == 0:
                 # 没有边界 → 检查是否完成
+                self._check_exploration_completion(task)
+                return
+            
+            # 转换为包含完整信息的边界对象 / Convert to frontier info objects
+            frontiers = []
+            for raw_frontier in raw_frontiers:
+                frontier_info = self._frontier_detector.calculate_frontier_info(raw_frontier)
+                if frontier_info:  # 确保有效 / Ensure valid
+                    frontiers.append(frontier_info)
+            
+            if not frontiers:
+                # 无有效边界
                 self._check_exploration_completion(task)
                 return
             
@@ -238,12 +241,14 @@ class ExplorationHandler(TaskExecutionHandler):
         """过滤已访问的边界"""
         filtered = []
         for frontier in frontiers:
-            # 检查是否已访问
+            # 检查是否已访问 (使用 center_world 键)
             is_visited = False
+            frontier_center = frontier['center_world']  # (x, y) in world coordinates
+            
             for visited_pos in self._explored_positions:
                 dist = math.sqrt(
-                    (frontier.centroid[0] - visited_pos[0])**2 +
-                    (frontier.centroid[1] - visited_pos[1])**2
+                    (frontier_center[0] - visited_pos[0])**2 +
+                    (frontier_center[1] - visited_pos[1])**2
                 )
                 if dist < self._visit_radius:
                     is_visited = True
@@ -265,12 +270,14 @@ class ExplorationHandler(TaskExecutionHandler):
     
     def _navigate_to_frontier(self, frontier, task: Task):
         """导航到边界"""
-        # 构造目标位姿
+        # 构造目标位姿 (使用 center_world 键)
+        frontier_center = frontier['center_world']  # (x, y) tuple
+        
         goal_pose = PoseStamped()
         goal_pose.header.frame_id = 'map'
         goal_pose.header.stamp = self._node.get_clock().now().to_msg()
-        goal_pose.pose.position.x = float(frontier.centroid[0])
-        goal_pose.pose.position.y = float(frontier.centroid[1])
+        goal_pose.pose.position.x = float(frontier_center[0])
+        goal_pose.pose.position.y = float(frontier_center[1])
         goal_pose.pose.position.z = 0.0
         
         # 方向：朝向边界中心（简化版：使用固定方向）

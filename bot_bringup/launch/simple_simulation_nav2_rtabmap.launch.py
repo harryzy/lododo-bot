@@ -334,7 +334,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         ],
         arguments=[
             '--delete_db_on_start',  # Start fresh each time / 每次重新开始
-            '--ros-args', '--log-level', log_level_str  # Use launch parameter log level / 使用启动参数日志级别
+            '--ros-args', '--log-level', 'WARN'  # Use launch parameter log level / 使用启动参数日志级别
         ]
     )
     
