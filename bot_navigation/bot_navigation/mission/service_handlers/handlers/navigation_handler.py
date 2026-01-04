@@ -44,7 +44,7 @@ class NavigationHandler(TaskExecutionHandler):
             is_owner = self.is_executor_owner(task.task_id)
             
             # 诊断：详细状态
-            self._node.get_logger().info(
+            self._node.get_logger().debug(
                 f"[DIAG] Task {task.task_id} trying to acquire executor - "
                 f"nav_state={nav_state.name}, current_owner={current_owner}, is_owner={is_owner}"
             )

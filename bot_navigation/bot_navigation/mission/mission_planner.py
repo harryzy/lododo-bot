@@ -527,7 +527,7 @@ class MissionPlanner(Node):
             # 诊断：检查任务状态
             task_after_start = self._task_manager.get_task(task_id)
             if task_after_start:
-                self.get_logger().info(f"[DIAG] Task {task_id} state after start: {task_after_start.state}")
+                self.get_logger().debug(f"[DIAG] Task {task_id} state after start: {task_after_start.state}")
             
             response.success = True
             response.message = "Navigation started"
@@ -720,13 +720,13 @@ class MissionPlanner(Node):
         
         # 诊断：记录任务队列状态
         if waiting_tasks or running_tasks or paused_tasks or canceled_tasks:
-            self.get_logger().info(
+            self.get_logger().debug(
                 f"[DIAG] Task queue - WAITING: {len(waiting_tasks)}, "
                 f"RUNNING: {len(running_tasks)}, PAUSED: {len(paused_tasks)}, "
                 f"CANCELED: {len(canceled_tasks)}"
             )
             if waiting_tasks:
-                self.get_logger().info(f"[DIAG] WAITING tasks: {[t.task_id for t in waiting_tasks]}")
+                self.get_logger().debug(f"[DIAG] WAITING tasks: {[t.task_id for t in waiting_tasks]}")
         
         # 合并所有需要处理的任务，优先执行 RUNNING，然后 WAITING_EXECUTION
         tasks_to_process = waiting_tasks + running_tasks + paused_tasks + canceled_tasks
@@ -735,7 +735,7 @@ class MissionPlanner(Node):
             try:
                 # 任务类型路由 - 使用新的 Handler 架构
                 handler = self._get_handler_for_task(task)
-                self.get_logger().info(f"[DIAG] Processing task {task.task_id}, type={task.task_type.value}, state={task.state.value}, handler={'Found' if handler else 'None'}")
+                self.get_logger().debug(f"[DIAG] Processing task {task.task_id}, type={task.task_type.value}, state={task.state.value}, handler={'Found' if handler else 'None'}")
                 if handler:
                     handler.execute(task)
                 else:

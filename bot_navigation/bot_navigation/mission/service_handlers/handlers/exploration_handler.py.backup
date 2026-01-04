@@ -294,9 +294,8 @@ class ExplorationHandler(TaskExecutionHandler):
         if success:
             self._current_frontier = frontier
             self._exploration_state = ExplorationHandlerState.NAVIGATING_TO_FRONTIER
-            # 更新任务进度（基于地图覆盖率）
-            coverage = self._calculate_map_completion()
-            self._task_manager.update_progress(task.task_id, coverage)
+            # 更新任务进度（示例）
+            self._task_manager.update_progress(task.task_id, 0.5)
         else:
             # 导航启动失败，重新检测
             self._node.get_logger().warn(
@@ -311,18 +310,14 @@ class ExplorationHandler(TaskExecutionHandler):
         if nav_state == NavigationState.SUCCESS:
             # 导航成功 → 记录已探索位置
             if self._current_frontier:
-                frontier_center = self._current_frontier['center_world']  # (x, y) tuple
                 self._explored_positions.append(
-                    (frontier_center[0], frontier_center[1])
+                    (self._current_frontier.centroid[0], 
+                     self._current_frontier.centroid[1])
                 )
             
             self._node.get_logger().info(
                 "[ExplorationHandler] Reached frontier, continuing exploration"
             )
-            
-            # 更新任务进度
-            coverage = self._calculate_map_completion()
-            self._task_manager.update_progress(task.task_id, coverage)
             
             # 继续探索
             self._current_frontier = None
@@ -362,8 +357,6 @@ class ExplorationHandler(TaskExecutionHandler):
                 f"[ExplorationHandler] Map coverage: {completion*100:.1f}%, "
                 f"threshold: {self._map_completion_threshold*100:.1f}%, continuing..."
             )
-            # 更新任务进度
-            self._task_manager.update_progress(task.task_id, completion)
             time.sleep(2.0)  # 等待地图更新
             self._exploration_state = ExplorationHandlerState.DETECTING_FRONTIERS
     

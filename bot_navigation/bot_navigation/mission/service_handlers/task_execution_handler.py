@@ -130,12 +130,12 @@ class TaskExecutionHandler(ABC):
                 )
                 return True
             else:
-                self._node.get_logger().info(
+                self._node.get_logger().debug(
                     f"[DIAG] NavigationExecutor BUSY - state: {nav_state.name}, task {task_id} waiting"
                 )
         else:
             # 已经有其他任务持有执行器
-            self._node.get_logger().info(
+            self._node.get_logger().debug(
                 f"[DIAG] NavigationExecutor HELD by task {self._current_task_id}, task {task_id} waiting"
             )
         
