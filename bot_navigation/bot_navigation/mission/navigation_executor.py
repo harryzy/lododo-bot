@@ -162,6 +162,28 @@ class NavigationExecutor:
             self.logger.warning(f'Failed to get robot pose: {e}')
             return None
     
+    def get_robot_yaw(self, target_frame: str = 'map') -> Optional[float]:
+        """
+        获取机器人当前朝向角
+        
+        Args:
+            target_frame: 目标坐标系
+            
+        Returns:
+            float: 机器人yaw角度（弧度），失败返回None
+        """
+        import math
+        pose = self.get_robot_pose(target_frame)
+        if pose is None:
+            return None
+        
+        # 从四元数提取yaw角
+        q = pose.pose.orientation
+        siny_cosp = 2 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+        return yaw
+    
     def transform_pose(self, pose: PoseStamped, target_frame: str) -> Optional[PoseStamped]:
         """
         转换位姿到目标坐标系

@@ -252,7 +252,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         name='omni_controller_node',
         output='screen',
         arguments=[
-            '--ros-args', '--log-level', log_level_str
+            '--ros-args', '--log-level', 'WARN'
         ],
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),

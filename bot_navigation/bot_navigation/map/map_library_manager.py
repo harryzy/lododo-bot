@@ -260,7 +260,11 @@ class MapLibraryManager:
             # 生成可视化PNG图片
             self._generate_visualization(pgm_file, map_file)
             
-            # 读取地图YAML文件获取元数据
+            # 🎯 关键：保存 RTABMap 数据库
+            # RTABMap 默认使用 ~/.ros/rtabmap.db 作为数据库文件
+            self._save_rtabmap_database(map_dir, map_name, version)
+            
+            # 读取地图 YAML 文件获取元数据
             with open(yaml_file, 'r') as f:
                 map_yaml = yaml.safe_load(f)
             
@@ -498,6 +502,55 @@ class MapLibraryManager:
                     )
         
         return deleted_count
+    
+    def _save_rtabmap_database(self, map_dir: Path, map_name: str, version: int):
+        """
+        保存 RTABMap 数据库 / Save RTABMap database
+        
+        Args:
+            map_dir: 地图目录
+            map_name: 地图名称
+            version: 版本号
+        """
+        try:
+            # RTABMap 数据库的常见位置
+            possible_db_paths = [
+                Path.home() / '.ros' / 'rtabmap.db',  # 默认位置
+                Path('/tmp') / 'rtabmap.db',  # 临时文件位置
+            ]
+            
+            # 尝试查找 RTABMap 数据库文件
+            rtabmap_db_src = None
+            for db_path in possible_db_paths:
+                if db_path.exists():
+                    rtabmap_db_src = db_path
+                    self.node.get_logger().info(f"✅ 找到 RTABMap 数据库: {db_path}")
+                    break
+            
+            if rtabmap_db_src is None:
+                self.node.get_logger().warn(
+                    "⚠️  未找到 RTABMap 数据库文件，跳过保存"
+                )
+                return
+            
+            # 目标文件名：<map_name>_v<version>.db
+            rtabmap_db_dest = map_dir / f"{map_name}_v{version}.db"
+            
+            # 复制数据库文件
+            import shutil
+            shutil.copy2(rtabmap_db_src, rtabmap_db_dest)
+            
+            # 检查文件大小
+            db_size_mb = rtabmap_db_dest.stat().st_size / (1024 * 1024)
+            
+            self.node.get_logger().info(
+                f"💾 RTABMap 数据库已保存: {rtabmap_db_dest.name} ({db_size_mb:.2f} MB)"
+            )
+            
+        except Exception as e:
+            self.node.get_logger().error(
+                f"❌ 保存 RTABMap 数据库失败: {str(e)}"
+            )
     
     def _generate_visualization(self, pgm_file: Path, output_base: Path):
         """

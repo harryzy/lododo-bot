@@ -153,8 +153,8 @@ controller_server:
     general_goal_checker:
       stateful: False               # 探索模式：关闭stateful，到达即成功，无需停止
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.30       # 位置容差30cm（放宽一倍，容忍旋转时的平移）
-      yaw_goal_tolerance: 0.52      # 角度容差30度（0.52弧度）
+      xy_goal_tolerance: 0.50       # 位置容差50cm（进一步放宽，减少最后调整）
+      yaw_goal_tolerance: 0.79      # 角度容差45度（0.79弧度，约束更宽松）
     
     # 控制器插件 / Controller plugins
     controller_plugins: ["FollowPath"]
@@ -198,10 +198,10 @@ controller_server:
       transform_tolerance: 0.5      # 从0.2增加到0.5，容忍更大的TF延迟
       
       # 目标容差 / Goal tolerance (DWB内部使用)
-      xy_goal_tolerance: 0.30       # 位置容差30cm（放宽一倍，容忍旋转时的平移）
-      yaw_goal_tolerance: 0.52      # 角度容差30度（0.52弧度）
-      trans_stopped_velocity: 0.25
-      slowing_factor: 5.0           # 接近目标时减速因子
+      xy_goal_tolerance: 0.50       # 位置容差50cm（进一步放宽，减少最后调整）
+      yaw_goal_tolerance: 0.79      # 角度容差45度（0.79弧度，约束更宽松）
+      trans_stopped_velocity: 0.15  # 降低到0.15，更容易判断为停止
+      slowing_factor: 3.0           # 减少到3.0，降低接近时的减速程度
       
       # 评分 / Scoring
       short_circuit_trajectory_evaluation: True

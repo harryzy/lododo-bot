@@ -104,8 +104,9 @@ class SafetyManager:
         if goal_value is None:
             return False, "Cannot access goal position in map"
         
-        # 目标点必须是自由空间(0) / Goal must be free space (0)
-        if goal_value != 0:
+        # 🎯 目标点必须是自由空间 (0-50)，拒绝 unknown (-1) 和 occupied (>50)
+        # Goal must be free space (0-50), reject unknown (-1) and occupied (>50)
+        if goal_value < 0 or goal_value > 50:
             return False, f"Goal position is not free space (value: {goal_value})"
         
         # 检查目标周围安全距离内是否有障碍物 / Check for obstacles within safe distance around goal
@@ -556,33 +557,61 @@ class SafetyManager:
         
         return best_point
     
-    def check_backward_safety(self, costmap, robot_pos: Tuple[float, float]) -> bool:
+    def check_backward_safety(self, costmap, robot_pos: Tuple[float, float], robot_yaw: float = None) -> bool:
         """
-        检查后方是否安全（简化版本）/ Check if backward is safe (simplified version)
+        检查后方是否安全（完整实现）/ Check if backward is safe (full implementation)
         
         Args:
             costmap: 代价地图 / Costmap
             robot_pos: 机器人位置 / Robot position
+            robot_yaw: 机器人朝向（弧度）/ Robot yaw (radians), optional
             
         Returns:
             是否安全后退 / Whether safe to move backward
         """
-        if costmap is None:
-            return True  # 无地图数据，假设安全 / No costmap data, assume safe
+        # 🎯 P3实现：完整的后方安全检查
+        if self.local_costmap is None or self.current_map_msg is None:
+            # 无地图数据，保守起见返回False / No map data, return False to be safe
+            return False
         
-        # 简单检查：机器人后方的几个点 / Simple check: a few points behind robot
-        # 注意：这是简化版本，实际应该考虑机器人朝向
-        check_distances = [0.2, 0.4, 0.6]
-        for dist in check_distances:
-            # 假设后退就是x负方向（简化，实际应该考虑机器人朝向）
-            # Simplified: assume backward is negative x direction
-            check_x = robot_pos[0] - dist
-            check_y = robot_pos[1]
+        try:
+            # 检查机器人后方0.4m范围内的点 / Check points within 0.4m behind robot
+            check_distances = [0.1, 0.2, 0.3, 0.4]  # 检查4个距离点 / Check 4 distance points
             
-            # 简单检查这个位置在地图中是否安全
-            # Simple check if this position is safe in map
-            # 这里我们跳过详细实现，直接返回True
-            # Skip detailed implementation here, just return True
-            pass
-        
-        return True  # 简化版本，默认安全 / Simplified version, default to safe
+            for dist in check_distances:
+                # 如果有yaw信息，使用实际后方方向；否则假设后退是x负方向
+                # If yaw available, use actual backward direction; otherwise assume negative x
+                if robot_yaw is not None:
+                    # 计算后方位置：yaw + 180° / Calculate backward position: yaw + 180°
+                    backward_yaw = robot_yaw + math.pi
+                    check_x = robot_pos[0] + dist * math.cos(backward_yaw)
+                    check_y = robot_pos[1] + dist * math.sin(backward_yaw)
+                else:
+                    # 简化：假设后退是x负方向 / Simplified: assume backward is negative x
+                    check_x = robot_pos[0] - dist
+                    check_y = robot_pos[1]
+                
+                # 转换到地图坐标 / Convert to map coordinates
+                coords = coordinate_converter.world_to_map(check_x, check_y, self.current_map_msg)
+                if coords is None:
+                    # 超出地图范围，不安全 / Out of map bounds, unsafe
+                    return False
+                
+                mx, my = coords
+                
+                # 检查是否在local_costmap范围内 / Check if within local_costmap bounds
+                if not MapUtils.is_valid_map_position(mx, my, self.local_costmap):
+                    return False
+                
+                # 检查costmap值：>80认为有障碍物 / Check costmap value: >80 considered obstacle
+                # 使用比正常更宽松的阈值（80 vs 90），因为后退时需要更谨慎
+                # Use more conservative threshold (80 vs 90) since backward movement is riskier
+                if self.local_costmap[my, mx] > 80:
+                    return False  # 后方有障碍物 / Obstacle behind
+            
+            # 所有检查点都安全 / All check points are safe
+            return True
+            
+        except Exception as e:
+            # 发生错误，保守起见返回False / Error occurred, return False to be safe
+            return False

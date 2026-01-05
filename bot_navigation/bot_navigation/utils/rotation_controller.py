@@ -60,6 +60,7 @@ class RotationController:
         # 脱困模式 / Escape mode
         self.escape_attempt = 0
         self.max_escape_attempts = 7
+        self.is_escape_mode = False  # 标记是否处于脱困模式
         
         # 初始扫描 / Initial scan
         self.initial_scan_done = False
@@ -114,8 +115,14 @@ class RotationController:
             center_x = width // 2
             center_y = height // 2
             
+            # 🔧 关键优化：escape模式下极度放宽障碍物检测
+            if self.is_escape_mode:
+                inner_radius = 4   # 0.2米内必须无障碍 / Must be clear within 0.2m
+                outer_radius = 4   # 只检查内圈
+                inner_threshold = 99  # 只检测真障碍物(>=100) / Only real obstacles
+                outer_threshold = 99
             # 如果刚到达预移动点，使用更宽松的检测参数 / Use more tolerant parameters after reaching pre-movement point
-            if self.after_pre_movement:
+            elif self.after_pre_movement:
                 inner_radius = 6   # 0.3米内必须完全无障碍 / Must be completely clear within 0.3m
                 outer_radius = 10  # 0.5米内不能有真障碍物 / No real obstacles within 0.5m
                 inner_threshold = 95  # 内圈：只检测真障碍物 / Inner: only real obstacles
@@ -156,6 +163,47 @@ class RotationController:
         except Exception as e:
             self.node.get_logger().error(f'Failed to check rotation safety: {e}')
             return True  # 异常时默认安全 / Default to safe on exception
+    
+    def get_nearest_obstacle_distance(self) -> float:
+        """
+        获取最近障碍物距离 / Get nearest obstacle distance
+        
+        Returns:
+            最近障碍物距离(米) / Nearest obstacle distance in meters
+            如果没有检测到障碍物返回无穷大 / Returns infinity if no obstacles detected
+        """
+        if self.local_costmap is None:
+            return float('inf')
+        
+        try:
+            height, width = self.local_costmap.shape
+            center_x = width // 2
+            center_y = height // 2
+            
+            min_distance = float('inf')
+            obstacle_threshold = 95  # 真障碍物阈值
+            max_check_radius = 10  # 最多检查0.5米范围
+            
+            for dx in range(-max_check_radius, max_check_radius + 1):
+                for dy in range(-max_check_radius, max_check_radius + 1):
+                    dist_sq = dx*dx + dy*dy
+                    if dist_sq > max_check_radius*max_check_radius or dist_sq == 0:
+                        continue
+                    
+                    cx = center_x + dx
+                    cy = center_y + dy
+                    
+                    if 0 <= cx < width and 0 <= cy < height:
+                        cell_value = self.local_costmap[cy, cx]
+                        if cell_value > obstacle_threshold:
+                            distance_m = math.sqrt(dist_sq) * 0.05
+                            min_distance = min(min_distance, distance_m)
+            
+            return min_distance
+            
+        except Exception as e:
+            self.node.get_logger().error(f'Failed to get nearest obstacle distance: {e}')
+            return float('inf')
     
     def start_rotation(self, angle_degrees: float, current_yaw_func, 
                       pending_goal: Optional[dict] = None) -> bool:
@@ -277,7 +325,6 @@ class RotationController:
             self.rotation_completed_successfully = True  # 标记为成功完成 / Mark as successfully completed
             self.after_pre_movement = False  # 旋转完成后重置标志 / Reset flag after rotation completes
             self.consecutive_rotation_failures = 0  # 重置失败计数 / Reset failure counter
-            self.consecutive_rotation_failures = 0  # 重置失败计数 / Reset failure counter
             
             self.node.get_logger().info(
                 f'Rotation completed (elapsed: {elapsed:.1f}s, '
@@ -287,7 +334,8 @@ class RotationController:
             # 旋转后清空访问记录 / Clear visit records after rotation
             self.evaluator.visited_frontiers.clear() if hasattr(self, 'evaluator') else None
             
-            # 检查初始扫描是否全部完成 / Check if initial scan is fully completed
+            # 🔧 Mapper逻辑§3.3: 检查初始扫描是否全部完成 / Check if initial scan is fully completed
+            # 这是正常完成路径：第3次旋转成功后设置完成标志
             if self.initial_scan_count >= self.max_initial_scans and not self.initial_scan_done:
                 self.initial_scan_done = True
                 self.node.get_logger().info('Initial scan completed, starting autonomous navigation')
@@ -336,6 +384,7 @@ class RotationController:
         self.rotation_start_time = None
         self.rotation_target_yaw = None
         self.skip_rotation_on_obstacle = False
+        self.is_escape_mode = False  # 停止旋转时重置escape模式
     
     def stop_robot(self):
         """停止机器人 / Stop robot"""
@@ -350,6 +399,10 @@ class RotationController:
         """
         开始脱困旋转 / Start escape rotation
         
+        优化策略：先尝试正反方向，再增加角度
+        Strategy: try both directions before increasing angle
+        例如: +45° → -45° → +90° → -90° → +135° → -135° → +180°
+        
         Args:
             current_yaw_func: 获取当前yaw角的函数 / Function to get current yaw
             pending_goal: 待处理的目标 / Pending goal
@@ -362,14 +415,25 @@ class RotationController:
             self.escape_attempt = 0
             return False
         
-        # 脱困模式：每45度尝试，从45度到315度 / Escape mode: try every 45 degrees, from 45° to 315°
-        escape_angle = 45 + self.escape_attempt * 45  # 45, 90, 135, 180, 225, 270, 315
+        # 🔧 优化的脱困策略：正反交替尝试
+        # escape_attempt: 0,1,2,3,4,5,6...
+        # 映射到: +45, -45, +90, -90, +135, -135, +180
+        angle_index = self.escape_attempt // 2  # 0,0,1,1,2,2,3...
+        is_negative = (self.escape_attempt % 2 == 1)  # False, True, False, True...
+        
+        base_angle = 45 + angle_index * 45  # 45, 45, 90, 90, 135, 135, 180...
+        escape_angle = -base_angle if is_negative else base_angle
+        
         self.escape_attempt += 1
         
+        direction_str = "clockwise" if escape_angle > 0 else "counter-clockwise"
         self.node.get_logger().info(
             f'Escape attempt [{self.escape_attempt}/{self.max_escape_attempts}]: '
-            f'rotating {escape_angle}° for exploration'
+            f'rotating {escape_angle:+.0f}° ({direction_str}) for exploration'
         )
+        
+        # 🔧 设置escape模式标志，放宽障碍物检测
+        self.is_escape_mode = True
         
         return self.start_rotation(escape_angle, current_yaw_func, pending_goal)
     
@@ -383,7 +447,22 @@ class RotationController:
         Returns:
             是否开始扫描 / Whether scan started
         """
-        if self.initial_scan_done or self.initial_scan_count >= self.max_initial_scans:
+        # 🔧 关键修复：达到最大次数时强制完成，防止死循环
+        # Mapper原逻辑：正常情况下第3次旋转成功后在update_rotation中设置initial_scan_done
+        # 异常情况：如果第3次旋转失败，这里强制设置完成，避免无限重试
+        if self.initial_scan_done:
+            return False
+            
+        if self.initial_scan_count >= self.max_initial_scans:
+            # 🔧 Critical Fix: 强制完成初始扫描，避免死循环
+            # 如果执行到这里，说明已经尝试了3次但initial_scan_done仍是False
+            # 原因：第3次旋转失败（如遇到障碍），update_rotation中的完成检查未触发
+            if not self.initial_scan_done:
+                self.initial_scan_done = True
+                self.node.get_logger().warn(
+                    f'Initial scan reached max attempts ({self.initial_scan_count}/{self.max_initial_scans}), '
+                    f'forcing completion to avoid deadlock'
+                )
             return False
         
         self.node.get_logger().info(

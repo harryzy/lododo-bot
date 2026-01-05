@@ -21,16 +21,18 @@ from .exploration_utils import MapUtils, coordinate_converter
 class FrontierDetector:
     """边界检测器类 / Frontier Detector Class"""
     
-    def __init__(self, min_frontier_size: int = 5):
+    def __init__(self, min_frontier_size: int = 5, logger=None):
         """
         初始化边界检测器 / Initialize frontier detector
         
         Args:
             min_frontier_size: 最小边界区域大小 / Minimum frontier cluster size
+            logger: ROS2 logger for debug output (optional)
         """
         self.min_frontier_size = min_frontier_size
         self.current_map = None
         self.current_map_msg = None
+        self.logger = logger
         
     def update_map(self, map_msg: OccupancyGrid) -> None:
         """
@@ -94,11 +96,24 @@ class FrontierDetector:
         frontiers = []
         visited = np.zeros((height, width), dtype=bool)
         
+        # 🔧 Debug: 统计地图状态
+        total_cells = height * width
+        unknown_cells = np.sum(self.current_map == -1)
+        free_cells = np.sum((self.current_map >= 0) & (self.current_map <= 50))
+        obstacle_cells = np.sum(self.current_map > 50)
+        
         # 扫描所有可能的边界点 / Scan all possible frontier cells
+        frontier_candidates = 0
         for my in range(1, height - 1):
             for mx in range(1, width - 1):
-                if visited[my, mx] or not self.is_frontier_cell(mx, my):
+                if visited[my, mx]:
                     continue
+                
+                # 检查是否是边界点
+                if not self.is_frontier_cell(mx, my):
+                    continue
+                
+                frontier_candidates += 1
                 
                 # BFS聚类 / BFS clustering
                 cluster = []
@@ -121,6 +136,18 @@ class FrontierDetector:
                 if len(cluster) >= self.min_frontier_size:
                     frontiers.append(cluster)
         
+        # 🔧 Debug: 打印详细统计
+        if hasattr(self, 'logger'):
+            self.logger.info(
+                f"[FrontierDetector] Map: {width}x{height}, "
+                f"Unknown={unknown_cells}({unknown_cells/total_cells*100:.1f}%), "
+                f"Free={free_cells}({free_cells/total_cells*100:.1f}%), "
+                f"Obstacle={obstacle_cells}({obstacle_cells/total_cells*100:.1f}%), "
+                f"Candidates={frontier_candidates}, "
+                f"Clusters={len(frontiers)}, "
+                f"MinSize={self.min_frontier_size}"
+            )
+        
         return frontiers
     
     def calculate_frontier_info(self, frontier: List[Tuple[int, int]]) -> dict:
@@ -136,21 +163,82 @@ class FrontierDetector:
         if not frontier or self.current_map_msg is None:
             return {}
         
-        # 计算边界中心 / Calculate frontier center
+        # 计算边界中心（栅格坐标）/ Calculate frontier center (grid coordinates)
         center_mx = sum(p[0] for p in frontier) / len(frontier)
         center_my = sum(p[1] for p in frontier) / len(frontier)
-        center_world = coordinate_converter.map_to_world(center_mx, center_my, self.current_map_msg)
+        
+        # 🎯 关键修复：在 frontier 附近找安全的自由空间作为目标
+        # Find safe free space near frontier as navigation target
+        safe_goal_world = self._find_navigable_point_near_frontier(frontier, center_mx, center_my)
+        
+        if safe_goal_world is None:
+            # 如果找不到安全点，返回空字典（这个 frontier 不可用）
+            return {}
         
         # 计算边界大小和密度 / Calculate frontier size and density
         info = {
             'cells': frontier,
             'size': len(frontier),
             'center_map': (center_mx, center_my),
-            'center_world': center_world,
+            'center_world': safe_goal_world,  # 🎯 使用安全的自由空间点
             'density': self._calculate_frontier_density(frontier)
         }
         
         return info
+    
+    def _find_navigable_point_near_frontier(self, frontier: List[Tuple[int, int]], 
+                                           center_mx: float, center_my: float) -> Optional[Tuple[float, float]]:
+        """
+        在 frontier 附近找到可导航的自由空间点 / Find navigable free space near frontier
+        
+        Args:
+            frontier: frontier cells 列表
+            center_mx, center_my: frontier 中心栅格坐标
+            
+        Returns:
+            安全点的世界坐标或 None
+        """
+        if self.current_map is None:
+            return None
+        
+        height, width = self.current_map.shape
+        
+        # 从 frontier 的每个点向内搜索自由空间
+        # Search inward from each frontier point to find free space
+        candidates = []
+        
+        for mx, my in frontier:
+            # 检查 8 邻域中的自由空间点
+            # Check 8-neighborhood for free space points
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    if dx == 0 and dy == 0:
+                        continue
+                    
+                    check_mx = mx + dx
+                    check_my = my + dy
+                    
+                    # 边界检查
+                    if check_mx < 0 or check_mx >= width or check_my < 0 or check_my >= height:
+                        continue
+                    
+                    # 检查是否为自由空间 (0-50)
+                    cell_value = self.current_map[check_my, check_mx]
+                    if 0 <= cell_value <= 50:
+                        # 找到自由空间，转换为世界坐标
+                        world_pos = coordinate_converter.map_to_world(check_mx, check_my, self.current_map_msg)
+                        if world_pos:
+                            candidates.append((world_pos, check_mx, check_my))
+        
+        if not candidates:
+            # 没有找到自由空间点
+            return None
+        
+        # 选择离 frontier 中心最近的自由空间点
+        # Select the free space point closest to frontier center
+        best_candidate = min(candidates, key=lambda c: (c[1] - center_mx)**2 + (c[2] - center_my)**2)
+        
+        return best_candidate[0]  # 返回世界坐标
     
     def _calculate_frontier_density(self, frontier: List[Tuple[int, int]]) -> float:
         """

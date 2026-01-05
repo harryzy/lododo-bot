@@ -92,11 +92,18 @@ class FrontierEvaluator:
         
         # 跳过太近或太远的边界 / Skip frontiers that are too close or too far
         if distance < min_distance or distance > max_distance:
+            # if hasattr(self, 'logger') and self.logger:
+            #     self.logger.debug(f"Frontier at {center_world} rejected: distance {distance:.2f}m out of range [{min_distance}, {max_distance}]")
             return None
         
-        # 🎯 关键优化：避免选择身后的frontier / Key optimization: avoid selecting frontiers behind
-        if abs(relative_angle) > max_angle_rad:
-            return None
+        # 🔧 优化：不再硬性过滤角度，改为软评分
+        # 原逻辑：超过60°直接拒绝 → 导致频繁无frontier
+        # 新逻辑：角度越小分数越高，但不排除大角度frontier
+        # 理由：采用两步导航（先转向再移动），可以到达任意角度的frontier
+        
+        # 角度惩罚系数：0°=1.0, 90°=0.5, 180°=0.2
+        # Angle penalty: 0°=1.0, 90°=0.5, 180°=0.2
+        angle_penalty = 1.0 - (abs(relative_angle) / math.pi) * 0.8
         
         # 检查是否已访问过 / Check if already visited
         is_visited = False
@@ -108,8 +115,23 @@ class FrontierEvaluator:
                 visit_distance = visit_dist
                 break
         
-        # 基础评分：大小/距离 / Base score: size/distance
-        base_score = frontier_size / max(distance, 0.5)
+        # 🎯 优化：基础评分公式 = frontier大小权重 × 距离权重
+        # 原逻辑：size / distance 导致近处小frontier得分高
+        # 新逻辑：size^1.5 × distance^0.5 倾向远端大frontier
+        # size^1.5: 大frontier指数级加成（100格→1000分，10格→31分）
+        # distance^0.5: 距离平方根加成（远处惩罚减小，5m→2.24，1m→1.0）
+        # Base score formula: frontier size weight × distance weight
+        # OLD: size/distance → favors small nearby frontiers
+        # NEW: size^1.5 × distance^0.5 → favors large distant frontiers
+        # size^1.5: exponential bonus for large frontiers (100cells→1000pts, 10cells→31pts)
+        # distance^0.5: sqrt bonus for distance (reduces far penalty: 5m→2.24, 1m→1.0)
+        
+        size_weight = math.pow(frontier_size, 1.5)  # 大小指数加成
+        distance_weight = math.sqrt(distance)        # 距离平方根加成（远端惩罚减小）
+        
+        # 基础评分 = 大小权重 × 距离权重 / 归一化因子
+        # Base score = size_weight × distance_weight / normalization
+        base_score = (size_weight * distance_weight) / 10.0  # 除以10归一化
         
         # 如果已访问过，大幅降低优先级 / If visited, significantly reduce priority
         if is_visited:
@@ -130,8 +152,8 @@ class FrontierEvaluator:
                 # 正常模式：稍微倾向于不同方向（最多1.5倍）/ Normal mode: slightly prefer different direction (up to 1.5x)
                 direction_bonus = 1.0 + 0.5 * (angle_diff / math.pi)
         
-        # 最终评分 / Final score
-        score = base_score * direction_bonus
+        # 最终评分 = 基础评分 × 角度惩罚 × 方向多样性 / Final score = base × angle_penalty × direction_bonus
+        score = base_score * angle_penalty * direction_bonus
         
         return {
             'frontier_info': frontier_info,
