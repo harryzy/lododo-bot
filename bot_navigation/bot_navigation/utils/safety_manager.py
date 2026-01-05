@@ -77,14 +77,17 @@ class SafetyManager:
                 (costmap_msg.info.height, costmap_msg.info.width)
             )
     
-    def is_goal_safe(self, goal_x: float, goal_y: float, robot_pos: Tuple[float, float]) -> Tuple[bool, str]:
+    def is_goal_safe(self, goal_x: float, goal_y: float, robot_pos: Tuple[float, float],
+                     completion: float = 0.0) -> Tuple[bool, str]:
         """
-        检查目标点是否安全 / Check if goal point is safe
+        检查目标点是否安全（优化版：根据完成度动态调整安全距离）
+        Check if goal point is safe (optimized: dynamic safety distance based on completion)
         
         Args:
             goal_x: 目标X坐标 / Goal X coordinate
             goal_y: 目标Y坐标 / Goal Y coordinate
             robot_pos: 机器人位置 / Robot position
+            completion: 地图完成度 0.0-1.0 / Map completion 0.0-1.0
             
         Returns:
             (是否安全, 原因) / (Is safe, reason)
@@ -99,6 +102,25 @@ class SafetyManager:
         
         goal_mx, goal_my = goal_coords
         
+        # � 方案C选项1: 放宽边界余量（0.5m→0.25m）
+        map_height, map_width = self.current_map.shape
+        boundary_margin_m = 0.25  # 从0.5米降低到0.25米
+        boundary_margin_cells = int(boundary_margin_m / self.current_map_msg.info.resolution)
+        
+        is_near_boundary = (
+            goal_mx < boundary_margin_cells or goal_mx >= map_width - boundary_margin_cells or
+            goal_my < boundary_margin_cells or goal_my >= map_height - boundary_margin_cells
+        )
+        
+        # 🐛 方案C选项2: 如果靠近边界，检查目标cell是否是free space
+        if is_near_boundary:
+            goal_value = MapUtils.get_map_value(goal_mx, goal_my, self.current_map)
+            if goal_value is not None and 0 <= goal_value <= 50:
+                # 目标在free space中，即使靠近边界也接受
+                pass  # 继续后续检查
+            else:
+                return False, f"Goal too close to map boundary and not in free space (cell: {goal_mx},{goal_my}, map: {map_width}×{map_height}, value: {goal_value})"
+        
         # 检查目标点本身是否安全 / Check if goal point itself is safe
         goal_value = MapUtils.get_map_value(goal_mx, goal_my, self.current_map)
         if goal_value is None:
@@ -109,8 +131,17 @@ class SafetyManager:
         if goal_value < 0 or goal_value > 50:
             return False, f"Goal position is not free space (value: {goal_value})"
         
-        # 检查目标周围安全距离内是否有障碍物 / Check for obstacles within safe distance around goal
-        safe_cells = int(self.safe_distance / self.current_map_msg.info.resolution)
+        # 🎯 动态安全距离：根据探索进度放宽限制
+        # Dynamic safe distance: relax constraints based on exploration progress
+        if completion < 0.5:
+            dynamic_safe_distance = 0.40  # 初期保守 40cm / Early stage: conservative 40cm
+        elif completion < 0.75:
+            dynamic_safe_distance = 0.30  # 中期放宽 30cm / Mid stage: relaxed 30cm
+        else:
+            dynamic_safe_distance = 0.25  # 后期激进 25cm（允许狭窄通道）/ Late stage: aggressive 25cm (narrow passages)
+        
+        # 检查目标周围动态安全距离内是否有障碍物 / Check for obstacles within dynamic safe distance
+        safe_cells = int(dynamic_safe_distance / self.current_map_msg.info.resolution)
         
         for dx in range(-safe_cells, safe_cells + 1):
             for dy in range(-safe_cells, safe_cells + 1):

@@ -189,7 +189,8 @@ class FrontierDetector:
     def _find_navigable_point_near_frontier(self, frontier: List[Tuple[int, int]], 
                                            center_mx: float, center_my: float) -> Optional[Tuple[float, float]]:
         """
-        在 frontier 附近找到可导航的自由空间点 / Find navigable free space near frontier
+        在 frontier 附近找到可导航的自由空间点（优化版：优先选择有足够clearance的点）
+        Find navigable free space near frontier (optimized: prefer points with sufficient clearance)
         
         Args:
             frontier: frontier cells 列表
@@ -206,6 +207,7 @@ class FrontierDetector:
         # 从 frontier 的每个点向内搜索自由空间
         # Search inward from each frontier point to find free space
         candidates = []
+        candidates_with_clearance = []  # 🎯 新增：有足够间隙的候选点
         
         for mx, my in frontier:
             # 检查 8 邻域中的自由空间点
@@ -229,16 +231,60 @@ class FrontierDetector:
                         world_pos = coordinate_converter.map_to_world(check_mx, check_my, self.current_map_msg)
                         if world_pos:
                             candidates.append((world_pos, check_mx, check_my))
+                            
+                            # 🎯 检查该点周围0.3m是否有足够clearance
+                            if self._has_sufficient_clearance(check_mx, check_my, clearance_m=0.3):
+                                candidates_with_clearance.append((world_pos, check_mx, check_my))
         
         if not candidates:
             # 没有找到自由空间点
             return None
         
+        # 🎯 优先使用有clearance的候选点，如果没有则降级使用普通候选点
+        # Prefer candidates with clearance, fallback to regular candidates
+        selected_candidates = candidates_with_clearance if candidates_with_clearance else candidates
+        
         # 选择离 frontier 中心最近的自由空间点
         # Select the free space point closest to frontier center
-        best_candidate = min(candidates, key=lambda c: (c[1] - center_mx)**2 + (c[2] - center_my)**2)
+        best_candidate = min(selected_candidates, key=lambda c: (c[1] - center_mx)**2 + (c[2] - center_my)**2)
         
         return best_candidate[0]  # 返回世界坐标
+    
+    def _has_sufficient_clearance(self, mx: int, my: int, clearance_m: float = 0.3) -> bool:
+        """
+        检查指定格子周围是否有足够clearance（无障碍物）
+        Check if specified cell has sufficient clearance (no obstacles)
+        
+        Args:
+            mx, my: 栅格坐标 / Grid coordinates
+            clearance_m: 所需clearance距离(米) / Required clearance distance (meters)
+            
+        Returns:
+            是否有足够clearance / Whether has sufficient clearance
+        """
+        if self.current_map is None or self.current_map_msg is None:
+            return False
+        
+        resolution = self.current_map_msg.info.resolution
+        clearance_cells = int(clearance_m / resolution)
+        height, width = self.current_map.shape
+        
+        # 检查clearance范围内是否有障碍物
+        for dy in range(-clearance_cells, clearance_cells + 1):
+            for dx in range(-clearance_cells, clearance_cells + 1):
+                check_x = mx + dx
+                check_y = my + dy
+                
+                # 边界检查
+                if check_x < 0 or check_x >= width or check_y < 0 or check_y >= height:
+                    continue
+                
+                cell_value = self.current_map[check_y, check_x]
+                # 如果发现障碍物 (>50)，返回False
+                if cell_value > 50:
+                    return False
+        
+        return True
     
     def _calculate_frontier_density(self, frontier: List[Tuple[int, int]]) -> float:
         """
