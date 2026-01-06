@@ -764,6 +764,14 @@ class ExplorationHandler(TaskExecutionHandler):
                 )
                 continue
             
+            # 🎯 Phase 1: 旋转空间检查改为软性策略 - 不过滤，留给后续调整
+            # Changed to soft strategy - don't filter here, let adjustment handle it
+            # rotation_safe, rotation_reason = self._check_rotation_space_at_goal(frontier_center)
+            # if not rotation_safe:
+            #     self._node.get_logger().debug(
+            #         f"[DEBUG] Frontier {idx} will need goal adjustment for rotation: {rotation_reason}"
+            #     )
+            
             # 保存评分结果
             frontier_eval['frontier'] = frontier
             
@@ -800,6 +808,17 @@ class ExplorationHandler(TaskExecutionHandler):
         robot_pos = self._get_robot_position()
         if robot_pos is None:
             return
+        
+        # 🎯 Phase 1: 调整目标点以确保旋转安全（软性策略）
+        # Adjust goal position to ensure rotation safety (soft strategy)
+        adjusted_target = self._adjust_goal_for_rotation_safety(target_pos, robot_pos)
+        if adjusted_target != target_pos:
+            # 成功调整了目标点
+            target_pos = adjusted_target
+            self._node.get_logger().debug(
+                f"[Phase 1] Using adjusted goal position for better rotation safety"
+            )
+        # 如果调整失败或返回原始点，也继续（Nav2+旋转检测会处理）
         
         target_yaw = math.atan2(target_pos[1] - robot_pos[1], target_pos[0] - robot_pos[0])
         
@@ -2156,6 +2175,154 @@ class ExplorationHandler(TaskExecutionHandler):
         
         return frontier_pos
     
+    def _check_rotation_space_at_goal(self, goal_pos: Tuple[float, float]) -> Tuple[bool, Optional[str]]:
+        """
+        Phase 1: 检查目标点周围是否有足够的空间进行360°旋转
+        Check if there's enough space for 360° rotation at goal position
+        
+        检查半径0.4m（0.25m机器人半径 + 0.15m安全余量）内：
+        - 无障碍物（cost < 50）
+        - 无未知区域（!= -1）
+        
+        Args:
+            goal_pos: 目标点世界坐标 / Goal position in world coordinates
+            
+        Returns:
+            (is_safe, reason) - 是否安全 + 原因 / Whether safe + reason
+        """
+        if self._current_map is None:
+            return True, None
+        
+        import numpy as np
+        from ....exploration.exploration_utils import CoordinateConverter
+        
+        # 转换为地图坐标
+        coords = CoordinateConverter.world_to_map(
+            goal_pos[0], goal_pos[1], self._current_map
+        )
+        
+        if coords is None:
+            return False, "Goal outside map bounds"
+        
+        goal_x, goal_y = coords
+        
+        # 地图参数
+        resolution = self._current_map.info.resolution
+        width = self._current_map.info.width
+        height = self._current_map.info.height
+        map_array = np.array(self._current_map.data).reshape((height, width))
+        
+        # 检查半径：0.25m（机器人） + 0.15m（安全余量） = 0.4m
+        check_radius_m = 0.4
+        check_radius_cells = int(check_radius_m / resolution)
+        
+        # 统计区域内的单元格类型
+        obstacle_count = 0
+        unknown_count = 0
+        total_checked = 0
+        
+        for dx in range(-check_radius_cells, check_radius_cells + 1):
+            for dy in range(-check_radius_cells, check_radius_cells + 1):
+                # 圆形区域判断
+                if dx*dx + dy*dy > check_radius_cells * check_radius_cells:
+                    continue
+                
+                check_x = goal_x + dx
+                check_y = goal_y + dy
+                
+                # 边界检查
+                if not (0 <= check_x < width and 0 <= check_y < height):
+                    continue
+                
+                cell_value = map_array[check_y, check_x]
+                total_checked += 1
+                
+                if cell_value >= 50:  # 障碍物
+                    obstacle_count += 1
+                elif cell_value == -1:  # 未知区域
+                    unknown_count += 1
+        
+        if total_checked == 0:
+            return False, "No cells checked (edge case)"
+        
+        # 计算占比
+        obstacle_ratio = obstacle_count / total_checked
+        unknown_ratio = unknown_count / total_checked
+        
+        # 🎯 Phase 1: 放宽安全标准以适应frontier边界场景
+        # 障碍物<5%，未知区域<30%（frontier本身在未知边界，30%是合理的）
+        # Relaxed standards for frontier boundary scenarios
+        # Obstacles<5%, unknown<30% (frontiers are at unknown boundaries, 30% is reasonable)
+        if obstacle_ratio > 0.05:
+            return False, f"Too many obstacles ({obstacle_ratio:.1%}) in rotation area"
+        
+        if unknown_ratio > 0.30:
+            return False, f"Too much unknown area ({unknown_ratio:.1%}) in rotation area"
+        
+        return True, None
+    
+    def _adjust_goal_for_rotation_safety(self, goal_pos: Tuple[float, float], 
+                                          robot_pos: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+        """
+        Phase 1: 调整目标点位置以确保旋转安全
+        Adjust goal position to ensure rotation safety
+        
+        策略：如果目标点旋转空间不足，向机器人方向（已知区域）偏移0.3-0.5m
+        Strategy: If rotation space insufficient, shift towards robot (known area) by 0.3-0.5m
+        
+        Args:
+            goal_pos: 原始目标点 / Original goal position
+            robot_pos: 机器人位置 / Robot position
+            
+        Returns:
+            调整后的目标点，如果无法调整返回None / Adjusted goal, None if cannot adjust
+        """
+        # 检查原始点
+        is_safe, _ = self._check_rotation_space_at_goal(goal_pos)
+        if is_safe:
+            return goal_pos  # 原始点已经安全
+        
+        # 尝试向机器人方向偏移不同距离
+        direction_x = robot_pos[0] - goal_pos[0]
+        direction_y = robot_pos[1] - goal_pos[1]
+        distance = math.sqrt(direction_x**2 + direction_y**2)
+        
+        if distance < 0.1:
+            return None  # 距离太近，无法调整
+        
+        # 归一化方向向量
+        dir_x = direction_x / distance
+        dir_y = direction_y / distance
+        
+        # 🎯 Phase 1: 尝试更多偏移距离以增加成功率
+        # Try more offset distances: 0.2m, 0.3m, 0.4m, 0.5m, 0.6m
+        for offset in [0.2, 0.3, 0.4, 0.5, 0.6]:
+            adjusted_x = goal_pos[0] + dir_x * offset
+            adjusted_y = goal_pos[1] + dir_y * offset
+            adjusted_pos = (adjusted_x, adjusted_y)
+            
+            # 检查调整后的点
+            is_safe, reason = self._check_rotation_space_at_goal(adjusted_pos)
+            if is_safe:
+                self._node.get_logger().info(
+                    f"[Phase 1] Adjusted goal for rotation safety: "
+                    f"({goal_pos[0]:.2f}, {goal_pos[1]:.2f}) → ({adjusted_x:.2f}, {adjusted_y:.2f}), "
+                    f"offset={offset:.2f}m"
+                )
+                return adjusted_pos
+            else:
+                self._node.get_logger().debug(
+                    f"[Phase 1] Offset {offset:.2f}m failed: {reason}"
+                )
+        
+        # 🎯 如果所有偏移都失败，返回原始点（让Nav2处理）
+        # If all offsets fail, return original point (let Nav2 handle it)
+        self._node.get_logger().warn(
+            f"[Phase 1] Could not find safe rotation point after trying offsets, "
+            f"using original goal (Nav2 will handle obstacles)"
+        )
+        return goal_pos  # 返回原始点而非None
+    
     def _find_safe_initial_scan_point(self) -> Optional[Tuple[float, float]]:
         """
         在机器人前方已知区域中寻找安全的初始扫描点
@@ -2482,7 +2649,12 @@ class ExplorationHandler(TaskExecutionHandler):
         """初始化旋转控制器 / Initialize rotation controller"""
         from ....utils.rotation_controller import RotationController
         
-        self._rotation_controller = RotationController(self._node, '/cmd_vel')
+        # Phase 1: 传入 nav_executor 以获取机器人位姿
+        self._rotation_controller = RotationController(
+            self._node, 
+            '/cmd_vel',
+            nav_executor=self._nav_executor
+        )
         
         # 配置旋转参数 / Configure rotation parameters
         rotation_config = {
@@ -2532,6 +2704,7 @@ class ExplorationHandler(TaskExecutionHandler):
         # 检查旋转是否完成
         is_rotating = self._rotation_controller.is_rotating_state
         rotation_completed = self._rotation_controller.rotation_completed_successfully
+        rotation_blocked = self._rotation_controller.rotation_blocked_by_obstacle  # Phase 1: 检查是否被阻挡
         
         if not is_rotating:
             if rotation_completed:
@@ -2562,6 +2735,20 @@ class ExplorationHandler(TaskExecutionHandler):
             else:
                 # 旋转失败或超时
                 self._node.get_logger().warn("[ExplorationHandler] Rotation failed or timed out")
+                
+                # 🎯 Phase 1: 检查是否因静态障碍物阻挡
+                if rotation_blocked:
+                    self._node.get_logger().warn(
+                        "[Phase 1] Rotation blocked by static obstacle detected in /map"
+                    )
+                    # 执行后退脱困
+                    self._perform_backward_escape()
+                    # 重置标志
+                    self._rotation_controller.rotation_blocked_by_obstacle = False
+                    self._rotation_controller.consecutive_rotation_failures = 0
+                    # 继续探索
+                    self._exploration_state = ExplorationHandlerState.DETECTING_FRONTIERS
+                    return
                 
                 # 🎯 关键优化：两步导航的预转向失败时，不触发脱困逻辑
                 # 直接跳过转向，让Nav2自己处理朝向问题（增加成功率）

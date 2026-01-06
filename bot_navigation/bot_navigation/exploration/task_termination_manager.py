@@ -98,9 +98,9 @@ class TaskTerminationManager:
         """
         motion_stopped = False
         
-        # 1. 停止旋转
-        if self._rotation_controller.is_rotating:
-            self._rotation_controller.stop_rotation()
+        # 1. 停止旋转（使用 stop_robot() 方法）
+        if self._rotation_controller.is_rotating_state:  # 修复属性名
+            self._rotation_controller.stop_robot()  # 修复方法名
             self._node.get_logger().debug("[TaskTermination] Stopped rotation")
             motion_stopped = True
         

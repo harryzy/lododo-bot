@@ -21,16 +21,18 @@ from ..exploration.exploration_utils import math_utils
 class RotationController:
     """旋转控制器类 / Rotation Controller Class"""
     
-    def __init__(self, node, cmd_vel_topic: str = '/cmd_vel'):
+    def __init__(self, node, cmd_vel_topic: str = '/cmd_vel', nav_executor=None):
         """
         初始化旋转控制器 / Initialize rotation controller
         
         Args:
             node: ROS节点 / ROS node
             cmd_vel_topic: 速度命令话题 / Velocity command topic
+            nav_executor: NavigationExecutor实例，用于获取机器人位姿 / NavigationExecutor for getting robot pose
         """
         self.node = node
         self.cmd_vel_pub = node.create_publisher(Twist, cmd_vel_topic, 10)
+        self.nav_executor = nav_executor  # Phase 1: 保存nav_executor引用
         
         # 旋转参数 / Rotation parameters
         self.rotation_speed = 0.5
@@ -44,10 +46,20 @@ class RotationController:
         self.rotation_angular_vel = 0.0
         self.current_yaw = None
         self.rotation_completed_successfully = False  # 旋转是否成功完成（非超时/非障碍物中断）/ Whether rotation completed successfully
+        self.rotation_blocked_by_obstacle = False  # Phase 1: 旋转被障碍物阻挡 / Rotation blocked by obstacle
         
         # 避障检测 / Obstacle avoidance
         self.local_costmap = None
         self.check_obstacle_during_rotation = True
+        self.static_map = None  # Phase 1: 静态地图用于旋转安全检查 / Static map for rotation safety check
+        
+        # Phase 1: 订阅 /map 用于旋转路径安全检查 / Subscribe to /map for rotation path safety check
+        self.map_subscriber = node.create_subscription(
+            OccupancyGrid,
+            '/map',
+            self._map_callback,
+            10
+        )
         
         # 待处理的目标 / Pending goal
         self.pending_goal = None
@@ -98,6 +110,122 @@ class RotationController:
             self.local_costmap = np.array(costmap_msg.data).reshape(
                 (costmap_msg.info.height, costmap_msg.info.width)
             )
+    
+    def _map_callback(self, map_msg: OccupancyGrid):
+        """
+        Phase 1: /map 回调函数 / /map callback function
+        
+        Args:
+            map_msg: 地图消息 / Map message
+        """
+        self.static_map = map_msg
+    
+    def check_rotation_path_safety(self, robot_pose, target_yaw: float) -> Tuple[bool, Optional[str]]:
+        """
+        Phase 1: 检查旋转路径是否安全（基于 /map 的静态障碍物检查）
+        Check rotation path safety (based on /map static obstacles)
+        
+        策略 / Strategy:
+        1. 沿旋转路径每10°采样一次
+        2. 在每个采样点周围检查圆形足迹（半径0.25m + 0.1m安全余量）
+        3. 检测障碍物（cost >= 50）和未知区域（-1）
+        
+        Args:
+            robot_pose: 机器人当前位姿 / Robot current pose
+            target_yaw: 目标朝向（弧度）/ Target yaw (radians)
+            
+        Returns:
+            (is_safe, reason) - 是否安全 + 原因 / Whether safe + reason
+        """
+        if self.static_map is None:
+            # 地图未就绪，默认安全 / Map not ready, default to safe
+            return True, None
+        
+        if robot_pose is None:
+            return True, None
+        
+        import numpy as np
+        
+        # 机器人当前位置 / Robot current position
+        robot_x = robot_pose.pose.position.x
+        robot_y = robot_pose.pose.position.y
+        
+        # 获取当前朝向 / Get current yaw
+        from tf_transformations import euler_from_quaternion
+        orientation = robot_pose.pose.orientation
+        _, _, current_yaw = euler_from_quaternion([
+            orientation.x, orientation.y, orientation.z, orientation.w
+        ])
+        
+        # 计算旋转角度 / Calculate rotation angle
+        rotation_angle = math_utils.normalize_angle(target_yaw - current_yaw)
+        
+        # 采样参数 / Sampling parameters
+        sample_step = math.radians(10)  # 每10°采样一次 / Sample every 10 degrees
+        robot_radius = 0.25  # 机器人半径（米）/ Robot radius (meters)
+        safety_margin = 0.1  # 安全余量（米）/ Safety margin (meters)
+        check_radius = robot_radius + safety_margin  # 总检查半径 / Total check radius
+        
+        # 地图参数 / Map parameters
+        resolution = self.static_map.info.resolution
+        origin_x = self.static_map.info.origin.position.x
+        origin_y = self.static_map.info.origin.position.y
+        width = self.static_map.info.width
+        height = self.static_map.info.height
+        map_array = np.array(self.static_map.data).reshape((height, width))
+        
+        # 沿旋转路径采样 / Sample along rotation path
+        num_samples = max(1, int(abs(rotation_angle) / sample_step))
+        
+        for i in range(num_samples + 1):
+            # 当前采样角度 / Current sample angle
+            if num_samples == 0:
+                sample_yaw = current_yaw
+            else:
+                sample_yaw = current_yaw + (rotation_angle * i / num_samples)
+            
+            # 检查该朝向下机器人足迹内是否有障碍物 / Check for obstacles in robot footprint at this orientation
+            # 简化为圆形足迹 / Simplified as circular footprint
+            check_radius_cells = int(check_radius / resolution)
+            
+            # 世界坐标转地图坐标 / World to map coordinates
+            map_x = int((robot_x - origin_x) / resolution)
+            map_y = int((robot_y - origin_y) / resolution)
+            
+            # 检查圆形区域 / Check circular area
+            for dx in range(-check_radius_cells, check_radius_cells + 1):
+                for dy in range(-check_radius_cells, check_radius_cells + 1):
+                    # 圆形内部判断 / Check if inside circle
+                    if dx*dx + dy*dy > check_radius_cells * check_radius_cells:
+                        continue
+                    
+                    check_x = map_x + dx
+                    check_y = map_y + dy
+                    
+                    # 边界检查 / Boundary check
+                    if not (0 <= check_x < width and 0 <= check_y < height):
+                        continue
+                    
+                    cell_value = map_array[check_y, check_x]
+                    
+                    # 检测障碍物或未知区域 / Detect obstacles or unknown areas
+                    if cell_value >= 50:  # 障碍物 / Obstacle
+                        distance_m = math.sqrt(dx*dx + dy*dy) * resolution
+                        reason = (
+                            f"Obstacle detected at {math.degrees(sample_yaw):.0f}° "
+                            f"(distance: {distance_m:.2f}m, cost: {cell_value})"
+                        )
+                        return False, reason
+                    
+                    if cell_value == -1:  # 未知区域 / Unknown area
+                        distance_m = math.sqrt(dx*dx + dy*dy) * resolution
+                        reason = (
+                            f"Unknown area at {math.degrees(sample_yaw):.0f}° "
+                            f"(distance: {distance_m:.2f}m)"
+                        )
+                        return False, reason
+        
+        return True, None
     
     def check_rotation_safety(self) -> bool:
         """
@@ -283,7 +411,33 @@ class RotationController:
             
             return False
         
-        # 🛡️ 检查旋转路径安全性 / Check rotation path safety
+        # 🛡️ Phase 1: 检查旋转路径安全性（基于 /map 的静态障碍物）
+        # Check rotation path safety (based on /map static obstacles)
+        if self.rotation_target_yaw is not None and self.nav_executor is not None:
+            robot_pose = self.nav_executor.get_robot_pose('map')
+            if robot_pose is not None:
+                is_safe, reason = self.check_rotation_path_safety(robot_pose, self.rotation_target_yaw)
+                if not is_safe:
+                    self.consecutive_rotation_failures += 1
+                    self.rotation_blocked_by_obstacle = True  # Phase 1: 设置阻挡标志
+                    self.node.get_logger().warn(
+                        f'[Phase 1] Rotation path blocked: {reason} '
+                        f'(failure #{self.consecutive_rotation_failures})'
+                    )
+                    self._stop_rotation()
+                    self.rotation_completed_successfully = False
+                    self.after_pre_movement = False
+                    self.skip_rotation_on_obstacle = True
+                    
+                    if self.pending_goal is not None:
+                        self.node.get_logger().info(
+                            '[Phase 1] Will perform backward escape before retrying'
+                        )
+                    
+                    return False
+        
+        # 🛡️ 原有 local_costmap 检查（保留作为补充）
+        # Original local_costmap check (keep as supplement)
         if not self.check_rotation_safety():
             self.consecutive_rotation_failures += 1
             self.node.get_logger().warn(f'Detected obstacle during rotation, stopping rotation (failure #{self.consecutive_rotation_failures})')
@@ -385,6 +539,7 @@ class RotationController:
         self.rotation_target_yaw = None
         self.skip_rotation_on_obstacle = False
         self.is_escape_mode = False  # 停止旋转时重置escape模式
+        self.rotation_blocked_by_obstacle = False  # Phase 1: 重置阻挡标志
     
     def stop_robot(self):
         """停止机器人 / Stop robot"""
