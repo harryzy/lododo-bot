@@ -29,6 +29,11 @@ from ....exploration.exploration_strategy import ExplorationStrategy
 from ....exploration.exploration_utils import CoordinateConverter
 from ....map.map_library_manager import MapLibraryManager
 
+# 🎯 重构：引入新的抽象组件（位于 exploration/ 目录）
+from ....exploration.goal_boundary_validator import GoalBoundaryValidator
+from ....exploration.task_termination_manager import TaskTerminationManager
+from ....exploration.completion_strategy import CompletionStrategy
+
 
 class ExplorationHandlerState(Enum):
     """探索处理器状态"""
@@ -113,6 +118,9 @@ class ExplorationHandler(TaskExecutionHandler):
         self._goal_start_time = None  # 导航开始时间
         self._max_goal_time = 120.0  # 导航超时（2分钟）
         
+        # 🎯 防止重复完成标志
+        self._exploration_completed = False  # 探索是否已完成（防止重复调用_complete_exploration）
+        
         # 🎯 方案2: Frontier失败黑名单机制
         # Frontier failure blacklist: {position_key: (fail_count, last_timestamp)}
         self._frontier_failure_history = {}  # 失败frontier记录
@@ -138,7 +146,26 @@ class ExplorationHandler(TaskExecutionHandler):
         
         self._map_library_manager = MapLibraryManager(self._node, maps_dir)
         
-        self._node.get_logger().info("[ExplorationHandler] Initialized with full algorithm support (Phase 3)")
+        # 🎯 重构：初始化新的抽象组件
+        self._boundary_validator = GoalBoundaryValidator(
+            boundary_margin=5,
+            free_space_threshold=50
+        )
+        self._termination_manager = TaskTerminationManager(
+            node=self._node,
+            task_manager=self._task_manager,
+            nav_executor=self._nav_executor,
+            rotation_controller=self._rotation_controller
+        )
+        self._completion_strategy = CompletionStrategy(
+            target_threshold=self._map_completion_threshold,
+            min_threshold=0.75,
+            stagnation_time=180.0,
+            min_progress_rate=0.02,
+            logger=self._node.get_logger()
+        )
+        
+        self._node.get_logger().info("[ExplorationHandler] Initialized with refactored components (2026-01-05)")
     
     def _get_robot_yaw_odom(self) -> Optional[float]:
         """
@@ -257,17 +284,10 @@ class ExplorationHandler(TaskExecutionHandler):
         
         # 3. FAILED 状态 - 失败状态，清理资源
         if task.state == TaskState.FAILED:
-            # 🛡️ 关键修复：停止所有运动（旋转和导航）
-            if self._rotation_controller.is_rotating:
-                self._rotation_controller.stop_rotation()
-                self._node.get_logger().info("[ExplorationHandler] Stopped rotation on task failure")
-            
-            nav_state = self._nav_executor.get_state()
-            if nav_state == NavigationState.EXECUTING:
-                self._nav_executor.cancel_navigation()
-                self._node.get_logger().info("[ExplorationHandler] Canceled navigation on task failure")
-            
-            self._node.get_logger().info("[ExplorationHandler] Task failed, resources cleaned up")
+            # 🎯 重构：使用 TaskTerminationManager 统一处理
+            if self._termination_manager.is_any_motion_active():
+                self._termination_manager.stop_motion_only()
+                self._node.get_logger().info("[ExplorationHandler] Stopped motion on task failure")
             return
         
         # 4. CANCELED 状态 - 取消处理
@@ -381,7 +401,7 @@ class ExplorationHandler(TaskExecutionHandler):
             if not hasattr(self, '_last_state_log_time'):
                 self._last_state_log_time = 0.0
             if current_time - self._last_state_log_time > 5.0:  # 每5秒记录一次
-                self._node.get_logger().info("[DEBUG] NAVIGATING_TO_FRONTIER state detected")
+                self._node.get_logger().debug("[DEBUG] NAVIGATING_TO_FRONTIER state detected")
                 self._last_state_log_time = current_time
             
             # 检查导航器状态
@@ -424,9 +444,10 @@ class ExplorationHandler(TaskExecutionHandler):
             self._monitor_rotation(task)
         
         elif self._exploration_state == ExplorationHandlerState.COMPLETED:
-            # 🎯 关键修复：探索完成或取消时，直接退出，不重复调用
-            # 任务状态已经在到达COMPLETED前被设置（_complete_exploration或_handle_cancel）
-            return  # 直接退出，避免死循环
+            # 🎯 关键修复：探索完成时，直接退出，不重复处理
+            # 任务已经在 _complete_exploration() 中被标记为完成并保存地图
+            # 这里只需确保不再执行任何逻辑，等待任务管理器清理
+            return
     
     def _process_frontier_detection(self, task: Task):
         """处理边界检测"""
@@ -624,7 +645,7 @@ class ExplorationHandler(TaskExecutionHandler):
             # 🎯 方案2: 检查是否在失败黑名单中
             if self._should_skip_frontier(frontier_center):
                 filtered_by_eval += 1
-                self._node.get_logger().info(
+                self._node.get_logger().debug(
                     f"[DEBUG] Frontier {idx} at ({frontier_center[0]:.2f}, {frontier_center[1]:.2f}) "
                     f"REJECTED by blacklist (failed >= {self._max_frontier_failures} times)"
                 )
@@ -843,40 +864,51 @@ class ExplorationHandler(TaskExecutionHandler):
         return angle
     
     def _navigate_to_frontier(self, frontier, task: Task):
-        """导航到边界"""
-        # 构造目标位姿 (使用 center_world 键)
+        """
+        导航到边界（使用两段式导航+边界验证）
+        Navigate to frontier (using two-step navigation with boundary validation)
+        
+        🎯 重构：统一使用 _send_navigation_goal 确保两段式导航和边界检查
+        """
         frontier_center = frontier['center_world']  # (x, y) tuple
         
-        goal_pose = PoseStamped()
-        goal_pose.header.frame_id = 'map'
-        goal_pose.header.stamp = self._node.get_clock().now().to_msg()
-        goal_pose.pose.position.x = float(frontier_center[0])
-        goal_pose.pose.position.y = float(frontier_center[1])
-        goal_pose.pose.position.z = 0.0
-        
-        # 方向：朝向边界中心（简化版：使用固定方向）
-        goal_pose.pose.orientation.w = 1.0
-        
-        self._node.get_logger().info(
-            f"[ExplorationHandler] Navigating to frontier at "
-            f"({goal_pose.pose.position.x:.2f}, {goal_pose.pose.position.y:.2f})"
+        # 🎯 关键修复：使用边界验证器检查目标
+        is_valid, reason, goal_coords = self._boundary_validator.validate_goal(
+            goal_world=frontier_center,
+            current_map=self._current_map,
+            logger=self._node.get_logger()
         )
         
-        # 使用 NavigationExecutor 导航
-        success = self._nav_executor.navigate_to_pose(goal_pose)
-        
-        if success:
-            self._current_frontier = frontier
-            self._exploration_state = ExplorationHandlerState.NAVIGATING_TO_FRONTIER
-            # 更新任务进度（基于地图覆盖率）
-            coverage = self._calculate_map_completion()
-            self._task_manager.update_progress(task.task_id, coverage)
-        else:
-            # 导航启动失败，重新检测
+        if not is_valid:
             self._node.get_logger().warn(
-                "[ExplorationHandler] Failed to start navigation, retrying..."
+                f"⚠️ [ExplorationHandler] Frontier at ({frontier_center[0]:.2f}, {frontier_center[1]:.2f}) "
+                f"rejected by boundary validator: {reason}"
             )
+            # 标记为已访问，避免重复尝试
+            self._exploration_strategy.update_visited_frontier(frontier_center)
             self._exploration_state = ExplorationHandlerState.DETECTING_FRONTIERS
+            return
+        
+        # 构造 frontier_eval（用于两段式导航）
+        robot_pos = self._get_robot_position()
+        if robot_pos is None:
+            self._node.get_logger().warn("[ExplorationHandler] Cannot get robot position")
+            return
+        
+        frontier_eval = {
+            'frontier_info': frontier,
+            'distance': math.sqrt(
+                (frontier_center[0] - robot_pos[0])**2 +
+                (frontier_center[1] - robot_pos[1])**2
+            ),
+            'direction': math.atan2(
+                frontier_center[1] - robot_pos[1],
+                frontier_center[0] - robot_pos[0]
+            )
+        }
+        
+        # 🎯 使用统一的两段式导航
+        self._send_navigation_goal(frontier_center, frontier_eval, task)
     
     def _monitor_navigation(self, task: Task):
         """监控导航进度（新增：基于距离的动态超时检测）"""
@@ -886,18 +918,18 @@ class ExplorationHandler(TaskExecutionHandler):
         
         # 🎯 动态超时检测：根据目标距离计算超时时间
         # 公式：timeout = (distance / avg_speed) + buffer
-        # avg_speed = 0.15 m/s (更保守的估计), buffer = 30s
+        # avg_speed = 0.12 m/s (更宽松的估计，考虑障碍物绕行), buffer = 40s
         if hasattr(self, '_goal_start_time') and self._goal_start_time is not None:
             elapsed = time.time() - self._goal_start_time
             
             # 计算动态超时时间
             goal_distance = getattr(self, '_goal_distance', 5.0)
-            avg_speed = 0.15  # 更保守的平均速度 m/s（从0.2改为0.15）
-            buffer_time = 30.0  # 额外缓冲时间
+            avg_speed = 0.12  # 更宽松的平均速度 m/s（考虑绕行和避障，从0.15改为0.12）
+            buffer_time = 40.0  # 额外缓冲时间（从30s增加到40s）
             dynamic_timeout = (goal_distance / avg_speed) + buffer_time
             
-            # 最小30秒，最大120秒
-            dynamic_timeout = max(30.0, min(dynamic_timeout, 120.0))
+            # 最小40秒，最大180秒（从120s增加到180s，支持更长距离）
+            dynamic_timeout = max(40.0, min(dynamic_timeout, 180.0))
             
             if elapsed > dynamic_timeout:
                 self._node.get_logger().warn(
@@ -1055,23 +1087,31 @@ class ExplorationHandler(TaskExecutionHandler):
             
             # 🔴 检查是否达到连续失败上限
             if self._consecutive_failures >= self._max_consecutive_failures:
-                self._node.get_logger().error(
-                    f"[ExplorationHandler] Exceeded max consecutive failures ({self._max_consecutive_failures}), terminating exploration"
+                # 🎯 重构：使用 TaskTerminationManager 终止任务
+                self._termination_manager.terminate_task(
+                    task=task,
+                    final_state=TaskState.FAILED,
+                    reason=f"Exceeded max consecutive failures ({self._max_consecutive_failures})",
+                    release_callback=lambda task_id: (
+                        setattr(self, '_exploration_state', ExplorationHandlerState.COMPLETED),
+                        self.release_executor(task_id)
+                    )
                 )
-                self._task_manager.update_task_state(task.task_id, TaskState.FAILED)
-                self._exploration_state = ExplorationHandlerState.COMPLETED
-                self.release_executor(task.task_id)
                 return
             
             # 🔴 检查 SafetyManager 失败限制
             if hasattr(self, '_safety_manager'):
                 if self._safety_manager.consecutive_failures >= self._safety_manager.max_failures:
-                    self._node.get_logger().error(
-                        f"[ExplorationHandler] SafetyManager max failures reached ({self._safety_manager.max_failures}), terminating exploration"
+                    # 🎯 重构：使用 TaskTerminationManager 终止任务
+                    self._termination_manager.terminate_task(
+                        task=task,
+                        final_state=TaskState.FAILED,
+                        reason=f"SafetyManager max failures reached ({self._safety_manager.max_failures})",
+                        release_callback=lambda task_id: (
+                            setattr(self, '_exploration_state', ExplorationHandlerState.COMPLETED),
+                            self.release_executor(task_id)
+                        )
                     )
-                    self._task_manager.update_task_state(task.task_id, TaskState.FAILED)
-                    self._exploration_state = ExplorationHandlerState.COMPLETED
-                    self.release_executor(task.task_id)
                     return
             
             # 否则继续重试 → 重新检测边界
@@ -1126,11 +1166,17 @@ class ExplorationHandler(TaskExecutionHandler):
         # 3. 检查是否应该触发完成验证
         completion = self._calculate_map_completion()
         
-        # 3a. 高完成度 + 多次失败 → 可能是剩余区域不可达
-        if completion >= 0.85 and self._consecutive_failures >= 3:
+        # 🎯 重构：使用 CompletionStrategy 判断是否完成
+        should_complete, reason = self._completion_strategy.should_complete(
+            current_completion=completion,
+            consecutive_failures=self._consecutive_failures,
+            no_frontiers=False,
+            context="navigation_failure"
+        )
+        
+        if should_complete:
             self._node.get_logger().info(
-                f"✅ High completion ({completion*100:.1f}%) with {self._consecutive_failures} failures. "
-                f"Triggering completion verification to check if remaining areas are reachable."
+                f"{reason}. Triggering completion verification."
             )
             # 触发完成验证（不是直接退出）
             if self._check_exploration_completion(task):
@@ -1147,23 +1193,16 @@ class ExplorationHandler(TaskExecutionHandler):
                 return
             else:
                 # 验证失败，任务真的失败了
-                self._node.get_logger().error(
-                    "[ExplorationHandler] Completion verification failed after max failures. "
-                    "Terminating exploration as FAILED."
+                # 🎯 重构：使用 TaskTerminationManager
+                self._termination_manager.terminate_task(
+                    task=task,
+                    final_state=TaskState.FAILED,
+                    reason="Max consecutive failures exceeded after completion verification",
+                    release_callback=lambda task_id: (
+                        setattr(self, '_exploration_state', ExplorationHandlerState.COMPLETED),
+                        self.release_executor(task_id)
+                    )
                 )
-                
-                # 🛡️ 关键修复：在设置FAILED状态前，停止所有运动
-                if self._rotation_controller.is_rotating:
-                    self._rotation_controller.stop_rotation()
-                    self._node.get_logger().info("[ExplorationHandler] Stopped rotation before marking task as FAILED (from consecutive failures)")
-                
-                if self._nav_executor.get_state() == NavigationState.EXECUTING:
-                    self._nav_executor.cancel_navigation()
-                    self._node.get_logger().info("[ExplorationHandler] Canceled navigation before marking task as FAILED (from consecutive failures)")
-                
-                self._task_manager.update_task_state(task.task_id, TaskState.FAILED)
-                self._exploration_state = ExplorationHandlerState.COMPLETED
-                self.release_executor(task.task_id)
                 return
         
         # 4. 否则继续探索 → 重新选择frontier
@@ -1175,82 +1214,7 @@ class ExplorationHandler(TaskExecutionHandler):
             f"🔄 Reselecting frontier to continue exploration "
             f"(consecutive failures: {self._consecutive_failures}/{self._max_consecutive_failures})"
         )
-    
-    def _handle_navigation_failure(self, task: Task):
-        """
-        处理导航失败（不取消任务，继续探索）
-        Handle navigation failure (continue exploration instead of canceling task)
-        
-        流程 / Process:
-        1. 记录失败的frontier到黑名单 / Record failed frontier to blacklist
-        2. 增加连续失败计数 / Increment consecutive failure count
-        3. 检查是否应该触发完成验证 / Check if completion verification should be triggered
-        4. 否则重新选择frontier继续探索 / Otherwise reselect frontier and continue
-        """
-        
-        # 1. 记录失败的frontier到黑名单
-        if self._current_frontier:
-            frontier_pos = self._current_frontier['center_world']
-            self._record_failed_frontier(frontier_pos)
-            self._node.get_logger().warn(
-                f"❌ Navigation failed to frontier at ({frontier_pos[0]:.2f}, {frontier_pos[1]:.2f}), "
-                f"added to failure history"
-            )
-        
-        # 2. 增加连续失败计数
-        self._consecutive_failures += 1
-        self._node.get_logger().warn(
-            f"[ExplorationHandler] Navigation failed "
-            f"(consecutive: {self._consecutive_failures}/{self._max_consecutive_failures})"
-        )
-        
-        # 3. 检查是否应该触发完成验证
-        completion = self._calculate_map_completion()
-        
-        # 3a. 高完成度 + 多次失败 → 可能是剩余区域不可达
-        if completion >= 0.85 and self._consecutive_failures >= 3:
-            self._node.get_logger().info(
-                f"✅ High completion ({completion*100:.1f}%) with {self._consecutive_failures} failures. "
-                f"Triggering completion verification to check if remaining areas are reachable."
-            )
-            # 触发完成验证（不是直接退出）
-            if self._check_exploration_completion(task):
-                return
-        
-        # 3b. 连续失败过多 → 触发完成验证
-        if self._consecutive_failures >= self._max_consecutive_failures:
-            self._node.get_logger().error(
-                f"⚠️ Exceeded max consecutive failures ({self._max_consecutive_failures}). "
-                f"Attempting final completion verification before giving up."
-            )
-            # 尝试最后验证
-            if self._check_exploration_completion(task):
-                return
-            else:
-                # 验证失败，任务真的失败了
-                self._node.get_logger().error(
-                    "[ExplorationHandler] Completion verification failed after max failures. "
-                    "Terminating exploration as FAILED."
-                )
-                
-                # 🛡️ 关键修复：在设置FAILED状态前，停止所有运动
-                if self._rotation_controller.is_rotating:
-                    self._rotation_controller.stop_rotation()
-                    self._node.get_logger().info("[ExplorationHandler] Stopped rotation before marking task as FAILED (from no frontiers)")
-                
-                if self._nav_executor.get_state() == NavigationState.EXECUTING:
-                    self._nav_executor.cancel_navigation()
-                    self._node.get_logger().info("[ExplorationHandler] Canceled navigation before marking task as FAILED (from no frontiers)")
-                
-                self._task_manager.update_task_state(task.task_id, TaskState.FAILED)
-                self._exploration_state = ExplorationHandlerState.COMPLETED
-                self.release_executor(task.task_id)
-                return
-        
-        # 4. 否则继续探索 → 重新选择frontier
-        self._current_frontier = None
-        self._goal_start_time = None
-        self._exploration_state = ExplorationHandlerState.DETECTING_FRONTIERS
+
         
         self._node.get_logger().info(
             f"🔄 Reselecting frontier to continue exploration "
@@ -1315,8 +1279,11 @@ class ExplorationHandler(TaskExecutionHandler):
                     f"{self._completion_verification_attempts} attempts. "
                     f"Final completion: {completion*100:.2f}%. Completing exploration..."
                 )
-                # 🔧 关键修复：调用_complete_exploration保存地图
-                self._complete_exploration(task)
+                # 🔧 关键修复：使用标志防止重复完成
+                if not self._exploration_completed:
+                    self._exploration_completed = True
+                    self._complete_exploration(task)
+                    self._exploration_state = ExplorationHandlerState.COMPLETED
                 return True
             
             # 继续下一次验证
@@ -1488,45 +1455,18 @@ class ExplorationHandler(TaskExecutionHandler):
             
             center_world = frontier_info['center_world']
             
-            # 🛡️ 问题1修复：在选择frontier时预先验证边界，避免worldToMap failed
-            # 检查frontier是否在当前地图范围内
-            goal_coords = CoordinateConverter.world_to_map(
-                center_world[0], center_world[1], self._current_map
+            # 🎯 重构：使用 GoalBoundaryValidator 统一边界检查
+            is_valid, reason, goal_coords = self._boundary_validator.validate_goal(
+                goal_world=center_world,
+                current_map=self._current_map,
+                logger=self._node.get_logger()
             )
-            if goal_coords is None:
-                # 目标在地图外，跳过
+            
+            if not is_valid:
                 self._node.get_logger().debug(
-                    f"[Verification] Skipping frontier at ({center_world[0]:.2f}, {center_world[1]:.2f}) - "
-                    f"outside map boundaries"
+                    f"[Verification] Skipping frontier at ({center_world[0]:.2f}, {center_world[1]:.2f}) - {reason}"
                 )
                 continue
-            
-            goal_mx, goal_my = goal_coords
-            map_width = self._current_map.info.width
-            map_height = self._current_map.info.height
-            
-            # 检查是否在安全边界内（5 cells余量）
-            boundary_margin = 5
-            is_near_boundary = (
-                goal_mx < boundary_margin or 
-                goal_mx >= map_width - boundary_margin or
-                goal_my < boundary_margin or 
-                goal_my >= map_height - boundary_margin
-            )
-            
-            if is_near_boundary:
-                # 靠近边界，检查是否是free space
-                import numpy as np
-                map_data = np.array(self._current_map.data).reshape((map_height, map_width))
-                goal_value = map_data[goal_my, goal_mx] if (0 <= goal_my < map_height and 0 <= goal_mx < map_width) else -1
-                
-                if not (0 <= goal_value <= 50):
-                    # 不是free space，跳过
-                    self._node.get_logger().debug(
-                        f"[Verification] Skipping frontier at cell ({goal_mx}, {goal_my}) - "
-                        f"near boundary and not free space (value={goal_value}, map: {map_width}×{map_height})"
-                    )
-                    continue
             
             distance = math.sqrt(
                 (center_world[0] - robot_pos[0])**2 +
@@ -1574,53 +1514,97 @@ class ExplorationHandler(TaskExecutionHandler):
                 return True
             return True
         
-        # 🎯 关键：按距离降序排序，选择最远的（且未尝试过的）
-        available_frontiers.sort(key=lambda x: x['distance'], reverse=True)
-        target_frontier = available_frontiers[0]
+        # 🎯 优化：计算每个frontier周围的未知区域密度，选择未知区域最多的点
+        # 而不是单纯选择最远的点
+        # 🔧 渐进式阈值：第1次35%，第2次25%，第3次15%
+        thresholds = [0.35, 0.25, 0.15]
+        min_unknown_ratio = thresholds[min(self._completion_verification_attempts - 1, len(thresholds) - 1)]
+        
+        high_unknown_frontiers = []
+        for frontier in available_frontiers:
+            unknown_ratio = self._calculate_unknown_area_ratio(frontier['position'])
+            frontier['unknown_ratio'] = unknown_ratio
+            
+            self._node.get_logger().debug(
+                f"[Verification] Frontier at ({frontier['position'][0]:.2f}, {frontier['position'][1]:.2f}): "
+                f"distance={frontier['distance']:.2f}m, unknown_ratio={unknown_ratio:.2%}"
+            )
+            
+            # 🎯 关键过滤：只保留未知区域 >= 阈值 的点
+            if unknown_ratio >= min_unknown_ratio:
+                high_unknown_frontiers.append(frontier)
+            else:
+                self._node.get_logger().debug(
+                    f"[Verification] Skipping low-unknown frontier ({unknown_ratio:.1%} < {min_unknown_ratio:.1%})"
+                )
+        
+        # 检查是否有高未知区域的 frontier
+        if not high_unknown_frontiers:
+            self._node.get_logger().warn(
+                f"[ExplorationHandler] No frontiers with >{min_unknown_ratio:.0%} unknown area found. "
+                f"All {len(available_frontiers)} candidates have low unknown ratios (likely map edges)."
+            )
+            
+            # 🔧 关键修复：当没有合格frontier时，检查是否应该完成探索
+            if self._completion_verification_attempts >= self._max_verification_attempts:
+                # 达到最大尝试次数，触发完成
+                self._node.get_logger().info(
+                    f"[ExplorationHandler] Final verification exhausted all attempts with no valid targets. "
+                    f"Completion: {self._calculate_map_completion()*100:.1f}%. Completing exploration..."
+                )
+                if not self._exploration_completed:
+                    self._exploration_completed = True
+                    self._complete_exploration(task)
+                    self._exploration_state = ExplorationHandlerState.COMPLETED
+                return True
+            
+            # 未达到最大次数，继续尝试（会使用更低的阈值）
+            return True
+        
+        # 🎯 综合评分：未知区域密度（70%权重） + 距离（30%权重）
+        # 鼓励选择靠近大片未知区域的点，而非已知区域的远点
+        max_distance = max(f['distance'] for f in high_unknown_frontiers)
+        for frontier in high_unknown_frontiers:
+            unknown_score = frontier['unknown_ratio'] * 0.7
+            distance_score = (frontier['distance'] / max_distance) * 0.3
+            frontier['final_score'] = unknown_score + distance_score
+        
+        # 按综合评分降序排序
+        high_unknown_frontiers.sort(key=lambda x: x['final_score'], reverse=True)
+        target_frontier = high_unknown_frontiers[0]
         
         # 🐛 方案B: 记录这个frontier已经被尝试
         self._verified_frontiers.add(target_frontier['grid_key'])
         
         self._node.get_logger().info(
-            f"[ExplorationHandler] Verification target: distant frontier at "
-            f"distance {target_frontier['distance']:.2f}m, size {target_frontier['size']} cells "
+            f"[ExplorationHandler] Verification target: frontier with {target_frontier['unknown_ratio']:.1%} unknown area "
+            f"(score={target_frontier['final_score']:.3f}, distance={target_frontier['distance']:.2f}m, size={target_frontier['size']} cells) "
             f"(tried {len(self._verified_frontiers)}/{len(frontier_infos)} frontiers)"
         )
         
         # 导航到该边界（使用两步导航）
+        # 🎯 重构：使用统一的两段式导航（先旋转再移动，旋转失败则直达）
         target_pos = target_frontier['position']
-        robot_yaw = self._get_robot_yaw_odom()
-        if robot_yaw is None:
-            # 无法获取朝向，直接导航
-            self._node.get_logger().warn("[ExplorationHandler] Cannot get robot yaw, navigating directly")
-            self._current_frontier = target_frontier['frontier']
-            self._navigate_to_frontier(self._current_frontier, task)
-        else:
-            target_yaw = math.atan2(target_pos[1] - robot_pos[1], target_pos[0] - robot_pos[0])
-            angle_diff = self._normalize_angle(target_yaw - robot_yaw)
-            
-            self._node.get_logger().info(
-                f"[ExplorationHandler] First step: adjusting orientation "
-                f"(rotate {math.degrees(angle_diff):.1f}°)"
+        self._current_frontier = target_frontier['frontier']
+        
+        # 构造 frontier_eval（用于两段式导航）
+        frontier_eval = {
+            'frontier_info': target_frontier['frontier'],
+            'distance': target_frontier['distance'],
+            'direction': math.atan2(
+                target_pos[1] - robot_pos[1],
+                target_pos[0] - robot_pos[0]
             )
-            
-            self._pending_goal = {
-                'position': target_pos,
-                'yaw': target_yaw,
-                'frontier_info': {
-                    'size': target_frontier['size'],
-                    'distance': target_frontier['distance'],
-                    'direction': 0.0  # 不重要
-                }
-            }
-            
-            self._rotation_controller.start_rotation(
-                math.degrees(angle_diff),
-                self._get_robot_yaw_odom,
-                self._pending_goal
-            )
-            
-            self._exploration_state = ExplorationHandlerState.ROTATING_AT_GOAL
+        }
+        
+        self._node.get_logger().info(
+            f"[Verification] Using two-step navigation to target at "
+            f"({target_pos[0]:.2f}, {target_pos[1]:.2f}), distance={target_frontier['distance']:.2f}m"
+        )
+        
+        # 🎯 使用 _send_navigation_goal 统一处理两段式导航
+        # 这会自动处理：1) 角度差>10°先旋转 2) 旋转失败直达 3) 边界检查
+        self._send_navigation_goal(target_pos, frontier_eval, task)
         
         return True  # 继续验证流程
     
@@ -1867,6 +1851,64 @@ class ExplorationHandler(TaskExecutionHandler):
                 return True
         
         return False
+    
+    def _calculate_unknown_area_ratio(self, world_pos: Tuple[float, float], radius: float = 2.0) -> float:
+        """
+        计算指定世界坐标周围的未知区域占比
+        Calculate the ratio of unknown area around a world position
+        
+        Args:
+            world_pos: 世界坐标 (x, y) / World coordinates
+            radius: 检测半径（米）/ Detection radius in meters
+            
+        Returns:
+            未知区域占比 [0, 1] / Unknown area ratio
+        """
+        if self._current_map is None:
+            return 0.0
+        
+        import numpy as np
+        from ....exploration.exploration_utils import CoordinateConverter
+        
+        # 转换为地图坐标
+        coords = CoordinateConverter.world_to_map(
+            world_pos[0], world_pos[1],
+            self._current_map
+        )
+        
+        if coords is None:
+            return 0.0
+        
+        map_x, map_y = coords
+        
+        width = self._current_map.info.width
+        height = self._current_map.info.height
+        
+        # 边界检查
+        if not (0 <= map_x < width and 0 <= map_y < height):
+            return 0.0
+        
+        # 计算检测范围（地图坐标）
+        radius_cells = int(radius / self._current_map.info.resolution)
+        
+        map_array = np.array(self._current_map.data).reshape((height, width))
+        
+        # 提取检测区域
+        min_x = max(0, map_x - radius_cells)
+        max_x = min(width, map_x + radius_cells + 1)
+        min_y = max(0, map_y - radius_cells)
+        max_y = min(height, map_y + radius_cells + 1)
+        
+        region = map_array[min_y:max_y, min_x:max_x]
+        
+        if region.size == 0:
+            return 0.0
+        
+        # 计算未知区域占比（-1表示未知）
+        unknown_cells = np.sum(region == -1)
+        total_cells = region.size
+        
+        return unknown_cells / total_cells if total_cells > 0 else 0.0
     
     def _calculate_map_completion(self) -> float:
         """
@@ -2181,27 +2223,18 @@ class ExplorationHandler(TaskExecutionHandler):
         target_pos = goal_info['position']
         target_yaw = goal_info['yaw']
         
-        # 🛡️ 方案C: 智能化边界检查
-        if not hasattr(self, '_current_map') or self._current_map is None:
-            # 🐛 关键修复：地图不可用时不应该发送目标！
-            self._node.get_logger().error(
-                f"❌ [ExplorationHandler] Cannot send goal ({target_pos[0]:.2f}, {target_pos[1]:.2f}) - "
-                f"No map available! Skipping this frontier."
-            )
-            self._pending_goal = None
-            self._exploration_state = ExplorationHandlerState.DETECTING_FRONTIERS
-            return
-        
-        goal_coords = CoordinateConverter.world_to_map(
-            target_pos[0], target_pos[1], self._current_map
+        # 🎯 重构：使用 GoalBoundaryValidator 统一边界检查
+        is_valid, reason, goal_coords = self._boundary_validator.validate_goal(
+            goal_world=target_pos,
+            current_map=self._current_map if hasattr(self, '_current_map') else None,
+            logger=self._node.get_logger()
         )
-        if goal_coords is None:
+        
+        if not is_valid:
             self._node.get_logger().warn(
-                f"⚠️ [ExplorationHandler] Pending goal ({target_pos[0]:.2f}, {target_pos[1]:.2f}) "
-                f"is OUTSIDE map boundaries! Skipping this frontier."
+                f"⚠️ [ExplorationHandler] Pending goal ({target_pos[0]:.2f}, {target_pos[1]:.2f}) rejected: {reason}"
             )
             self._pending_goal = None
-            # 🐛 方案D: 不计为失败，直接重新选择
             self._exploration_state = ExplorationHandlerState.DETECTING_FRONTIERS
             return
         
