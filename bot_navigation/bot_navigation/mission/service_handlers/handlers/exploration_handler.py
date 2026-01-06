@@ -38,6 +38,7 @@ from ....exploration.completion_strategy import CompletionStrategy
 class ExplorationHandlerState(Enum):
     """探索处理器状态"""
     IDLE = "idle"
+    NAVIGATING_TO_INITIAL_SCAN_POINT = "navigating_to_initial_scan_point"  # 导航到初始扫描点
     DETECTING_FRONTIERS = "detecting"
     NAVIGATING_TO_FRONTIER = "navigating"
     ROTATING_AT_GOAL = "rotating"
@@ -97,6 +98,8 @@ class ExplorationHandler(TaskExecutionHandler):
         self._stagnant_count = 0  # 停滞计数
         self._pending_goal = None  # 待处理的目标（旋转避障后使用）
         self._initial_scan_done = False  # 初始扫描完成标志
+        self._initial_scan_point_reached = False  # 初始扫描安全点是否到达
+        self._initial_scan_point = None  # 初始扫描安全点坐标
         
         # 🎯 阶段3: 最终验证和脱困相关变量
         self._completion_scan_in_progress = False  # 完成度验证进行中标志
@@ -104,6 +107,10 @@ class ExplorationHandler(TaskExecutionHandler):
         self._completion_verification_attempts = 0  # 完成验证尝试次数
         self._max_verification_attempts = 3  # 最大验证次数
         self._is_in_verification = False  # 是否在验证模式
+        self._verification_rotation_pending = False  # 验证后是否需要旋转180°
+        self._verification_nav_completed = False  # 当前验证的导航是否已完成
+        self._verification_rotation_pending = False  # 验证后是否需要旋转180°
+        self._verification_nav_completed = False  # 当前验证的导航是否已完成
         
         # 🎯 方案C: 主动完成度检测相关变量
         self._completion_history = []  # [(timestamp, completion), ...]
@@ -355,7 +362,54 @@ class ExplorationHandler(TaskExecutionHandler):
         
         # 🔧 关键修复：处理初始扫描（必须在边界检测前完成）
         # 🔧 Critical Fix: Handle initial scan (must complete before frontier detection)
-        if not self._rotation_controller.initial_scan_done and self._exploration_state != ExplorationHandlerState.ROTATING_AT_GOAL:
+        # 🎯 新策略：先导航到前方已知区域的安全点，再进行360°扫描
+        if not self._rotation_controller.initial_scan_done and self._exploration_state not in [
+            ExplorationHandlerState.ROTATING_AT_GOAL,
+            ExplorationHandlerState.NAVIGATING_TO_INITIAL_SCAN_POINT
+        ]:
+            # 阶段1：选择并导航到初始扫描安全点
+            if not self._initial_scan_point_reached:
+                # 选择前方已知区域的安全点
+                safe_point = self._find_safe_initial_scan_point()
+                
+                if safe_point is not None:
+                    self._initial_scan_point = safe_point
+                    self._node.get_logger().info(
+                        f"[ExplorationHandler] Found safe initial scan point at ({safe_point[0]:.2f}, {safe_point[1]:.2f}), "
+                        f"navigating there before scanning..."
+                    )
+                    
+                    # 发送导航目标
+                    from geometry_msgs.msg import PoseStamped
+                    goal_pose = PoseStamped()
+                    goal_pose.header.frame_id = 'map'
+                    goal_pose.header.stamp = self._node.get_clock().now().to_msg()
+                    goal_pose.pose.position.x = safe_point[0]
+                    goal_pose.pose.position.y = safe_point[1]
+                    goal_pose.pose.position.z = 0.0
+                    goal_pose.pose.orientation.w = 1.0  # 朝向不重要，到达后会360°扫描
+                    
+                    if self._nav_executor.navigate_to_pose(goal_pose):
+                        self._exploration_state = ExplorationHandlerState.NAVIGATING_TO_INITIAL_SCAN_POINT
+                        self._node.get_logger().info(
+                            "[ExplorationHandler] Navigating to safe initial scan point..."
+                        )
+                    else:
+                        self._node.get_logger().warn(
+                            "[ExplorationHandler] Failed to send navigation to initial scan point, "
+                            "performing scan at current position"
+                        )
+                        self._initial_scan_point_reached = True  # 跳过导航，直接扫描
+                else:
+                    # 找不到安全点，在当前位置扫描
+                    self._node.get_logger().warn(
+                        "[ExplorationHandler] Cannot find safe initial scan point in forward known area, "
+                        "scanning at current position"
+                    )
+                    self._initial_scan_point_reached = True
+                return
+            
+            # 阶段2：到达安全点后，执行360°扫描
             # 检查是否正在旋转 / Check if already rotating
             if self._rotation_controller.is_rotating_state:
                 return  # 正在旋转，等待完成 / Rotating, wait for completion
@@ -390,6 +444,32 @@ class ExplorationHandler(TaskExecutionHandler):
             # 开始探索（初始扫描已在上面处理）
             self._exploration_state = ExplorationHandlerState.DETECTING_FRONTIERS
             self._node.get_logger().info("[ExplorationHandler] Starting frontier detection")
+        
+        elif self._exploration_state == ExplorationHandlerState.NAVIGATING_TO_INITIAL_SCAN_POINT:
+            # 监控导航到初始扫描点的进度
+            nav_state = self._nav_executor.get_state()
+            
+            if nav_state == NavigationState.EXECUTING:
+                return  # 导航中，等待完成
+            
+            elif nav_state == NavigationState.SUCCESS:
+                self._node.get_logger().info(
+                    "[ExplorationHandler] Reached safe initial scan point, ready for 360° scan"
+                )
+                self._initial_scan_point_reached = True
+                # 🔧 关键修复：改变状态为IDLE，下次循环会重新进入初始扫描流程
+                self._exploration_state = ExplorationHandlerState.IDLE
+                return  # 返回，下次循环执行扫描
+            
+            elif nav_state == NavigationState.FAILED:
+                self._node.get_logger().warn(
+                    "[ExplorationHandler] Failed to reach initial scan point, "
+                    "performing scan at current position"
+                )
+                self._initial_scan_point_reached = True
+                # 🔧 关键修复：改变状态为IDLE，下次循环会重新进入初始扫描流程
+                self._exploration_state = ExplorationHandlerState.IDLE
+                return  # 返回，下次循环执行扫描
         
         elif self._exploration_state == ExplorationHandlerState.DETECTING_FRONTIERS:
             self._process_frontier_detection(task)
@@ -1250,6 +1330,10 @@ class ExplorationHandler(TaskExecutionHandler):
             # 🐛 方案B: 清空已尝试frontier集合，允许重新验证
             self._verified_frontiers = set()
             
+            # 🎯 重置验证旋转状态
+            self._verification_rotation_pending = False
+            self._verification_nav_completed = False
+            
             return self._attempt_final_verification(task)
         
         # 3. 正在验证中
@@ -1264,30 +1348,119 @@ class ExplorationHandler(TaskExecutionHandler):
                 )
                 # 取消验证，继续探索
                 self._completion_scan_in_progress = False
+                self._verification_rotation_pending = False
                 self._exploration_state = ExplorationHandlerState.DETECTING_FRONTIERS
                 return False
+            
+            # 🎯 新增：检查是否需要执行验证后的180°旋转
+            if self._verification_rotation_pending:
+                # 检查旋转是否在进行
+                if self._rotation_controller.is_rotating_state:
+                    return True  # 旋转中，等待完成
+                
+                # 旋转已完成（或未开始），继续下一次验证
+                self._verification_rotation_pending = False
+                self._node.get_logger().info(
+                    f"[ExplorationHandler] Verification rotation completed. "
+                    f"Proceeding to next verification attempt ({self._completion_verification_attempts}/{self._max_verification_attempts})"
+                )
+                
+                # 检查验证次数
+                if self._completion_verification_attempts >= self._max_verification_attempts:
+                    self._node.get_logger().info(
+                        f"[ExplorationHandler] Final verification completed after "
+                        f"{self._completion_verification_attempts} attempts. "
+                        f"Final completion: {completion*100:.2f}%. Completing exploration..."
+                    )
+                    # 🔧 关键修复：使用标志防止重复完成
+                    if not self._exploration_completed:
+                        self._exploration_completed = True
+                        self._complete_exploration(task)
+                        self._exploration_state = ExplorationHandlerState.COMPLETED
+                    return True
+                
+                # 继续下一次验证
+                return self._attempt_final_verification(task)
             
             # 等待导航完成
             nav_state = self._nav_executor.get_state()
             if nav_state == NavigationState.EXECUTING:
                 return True  # 阻塞，等待导航
             
-            # 检查验证次数
-            if self._completion_verification_attempts >= self._max_verification_attempts:
-                self._node.get_logger().info(
-                    f"[ExplorationHandler] Final verification completed after "
-                    f"{self._completion_verification_attempts} attempts. "
-                    f"Final completion: {completion*100:.2f}%. Completing exploration..."
-                )
-                # 🔧 关键修复：使用标志防止重复完成
-                if not self._exploration_completed:
-                    self._exploration_completed = True
-                    self._complete_exploration(task)
-                    self._exploration_state = ExplorationHandlerState.COMPLETED
+            # 🎯 导航完成（成功或失败），触发180°旋转
+            if nav_state in [NavigationState.SUCCESS, NavigationState.FAILED]:
+                if not self._verification_nav_completed:
+                    self._verification_nav_completed = True
+                    
+                    result_str = "succeeded" if nav_state == NavigationState.SUCCESS else "failed"
+                    self._node.get_logger().info(
+                        f"[ExplorationHandler] Verification navigation {result_str}. "
+                        f"Starting 180° rotation for comprehensive scanning..."
+                    )
+                    
+                    # 启动180°旋转
+                    rotation_started = False
+                    robot_yaw = self._get_robot_yaw_odom()
+                    
+                    if robot_yaw is not None:
+                        try:
+                            success = self._rotation_controller.start_rotation(
+                                angle_degrees=180.0,  # 🔧 修复：使用正确的参数名 angle_degrees
+                                current_yaw_func=self._get_robot_yaw_odom
+                            )
+                            
+                            if success:
+                                rotation_started = True
+                                self._verification_rotation_pending = True
+                                self._exploration_state = ExplorationHandlerState.ROTATING_AT_GOAL
+                                self._node.get_logger().info(
+                                    "[ExplorationHandler] Verification rotation started successfully"
+                                )
+                            else:
+                                # 旋转启动失败
+                                self._node.get_logger().warn(
+                                    "[ExplorationHandler] Failed to start verification rotation"
+                                )
+                        except Exception as e:
+                            self._node.get_logger().error(
+                                f"[ExplorationHandler] Error starting verification rotation: {e}"
+                            )
+                    else:
+                        self._node.get_logger().warn(
+                            "[ExplorationHandler] Cannot get robot yaw for verification rotation"
+                        )
+                    
+                    # 🔧 关键修复：如果旋转启动成功，返回True继续旋转
+                    if rotation_started:
+                        return True
+                    
+                    # 🔧 关键修复：旋转启动失败，直接进入下一次验证
+                    # 重置标志
+                    self._verification_rotation_pending = False
+                    self._verification_nav_completed = False  # 🔧 重要：重置这个标志，允许下次导航完成后再试
+                    
+                    self._node.get_logger().info(
+                        f"[ExplorationHandler] Skipped verification rotation, "
+                        f"proceeding to next verification attempt ({self._completion_verification_attempts}/{self._max_verification_attempts})"
+                    )
+                    
+                    # 检查验证次数
+                    if self._completion_verification_attempts >= self._max_verification_attempts:
+                        self._node.get_logger().info(
+                            f"[ExplorationHandler] Final verification completed after "
+                            f"{self._completion_verification_attempts} attempts. "
+                            f"Final completion: {completion*100:.2f}%. Completing exploration..."
+                        )
+                        if not self._exploration_completed:
+                            self._exploration_completed = True
+                            self._complete_exploration(task)
+                            self._exploration_state = ExplorationHandlerState.COMPLETED
+                        return True
+                    
+                    # 🔧 继续下一次验证
+                    return self._attempt_final_verification(task)
+                
                 return True
-            
-            # 继续下一次验证
-            return self._attempt_final_verification(task)
         
         # 4. 未达到阈值，继续探索
         self._node.get_logger().info(
@@ -1582,15 +1755,34 @@ class ExplorationHandler(TaskExecutionHandler):
             f"(tried {len(self._verified_frontiers)}/{len(frontier_infos)} frontiers)"
         )
         
+        # 🎯 新增：计算安全导航点（避免边缘点导致worldToMap错误）
         # 导航到该边界（使用两步导航）
         # 🎯 重构：使用统一的两段式导航（先旋转再移动，旋转失败则直达）
-        target_pos = target_frontier['position']
+        original_pos = target_frontier['position']
         self._current_frontier = target_frontier['frontier']
+        
+        # 🔧 关键优化：找到安全的导航点，避免地图边缘导致坐标越界
+        safe_target_pos = self._find_safe_navigation_point(original_pos, robot_pos)
+        if safe_target_pos is None:
+            self._node.get_logger().warn(
+                f"[ExplorationHandler] Cannot find safe navigation point for frontier at "
+                f"({original_pos[0]:.2f}, {original_pos[1]:.2f}), skipping this verification..."
+            )
+            # 继续下一次验证
+            return True
+        
+        target_pos = safe_target_pos
+        
+        # 重新计算距离（使用安全点）
+        actual_distance = math.sqrt(
+            (target_pos[0] - robot_pos[0])**2 +
+            (target_pos[1] - robot_pos[1])**2
+        )
         
         # 构造 frontier_eval（用于两段式导航）
         frontier_eval = {
             'frontier_info': target_frontier['frontier'],
-            'distance': target_frontier['distance'],
+            'distance': actual_distance,
             'direction': math.atan2(
                 target_pos[1] - robot_pos[1],
                 target_pos[0] - robot_pos[0]
@@ -1598,9 +1790,12 @@ class ExplorationHandler(TaskExecutionHandler):
         }
         
         self._node.get_logger().info(
-            f"[Verification] Using two-step navigation to target at "
-            f"({target_pos[0]:.2f}, {target_pos[1]:.2f}), distance={target_frontier['distance']:.2f}m"
+            f"[Verification] Using safe navigation point at "
+            f"({target_pos[0]:.2f}, {target_pos[1]:.2f}), distance={actual_distance:.2f}m"
         )
+        
+        # 🎯 重置导航完成标志，准备开始新的验证导航
+        self._verification_nav_completed = False
         
         # 🎯 使用 _send_navigation_goal 统一处理两段式导航
         # 这会自动处理：1) 角度差>10°先旋转 2) 旋转失败直达 3) 边界检查
@@ -1851,6 +2046,236 @@ class ExplorationHandler(TaskExecutionHandler):
                 return True
         
         return False
+    
+    def _find_safe_navigation_point(self, frontier_pos: Tuple[float, float], 
+                                     robot_pos: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+        """
+        为边缘frontier找到安全的导航点
+        Find a safe navigation point for edge frontiers
+        
+        策略：
+        1. 如果frontier在地图边缘，向地图中心方向偏移
+        2. 确保目标点周围有足够的自由空间（支持180度旋转）
+        3. 检查目标点在地图边界内
+        
+        Args:
+            frontier_pos: frontier中心点世界坐标
+            robot_pos: 机器人当前位置世界坐标
+            
+        Returns:
+            安全导航点世界坐标，如果找不到返回None
+        """
+        if self._current_map is None:
+            return frontier_pos
+        
+        import numpy as np
+        from ....exploration.exploration_utils import CoordinateConverter
+        
+        # 转换frontier到地图坐标
+        frontier_coords = CoordinateConverter.world_to_map(
+            frontier_pos[0], frontier_pos[1], self._current_map
+        )
+        
+        if frontier_coords is None:
+            # frontier不在地图内，计算向机器人方向的安全点
+            self._node.get_logger().warn(
+                f"[SafeNav] Frontier ({frontier_pos[0]:.2f}, {frontier_pos[1]:.2f}) outside map, "
+                f"computing safe point towards robot"
+            )
+            # 向机器人方向偏移1.0米
+            direction_x = robot_pos[0] - frontier_pos[0]
+            direction_y = robot_pos[1] - frontier_pos[1]
+            distance = math.sqrt(direction_x**2 + direction_y**2)
+            if distance > 0:
+                safe_x = frontier_pos[0] + (direction_x / distance) * 1.0
+                safe_y = frontier_pos[1] + (direction_y / distance) * 1.0
+                return (safe_x, safe_y)
+            return frontier_pos
+        
+        fx, fy = frontier_coords
+        width = self._current_map.info.width
+        height = self._current_map.info.height
+        
+        # 检查是否靠近边界（离边界<10个格子）
+        margin = 10
+        is_near_edge = (fx < margin or fx >= width - margin or 
+                       fy < margin or fy >= height - margin)
+        
+        if not is_near_edge:
+            # 不在边缘，检查周围自由空间
+            map_array = np.array(self._current_map.data).reshape((height, width))
+            rotation_radius = int(0.8 / self._current_map.info.resolution)  # 0.8米旋转半径
+            
+            # 提取旋转区域
+            min_x = max(0, fx - rotation_radius)
+            max_x = min(width, fx + rotation_radius + 1)
+            min_y = max(0, fy - rotation_radius)
+            max_y = min(height, fy + rotation_radius + 1)
+            
+            region = map_array[min_y:max_y, min_x:max_x]
+            free_ratio = np.sum((region >= 0) & (region < 50)) / region.size if region.size > 0 else 0
+            
+            if free_ratio > 0.7:  # 70%以上是自由空间
+                self._node.get_logger().debug(
+                    f"[SafeNav] Frontier has sufficient free space ({free_ratio:.1%}), using original position"
+                )
+                return frontier_pos
+        
+        # 需要找安全点：向地图中心方向偏移
+        center_x = width // 2
+        center_y = height // 2
+        
+        # 计算向中心的方向
+        to_center_x = center_x - fx
+        to_center_y = center_y - fy
+        distance = math.sqrt(to_center_x**2 + to_center_y**2)
+        
+        if distance < 1:
+            # 已经在中心附近
+            return frontier_pos
+        
+        # 向中心偏移1.0米（约20个格子，假设分辨率0.05m）
+        offset_cells = int(1.0 / self._current_map.info.resolution)
+        safe_fx = fx + int((to_center_x / distance) * offset_cells)
+        safe_fy = fy + int((to_center_y / distance) * offset_cells)
+        
+        # 确保在地图内
+        safe_fx = max(margin, min(width - margin - 1, safe_fx))
+        safe_fy = max(margin, min(height - margin - 1, safe_fy))
+        
+        # 转换回世界坐标
+        safe_world = CoordinateConverter.map_to_world(safe_fx, safe_fy, self._current_map)
+        
+        if safe_world:
+            self._node.get_logger().info(
+                f"[SafeNav] Adjusted frontier position: "
+                f"({frontier_pos[0]:.2f}, {frontier_pos[1]:.2f}) → ({safe_world[0]:.2f}, {safe_world[1]:.2f}), "
+                f"offset={math.sqrt((safe_world[0]-frontier_pos[0])**2 + (safe_world[1]-frontier_pos[1])**2):.2f}m"
+            )
+            return safe_world
+        
+        return frontier_pos
+    
+    def _find_safe_initial_scan_point(self) -> Optional[Tuple[float, float]]:
+        """
+        在机器人前方已知区域中寻找安全的初始扫描点
+        Find a safe initial scan point in the forward known area
+        
+        策略 / Strategy:
+        1. 获取机器人当前位置和朝向
+        2. 在前方1.5-2.5米范围内搜索
+        3. 选择已知区域最大、最安全的点
+        4. 该点周围0.8米内应有足够的自由空间（用于旋转）
+        
+        Returns:
+            安全点的世界坐标 (x, y)，如果找不到则返回 None
+        """
+        if self._current_map is None:
+            self._node.get_logger().warn("[InitialScan] No map available for finding safe scan point")
+            return None
+        
+        # 获取机器人位置和朝向
+        robot_pose = self._nav_executor.get_robot_pose()
+        robot_yaw = self._nav_executor.get_robot_yaw()
+        
+        if robot_pose is None or robot_yaw is None:
+            self._node.get_logger().warn("[InitialScan] Cannot get robot pose/yaw")
+            return None
+        
+        robot_x = robot_pose.pose.position.x
+        robot_y = robot_pose.pose.position.y
+        
+        import numpy as np
+        from ....exploration.exploration_utils import CoordinateConverter
+        
+        width = self._current_map.info.width
+        height = self._current_map.info.height
+        resolution = self._current_map.info.resolution
+        map_array = np.array(self._current_map.data).reshape((height, width))
+        
+        # 搜索参数
+        min_distance = 1.5  # 最小距离（米）
+        max_distance = 2.5  # 最大距离（米）
+        angle_range = 60.0  # 前方视野角度范围（±30度）
+        search_step = 0.3   # 搜索步长（米）
+        rotation_radius = 0.8  # 旋转所需半径（米）
+        
+        best_point = None
+        best_score = -1.0
+        
+        # 在前方扇形区域内搜索
+        for distance in np.arange(min_distance, max_distance + search_step, search_step):
+            for angle_offset in np.linspace(-angle_range/2, angle_range/2, 11):  # 检查11个方向
+                angle_rad = math.radians(angle_offset)
+                search_yaw = robot_yaw + angle_rad
+                
+                # 计算候选点世界坐标
+                candidate_x = robot_x + distance * math.cos(search_yaw)
+                candidate_y = robot_y + distance * math.sin(search_yaw)
+                
+                # 转换为地图坐标
+                coords = CoordinateConverter.world_to_map(candidate_x, candidate_y, self._current_map)
+                if coords is None:
+                    continue
+                
+                cx, cy = coords
+                
+                # 边界检查
+                if not (0 <= cx < width and 0 <= cy < height):
+                    continue
+                
+                # 检查该点是否为自由空间
+                if map_array[cy, cx] >= 50:  # 障碍物或未知区域
+                    continue
+                
+                # 检查旋转半径内的空间
+                rotation_cells = int(rotation_radius / resolution)
+                min_x = max(0, cx - rotation_cells)
+                max_x = min(width, cx + rotation_cells + 1)
+                min_y = max(0, cy - rotation_cells)
+                max_y = min(height, cy + rotation_cells + 1)
+                
+                region = map_array[min_y:max_y, min_x:max_x]
+                
+                if region.size == 0:
+                    continue
+                
+                # 计算自由空间占比
+                free_cells = np.sum((region >= 0) & (region < 50))
+                free_ratio = free_cells / region.size
+                
+                # 计算已知区域占比（自由+障碍）
+                known_cells = np.sum(region >= 0)
+                known_ratio = known_cells / region.size
+                
+                # 评分：优先选择自由空间多且已知区域大的点
+                # 同时考虑距离（稍微偏好较远的点，视野更好）
+                if free_ratio < 0.7:  # 自由空间不足70%，跳过
+                    continue
+                
+                if known_ratio < 0.8:  # 已知区域不足80%，跳过
+                    continue
+                
+                # 综合评分
+                distance_score = (distance - min_distance) / (max_distance - min_distance)  # 0-1
+                score = free_ratio * 0.5 + known_ratio * 0.3 + distance_score * 0.2
+                
+                if score > best_score:
+                    best_score = score
+                    best_point = (candidate_x, candidate_y)
+        
+        if best_point:
+            self._node.get_logger().info(
+                f"[InitialScan] Found safe scan point at ({best_point[0]:.2f}, {best_point[1]:.2f}), "
+                f"distance from robot: {math.sqrt((best_point[0]-robot_x)**2 + (best_point[1]-robot_y)**2):.2f}m, "
+                f"score: {best_score:.3f}"
+            )
+        else:
+            self._node.get_logger().warn(
+                "[InitialScan] No suitable safe scan point found in forward area"
+            )
+        
+        return best_point
     
     def _calculate_unknown_area_ratio(self, world_pos: Tuple[float, float], radius: float = 2.0) -> float:
         """
