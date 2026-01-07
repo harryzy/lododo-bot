@@ -48,8 +48,7 @@
   │       ├── __init__.py
   │       └── logger.py
   ├── config/
-  │   ├── command_config.yaml
-  │   └── location_map.yaml
+  │   └── command_config.yaml
   ├── launch/
   │   └── cmd_adapter.launch.py
   ├── test/
@@ -101,7 +100,6 @@ class ActionType:
     
     # 导航类 / Navigation
     NAVIGATE_TO_POSE = "navigate_to_pose"
-    NAVIGATE_TO_LOCATION = "navigate_to_location"  # Phase 1.3新增 / Added in Phase 1.3
     
     # 任务类 / Task
     START_EXPLORATION = "start_exploration"
@@ -123,7 +121,7 @@ class ActionType:
     LOAD_MAP = "load_map"
     
     ALL_ACTIONS = [
-        NAVIGATE_TO_POSE, NAVIGATE_TO_LOCATION,
+        NAVIGATE_TO_POSE,
         START_EXPLORATION, START_PATROL, STOP_PATROL,
         PAUSE_TASK, RESUME_TASK, CANCEL_TASK,
         GET_TASK_STATUS, GET_ROBOT_STATUS,
@@ -162,8 +160,6 @@ class ActionType:
   - `create_emergency_stop_request(force_immediate=False) -> CommandRequest`
   - `create_get_status_request(task_id=None, request_id=None) -> CommandRequest`
   - `create_cancel_task_request(task_id=None, request_id=None) -> CommandRequest`
-  
-  **注意**: `create_navigate_to_location_request()` 在Phase 1.3实现
 
 **参考代码片段**:
 ```python
@@ -371,57 +367,16 @@ pytest src/bot_cmd_interface/test/test_sdk.py -v
 
 #### 1.3.2 location_map.yaml
 
-**文件**: `config/location_map.yaml`
+#### 1.3.2 (已取消 / Deprecated)
 
-- [ ] **1.3.2.1** 创建地点映射配置
-  - 按设计文档Section 7.2示例完整复制
-  - 初始包含5个示例地点: 厨房、客厅、卧室、阳台、充电桩
+**原计划**: 创建location_map.yaml和LocationMapLoader  
+**取消原因**: 违反松耦合设计原则 - 地点映射应由客户端终端自行维护，CommandAdapter只接受坐标参数  
+**决定**: 移除NAVIGATE_TO_LOCATION动作，只保留NAVIGATE_TO_POSE（基于坐标）
 
-- [ ] **1.3.2.2** 实现配置加载工具类
-  **文件**: `utils/config_loader.py`
-  ```python
-  class LocationMapLoader:
-      """地点映射配置加载器 / Location map configuration loader"""
-      
-      def __init__(self, config_path: str):
-          self.config_path = config_path
-          self.locations = {}
-          self._load_config()
-      
-      def get_pose(self, location_name: str) -> dict:
-          """根据地点名称获取坐标 / Get pose by location name"""
-          pass
-      
-      def list_locations(self) -> List[str]:
-          """列出所有可用地点 / List all available locations"""
-          pass
-  ```
-
-- [ ] **1.3.2.3** 扩展SDK支持地点导航
-  **文件**: `sdk/message.py` (新增)
-  ```python
-  def create_navigate_to_location_request(
-      location: str,
-      timeout: float = None
-  ) -> CommandRequest:
-      """
-      创建导航到命名地点请求 / Create navigate to named location request
-      
-      Note: 实际坐标由CommandAdapter从location_map.yaml解析
-           / Actual coordinates resolved by CommandAdapter from location_map.yaml
-      """
-      params = {"location": location}
-      return CommandRequest(
-          action=ActionType.NAVIGATE_TO_LOCATION,
-          params=params,
-          timeout=timeout or 300.0
-      )
-  ```
-
-**验收标准**:
-- ✅ `location_map.yaml`格式正确
-- ✅ `LocationMapLoader`能正确加载和查询
-- ✅ `create_navigate_to_location_request()`测试通过
+**设计说明**: 
+- 语音终端等客户端自行维护location_map.json（本地配置）
+- 客户端将地点名称转换为坐标后，调用create_navigate_request(x, y, yaw)
+- CommandAdapter保持轻量化，不关注应用层的地点名称定义
 
 ---
 
@@ -622,10 +577,7 @@ pytest src/bot_cmd_interface/test/test_sdk.py -v
   - 获取`task_id`，存储映射关系
   - 返回结果
 
-- [ ] **2.2.2.2** `_call_navigate_to_location(request_id, params) -> dict`
-  - 从`location_map.yaml`解析地点坐标
-  - 转换为`navigate_to_pose`参数
-  - 调用`_call_navigate_to_pose()`
+- [ ] **2.2.2.2** (已取消) `_call_navigate_to_location` - 地点导航由客户端处理
 
 - [ ] **2.2.2.3** `_call_start_exploration(request_id, params) -> dict`
   - 调用`/mission/start_exploration`服务

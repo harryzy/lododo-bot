@@ -18,9 +18,6 @@ class ActionType:
     NAVIGATE_TO_POSE = "navigate_to_pose"
     """导航到目标点 (x, y, yaw) / Navigate to target pose (x, y, yaw)"""
     
-    NAVIGATE_TO_LOCATION = "navigate_to_location"
-    """导航到命名地点 / Navigate to named location"""
-    
     # ========== 任务类 / Task ==========
     START_EXPLORATION = "start_exploration"
     """开始自主探索建图 / Start autonomous exploration and mapping"""
@@ -61,7 +58,6 @@ class ActionType:
     # ========== 所有动作列表 / All actions list ==========
     ALL_ACTIONS = [
         NAVIGATE_TO_POSE,
-        NAVIGATE_TO_LOCATION,
         START_EXPLORATION,
         START_PATROL,
         STOP_PATROL,
@@ -100,7 +96,7 @@ class ActionType:
             str: 分类名称 (navigation/task/query/control/map) /
                  Category name (navigation/task/query/control/map)
         """
-        if action in [ActionType.NAVIGATE_TO_POSE, ActionType.NAVIGATE_TO_LOCATION]:
+        if action == ActionType.NAVIGATE_TO_POSE:
             return "navigation"
         elif action in [
             ActionType.START_EXPLORATION,

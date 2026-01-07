@@ -14,7 +14,6 @@ from bot_cmd_interface.sdk import (
     ResponseStatus,
     ErrorCode,
     create_navigate_request,
-    create_navigate_to_location_request,
     create_patrol_request,
     create_exploration_request,
     create_emergency_stop_request,
@@ -30,7 +29,7 @@ class TestActionType:
     
     def test_all_actions_defined(self):
         """测试所有动作常量已定义 / Test all action constants defined"""
-        assert len(ActionType.ALL_ACTIONS) == 13
+        assert len(ActionType.ALL_ACTIONS) == 12  # 移除NAVIGATE_TO_LOCATION后为12个
         assert ActionType.NAVIGATE_TO_POSE in ActionType.ALL_ACTIONS
         assert ActionType.EMERGENCY_STOP in ActionType.ALL_ACTIONS
     
@@ -306,14 +305,6 @@ class TestConvenienceConstructors:
         request = create_navigate_request(1.0, 2.0)
         
         assert 'orientation' not in request.params['goal_pose']
-    
-    def test_create_navigate_to_location_request(self):
-        """测试地点导航请求 / Test location navigation request"""
-        request = create_navigate_to_location_request("厨房")
-        
-        assert request.action == ActionType.NAVIGATE_TO_LOCATION
-        assert request.params['location'] == "厨房"
-        assert request.timeout == 300.0
     
     def test_create_patrol_request(self):
         """测试巡航请求构造 / Test patrol request constructor"""

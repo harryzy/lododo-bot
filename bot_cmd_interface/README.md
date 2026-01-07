@@ -11,7 +11,7 @@ LeKiwi机器人的统一命令接口层，提供基于ROS2 Topic的异步请求/
 - ✅ **请求ID驱动** - 完整的请求生命周期管理
 - ✅ **松耦合架构** - 终端与后端通过标准协议交互
 - ✅ **SDK支持** - 完整的Python SDK，简化终端集成
-- ✅ **13种动作类型** - 导航、任务、查询、控制、地图操作
+- ✅ **12种动作类型** - 导航、任务、查询、控制、地图操作
 - ✅ **错误码标准化** - 基于HTTP状态码的统一错误体系
 - ✅ **配置驱动** - YAML配置文件，灵活配置超时、队列等参数
 
@@ -35,8 +35,7 @@ bot_cmd_interface/
 │   │   └── config_loader.py          # 配置加载器
 │   └── command_adapter_node.py       # 🚧 主节点（Phase 2）
 ├── config/                           # ✅ 配置文件（Phase 1完成）
-│   ├── command_config.yaml           # 命令适配器配置
-│   └── location_map.yaml             # 地点映射配置
+│   └── command_config.yaml           # 命令适配器配置
 ├── launch/                           # 🚧 启动文件（Phase 2）
 │   └── cmd_adapter.launch.py         # 待实现
 ├── test/                             # ✅ 测试（Phase 1完成）
@@ -70,7 +69,6 @@ from bot_cmd_interface.sdk import (
     ResponseStatus,
     ErrorCode,
     create_navigate_request,
-    create_navigate_to_location_request,
     create_patrol_request,
     create_exploration_request,
     create_emergency_stop_request,
@@ -119,36 +117,15 @@ else:
     print(f"任务进行中: {response.status}")
 ```
 
-#### 4. 使用地点映射
-
-```python
-from bot_cmd_interface.utils import LocationMapLoader
-
-# 加载地点映射
-loader = LocationMapLoader("config/location_map.yaml")
-
-# 获取地点坐标
-pose = loader.get_pose("厨房")
-print(pose)  # {'x': 2.5, 'y': 3.0, 'yaw': 1.57}
-
-# 列出所有地点
-locations = loader.list_locations()
-print(locations)  # ['厨房', '客厅', '卧室', '阳台', '充电桩']
-
-# 创建导航到地点请求
-request = create_navigate_to_location_request("厨房")
-```
-
 ## SDK API参考
 
 ### ActionType类
 
-13种动作类型常量：
+12种动作类型常量：
 
 | 动作类型 | 说明 | 分类 |
 |---------|------|------|
 | `NAVIGATE_TO_POSE` | 导航到目标点 (x, y, yaw) | 导航 |
-| `NAVIGATE_TO_LOCATION` | 导航到命名地点 | 导航 |
 | `START_EXPLORATION` | 开始自主探索建图 | 任务 |
 | `START_PATROL` | 开始巡航任务 | 任务 |
 | `STOP_PATROL` | 停止巡航任务 | 任务 |
@@ -191,7 +168,6 @@ request = create_navigate_to_location_request("厨房")
 | 函数 | 说明 |
 |------|------|
 | `create_navigate_request(x, y, yaw=None)` | 创建导航到坐标请求 |
-| `create_navigate_to_location_request(location)` | 创建导航到地点请求 |
 | `create_patrol_request(waypoint_file, mode='loop')` | 创建巡航请求 |
 | `create_exploration_request(map_name=None)` | 创建探索请求 |
 | `create_emergency_stop_request()` | 创建紧急停止请求 |
@@ -219,20 +195,6 @@ persistence:
   mapping_file: ~/.bot_cmd_interface/request_task_map.json
 ```
 
-### location_map.yaml
-
-地点映射配置，包含5个示例地点：
-
-```yaml
-locations:
-  - name: "厨房"
-    x: 2.5
-    y: 3.0
-    yaw: 1.57
-    description: "Kitchen area"
-    tags: ["room", "indoor"]
-```
-
 ## 实施进度
 
 ### ✅ Phase 1: 基础框架与SDK模块（已完成）
@@ -244,17 +206,15 @@ locations:
   - [x] 编译测试通过
 
 - [x] 1.2 SDK模块核心类实现
-  - [x] ActionType常量定义（13个动作）
+  - [x] ActionType常量定义（12个动作）
   - [x] CommandRequest类（构造、序列化、反序列化、验证）
   - [x] CommandResponse类（序列化、反序列化、状态判断）
   - [x] ErrorCode枚举类（8个错误码）
-  - [x] 6个便捷构造函数
+  - [x] 5个便捷构造函数
   - [x] SDK验证器
 
 - [x] 1.3 配置文件管理
   - [x] command_config.yaml（完整配置）
-  - [x] location_map.yaml（5个示例地点）
-  - [x] LocationMapLoader类
   - [x] load_command_config函数
 
 - [x] 1.4 Phase 1 验收

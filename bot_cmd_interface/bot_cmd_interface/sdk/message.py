@@ -428,44 +428,6 @@ def create_navigate_request(
     return CommandRequest(**kwargs)
 
 
-def create_navigate_to_location_request(
-    location: str,
-    timeout: Optional[float] = None,
-    priority: int = 3
-) -> CommandRequest:
-    """
-    创建导航到命名地点请求 / Create navigate to named location request
-    
-    实际坐标由CommandAdapter从location_map.yaml解析 /
-    Actual coordinates resolved by CommandAdapter from location_map.yaml
-    
-    Args:
-        location: 地点名称（如"厨房"、"客厅"）/ Location name (e.g., "kitchen", "living_room")
-        timeout: 超时时间（秒），可选 / Timeout (seconds), optional
-        priority: 优先级，默认3 / Priority, default 3
-        
-    Returns:
-        CommandRequest: 导航请求对象 / Navigation request object
-        
-    Example:
-        >>> request = create_navigate_to_location_request("厨房")
-    """
-    params = {"location": location}
-    
-    kwargs = {
-        "action": ActionType.NAVIGATE_TO_LOCATION,
-        "params": params,
-        "priority": priority
-    }
-    
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-    else:
-        kwargs["timeout"] = 300.0
-    
-    return CommandRequest(**kwargs)
-
-
 def create_patrol_request(
     waypoint_file: str,
     mode: str = "loop",

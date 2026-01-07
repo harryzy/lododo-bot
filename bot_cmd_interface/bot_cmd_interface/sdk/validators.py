@@ -14,7 +14,6 @@ from .action_types import ActionType
 
 REQUIRED_PARAMS = {
     ActionType.NAVIGATE_TO_POSE: ['goal_pose'],
-    ActionType.NAVIGATE_TO_LOCATION: ['location'],
     ActionType.START_EXPLORATION: [],  # 所有参数可选 / All parameters optional
     ActionType.START_PATROL: ['waypoint_file'],
     ActionType.STOP_PATROL: [],  # 无参数要求 / No parameters required
@@ -71,10 +70,6 @@ def validate_request(request: CommandRequest) -> Tuple[bool, str]:
     # 特定动作的参数验证 / Action-specific parameter validation
     if request.action == ActionType.NAVIGATE_TO_POSE:
         return _validate_navigate_params(request.params)
-    
-    elif request.action == ActionType.NAVIGATE_TO_LOCATION:
-        if not isinstance(request.params.get('location'), str):
-            return False, "Parameter 'location' must be a string"
     
     elif request.action == ActionType.START_PATROL:
         if not isinstance(request.params.get('waypoint_file'), str):

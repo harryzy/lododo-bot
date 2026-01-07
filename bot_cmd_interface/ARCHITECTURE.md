@@ -2560,7 +2560,6 @@ class ActionDefinitions:
     
     # ==================== 动作类型常量 / Action Type Constants ====================
     NAVIGATE_TO_POSE = "navigate_to_pose"
-    NAVIGATE_TO_LOCATION = "navigate_to_location"
     START_PATROL = "start_patrol"
     START_EXPLORATION = "start_exploration"
     EMERGENCY_STOP = "emergency_stop"
@@ -2573,7 +2572,6 @@ class ActionDefinitions:
     # 所有支持的动作列表 / All supported actions list
     ALL_ACTIONS = [
         NAVIGATE_TO_POSE,
-        NAVIGATE_TO_LOCATION,
         START_PATROL,
         START_EXPLORATION,
         EMERGENCY_STOP,
@@ -2591,15 +2589,6 @@ class ActionDefinitions:
             description="导航到指定坐标 / Navigate to specified coordinates",
             required_params=["x", "y"],
             optional_params=["yaw", "frame_id", "location"],
-            priority=2,
-            timeout=300.0
-        ),
-        
-        NAVIGATE_TO_LOCATION: ActionSchema(
-            name=NAVIGATE_TO_LOCATION,
-            description="导航到命名地点 / Navigate to named location",
-            required_params=["location"],
-            optional_params=["yaw"],
             priority=2,
             timeout=300.0
         ),
@@ -3189,7 +3178,6 @@ def generate_launch_description():
     
     # 配置文件路径
     config_file = os.path.join(pkg_dir, 'config', 'command_config.yaml')
-    location_map_file = os.path.join(pkg_dir, 'config', 'location_map.yaml')
     
     return LaunchDescription([
         # CommandAdapter 核心节点
@@ -3198,12 +3186,7 @@ def generate_launch_description():
             executable='command_adapter',
             name='command_adapter',
             output='screen',
-            parameters=[
-                config_file,
-                {
-                    'location_map_file': location_map_file
-                }
-            ],
+            parameters=[config_file],
             remappings=[
                 # 可选：重映射Topic名称
                 # ('/cmd/request', '/robot/cmd/request'),
@@ -3270,51 +3253,16 @@ command_adapter:
       resume_task: "/mission/resume_task"
 ```
 
-#### config/location_map.yaml
-```yaml
-# 命名地点坐标映射表 / Named location coordinate mapping
-locations:
-  厨房:
-    x: 2.5
-    y: 3.0
-    yaw: 0.0
-    frame_id: "map"
-    description: "Kitchen area"
-  
-  客厅:
-    x: 0.0
-    y: 0.0
-    yaw: 1.57
-    frame_id: "map"
-    description: "Living room"
-  
-  卧室:
-    x: -3.0
-    y: 2.0
-    yaw: 3.14
-    frame_id: "map"
-    description: "Bedroom"
-  
-  阳台:
-    x: 1.5
-    y: -2.0
-    yaw: -1.57
-    frame_id: "map"
-    description: "Balcony"
-  
-  充电桩:
-    x: -1.0
-    y: -1.0
-    yaw: 0.0
-    frame_id: "map"
-    description: "Charging station"
-```
-
 **配置文件使用说明 / Configuration Usage**:
 1. **修改参数**: 直接编辑YAML文件 / Modify parameters: Edit YAML files directly
 2. **重新加载**: 重启CommandAdapter节点 / Reload: Restart CommandAdapter node
 3. **验证配置**: 使用`ros2 param list`检查 / Validate: Use `ros2 param list` to check
-4. **地点管理**: 通过location_map.yaml管理命名地点 / Location management: Manage named locations via location_map.yaml
+
+**设计原则说明 - 关于地点管理 / Design Principle - Location Management**:
+- CommandAdapter **不提供** location_map配置
+- 地点名称到坐标的映射由 **各终端自行维护**
+- 例如：语音终端维护自己的location_map.json，将"去厨房"转换为navigate_to_pose(x=2.0, y=3.0, yaw=0.0)
+- 这保持了CommandAdapter的轻量化和松耦合特性
 
 ---
 
@@ -3877,7 +3825,7 @@ def _processing_loop(self):
 |------|------|------|
 | 优先级抢占策略 | 仅emergency_stop(priority=1)可抢占，其他按FIFO | 简单明确，避免复杂的抢占逻辑 |
 | 命令去重标准 | 5秒内，除request_id外内容相同 | 防止用户误操作重复提交 |
-| 地点名称管理 | 方案1:配置文件(location_map.yaml) | 快速实现，易于维护 |
+| 地点名称管理 | 由各终端自行维护（如location_map.json） | 松耦合，CommandAdapter保持轻量化 |
 | 命令执行反馈 | 仅通过/cmd/response Topic | 松耦合，终端自行订阅和处理 |
 | 多用户场景 | 不支持，单用户模式 | 简化设计，当前需求不需要 |
 | 消息格式 | JSON字符串封装在std_msgs/String | 灵活扩展，无需定义多个ROS消息类型 |
@@ -3912,9 +3860,8 @@ def _processing_loop(self):
 - [ ] 配置文件加载（command_config.yaml等）
 
 ### Phase 3: 终端集成 (1-2天)
-- [ ] 语音终端示例（VoiceTerminal）
+- [ ] 语音终端示例（VoiceTerminal - 包含本地location_map.json管理）
 - [ ] Web终端示例（WebTerminal）
-- [ ] 地点名称映射（location_map.yaml）
 - [ ] 文档和使用示例
 
 ### Phase 4: 测试与优化 (1天)
@@ -3962,10 +3909,10 @@ ACTION_LOAD_MAP = "load_map"                          # 加载地图
 ```
 1. 用户说："去厨房"
 2. VoiceTerminal识别语音
-3. VoiceTerminal生成request_id: "voice-12345"
-4. VoiceTerminal发布JSON请求到 /cmd/request
-5. CommandAdapter接收并解析
-6. CommandAdapter查location_map.yaml，找到厨房坐标
+3. VoiceTerminal查询本地location_map.json，获取厨房坐标(x=2.0, y=3.0, yaw=0.0)
+4. VoiceTerminal生成request_id: "voice-12345"
+5. VoiceTerminal发布JSON请求到 /cmd/request (action=navigate_to_pose, params={x, y, yaw})
+6. CommandAdapter接收并解析请求
 7. CommandAdapter调用 /mission/navigate_to_pose
 8. CommandAdapter发布响应到 /cmd/response（status=executing）
 9. VoiceTerminal收到响应，TTS播放："正在前往厨房"

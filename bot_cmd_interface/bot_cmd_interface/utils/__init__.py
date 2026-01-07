@@ -5,9 +5,8 @@ bot_cmd_interface工具模块 / Utility module
 Contains utility functions for configuration loading, logging, etc.
 """
 
-from .config_loader import LocationMapLoader, load_command_config
+from .config_loader import load_command_config
 
 __all__ = [
-    'LocationMapLoader',
     'load_command_config',
 ]

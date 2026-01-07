@@ -18,7 +18,6 @@ from .message import (
     ResponseStatus,
     ErrorCode,
     create_navigate_request,
-    create_navigate_to_location_request,
     create_patrol_request,
     create_exploration_request,
     create_emergency_stop_request,
@@ -43,7 +42,6 @@ __all__ = [
     
     # 便捷构造函数 / Convenience constructors
     'create_navigate_request',
-    'create_navigate_to_location_request',
     'create_patrol_request',
     'create_exploration_request',
     'create_emergency_stop_request',
