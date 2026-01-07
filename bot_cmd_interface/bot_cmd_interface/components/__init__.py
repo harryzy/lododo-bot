@@ -6,10 +6,12 @@ Contains core components including request queue, service adapter, and response 
 """
 
 from .request_queue import RequestQueue
-# ServiceAdapter和ResponsePublisher将在Phase 2.2和2.3实现
-# ServiceAdapter and ResponsePublisher will be implemented in Phase 2.2 and 2.3
+from .response_publisher import ResponsePublisher
+# ServiceAdapter将在Phase 2.2实现
+# ServiceAdapter will be implemented in Phase 2.2
 
 __all__ = [
     'RequestQueue',
+    'ResponsePublisher',
 ]
 
