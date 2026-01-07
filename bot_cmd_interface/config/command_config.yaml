@@ -1,0 +1,145 @@
+# bot_cmd_interface配置文件 / bot_cmd_interface configuration file
+# 用于CommandAdapter节点的运行时配置 / Runtime configuration for CommandAdapter node
+
+# ========== 队列配置 / Queue Configuration ==========
+queue:
+  max_size: 100
+  # 队列最大容量 / Maximum queue capacity
+  # 超过此值新请求将被拒绝 / New requests will be rejected when exceeded
+  
+  dedup_window: 5.0
+  # 去重时间窗口（秒）/ Deduplication time window (seconds)
+  # 在此时间内相同内容的请求将被拒绝 / Requests with same content within this window will be rejected
+  
+  priority_levels: 5
+  # 优先级级别数 / Number of priority levels
+  # 1 = 最高优先级（emergency_stop），5 = 最低优先级 / 1 = highest (emergency_stop), 5 = lowest
+
+
+# ========== 超时配置 / Timeout Configuration ==========
+timeout:
+  default: 300.0
+  # 默认超时时间（秒）/ Default timeout (seconds)
+  
+  navigation: 300.0
+  # 导航任务超时 / Navigation task timeout
+  
+  exploration: 3600.0
+  # 探索任务超时 / Exploration task timeout
+  
+  patrol: 3600.0
+  # 巡航任务超时 / Patrol task timeout
+  
+  query: 5.0
+  # 查询操作超时 / Query operation timeout
+  
+  control: 5.0
+  # 控制操作超时 / Control operation timeout
+  
+  emergency_stop: 5.0
+  # 紧急停止超时 / Emergency stop timeout
+
+
+# ========== 持久化配置 / Persistence Configuration ==========
+persistence:
+  enabled: true
+  # 是否启用持久化 / Whether to enable persistence
+  
+  mapping_file: ~/.bot_cmd_interface/request_task_map.json
+  # request_id -> task_id 映射文件路径 / request_id to task_id mapping file path
+  
+  save_interval: 1.0
+  # 保存间隔（秒），0表示每次变更立即保存 / Save interval (seconds), 0 for immediate save
+  
+  backup_enabled: true
+  # 是否启用备份 / Whether to enable backup
+  
+  backup_file: ~/.bot_cmd_interface/request_task_map.json.bak
+  # 备份文件路径 / Backup file path
+  
+  format_version: "1.0.0"
+  # 持久化格式版本 / Persistence format version
+
+
+# ========== 服务配置 / Service Configuration ==========
+services:
+  wait_timeout: 10.0
+  # 等待服务可用的超时时间（秒）/ Timeout for waiting service availability (seconds)
+  
+  call_timeout: 30.0
+  # 服务调用默认超时（秒）/ Default service call timeout (seconds)
+  
+  retry:
+    enabled: true
+    # 是否启用重试 / Whether to enable retry
+    
+    max_attempts: 3
+    # 最大重试次数 / Maximum retry attempts
+    
+    interval: 2.0
+    # 重试间隔（秒）/ Retry interval (seconds)
+    
+    retryable_codes: [503, 504]
+    # 可重试的错误码 / Retryable error codes
+
+
+# ========== 日志配置 / Logging Configuration ==========
+logging:
+  level: INFO
+  # 日志级别: DEBUG, INFO, WARN, ERROR / Log level: DEBUG, INFO, WARN, ERROR
+  
+  request_logging: true
+  # 是否记录每个请求 / Whether to log each request
+  
+  response_logging: true
+  # 是否记录每个响应 / Whether to log each response
+  
+  queue_stats_interval: 60.0
+  # 队列统计输出间隔（秒），0表示禁用 / Queue stats output interval (seconds), 0 to disable
+  
+  performance_logging: true
+  # 是否记录性能指标（处理时间等）/ Whether to log performance metrics (processing time, etc.)
+
+
+# ========== 安全配置 / Security Configuration ==========
+security:
+  max_request_size: 10240
+  # 最大请求大小（字节）/ Maximum request size (bytes)
+  
+  rate_limiting:
+    enabled: false
+    # 是否启用速率限制 / Whether to enable rate limiting
+    
+    max_requests_per_second: 10
+    # 每秒最大请求数 / Maximum requests per second
+    
+    burst_size: 20
+    # 突发请求容量 / Burst request capacity
+
+
+# ========== ROS2配置 / ROS2 Configuration ==========
+ros2:
+  qos_profile:
+    request_topic: 10
+    # /cmd/request topic的QoS深度 / QoS depth for /cmd/request topic
+    
+    response_topic: 10
+    # /cmd/response topic的QoS深度 / QoS depth for /cmd/response topic
+  
+  spin_rate: 10.0
+  # 节点自旋频率（Hz）/ Node spin rate (Hz)
+
+
+# ========== 调试配置 / Debug Configuration ==========
+debug:
+  enabled: false
+  # 是否启用调试模式 / Whether to enable debug mode
+  
+  verbose_validation: false
+  # 是否输出详细验证信息 / Whether to output verbose validation info
+  
+  save_raw_messages: false
+  # 是否保存原始消息用于调试 / Whether to save raw messages for debugging
+  
+  message_dump_dir: ~/.bot_cmd_interface/debug/
+  # 消息转储目录 / Message dump directory
