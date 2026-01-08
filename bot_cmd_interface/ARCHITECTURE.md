@@ -22,7 +22,7 @@
 ### 1.2 设计理念
 
 ```
-核心理念：统一协议 + 请求ID中心 + JSON封装
+核心理念：统一协议 + 请求ID中心 + JSON封装 + 短生命周期
 
 [任意终端]
    │
@@ -44,6 +44,40 @@
 - 终端不需要知道后端服务细节
 - CommandAdapter不需要知道终端类型
 - 通过请求ID建立请求-响应关联
+```
+
+**⚠️ 关键设计原则：短生命周期 + 职责分离**
+
+```
+CommandAdapter层（CMD层）:
+  职责：请求接收 → 服务调用 → 获得task_id → 立即响应
+  生命周期：queued → executing → completed (约1秒)
+  ⚠️ 获得task_id后立即清理request_id状态
+
+MissionPlanner层（任务执行层）:
+  职责：任务队列管理 → 任务执行 → 状态维护
+  生命周期：任务可能执行几秒到几分钟
+  ⚠️ CMD层不等待任务完成
+
+查询机制（新请求）:
+  用户想知道任务进度 → 发送新的get_task_status请求
+  CMD调用查询服务 → 返回当前状态和进度
+```
+
+**示例流程对比**:
+```
+❌ 错误设计（违反松耦合）:
+  用户请求导航 → CMD等待导航完成（22秒）→ 返回成功
+  └─ CMD被任务执行阻塞，无法处理其他请求
+
+✅ 正确设计（短生命周期）:
+  用户请求导航 → CMD调用服务（0.5秒）→ 获得task_id → 立即响应completed
+                                         ↓
+                                   任务在后台执行（22秒）
+                                   （由MissionPlanner维护）
+  
+  用户查询进度 → CMD调用查询服务 → 返回{status: RUNNING, progress: 0.5}
+  用户再次查询 → CMD调用查询服务 → 返回{status: SUCCESS, progress: 1.0}
 ```
 
 ### 1.2.1 编码规范
@@ -345,10 +379,17 @@ response = CommandResponse(
 
 Time 2: [CommandAdapter] 轮到该请求，开始执行
   ├─ 发布executing状态
-  └─ 调用 /mission/navigate_to_pose（同步调用，约500ms）
+  └─ 调用ServiceAdapter.process_request()
+      └─ ServiceAdapter调用 /mission/navigate_to_pose（同步，约500ms）
 
-Time 2.5: [MissionPlanner] 返回task_id
-  └─ response.task_id = 123
+Time 2.5: [MissionPlanner服务] 立即返回task_id
+  └─ response: success=True, task_id=123
+  
+Time 2.5: [ServiceAdapter] 服务调用完成
+  ├─ 保存映射: request_id="req-001" → task_id=123
+  ├─ 持久化映射到文件（用于后续查询）
+  └─ 返回结果给CommandAdapter
+  ⚠️ ServiceAdapter职责结束：不追踪任务执行状态
 
 Time 2.5: [CommandAdapter] 发布completed响应
 response = CommandResponse(
@@ -374,6 +415,13 @@ if response.request_id == "req-001":
 
 # ========== 后续进度查询（新请求） ==========
 
+# ⚠️ 注意：任务执行状态由MissionPlanner + TaskManager维护
+# Time 2.5 - Time 30期间，后台任务一直在执行：
+# [MissionPlanner] 任务状态: RUNNING → 进度更新 → SUCCESS
+# [TaskManager] 维护任务队列和执行状态
+# [NavigationExecutor] 实际执行导航
+# ⚠️ ServiceAdapter和CommandAdapter不参与任务执行追踪
+
 Time 10: [Web终端] 查询任务进度（创建新请求）
 status_request = CommandRequest(
     action="get_task_status",
@@ -383,8 +431,14 @@ status_request = CommandRequest(
   ↓ 发布到 /cmd/request
 
 Time 10.5: [CommandAdapter] 处理查询请求
-  ├─ 调用 /mission/get_task_status
-  └─ MissionPlanner返回：task_status=RUNNING, progress=0.5
+  ├─ 发布queued和executing状态
+  └─ 调用ServiceAdapter.process_request()
+      └─ ServiceAdapter调用 /mission/get_task_status（同步，约100ms）
+          └─ MissionPlanner返回：task_status=RUNNING, progress=0.5
+
+Time 11: [ServiceAdapter] 服务调用完成
+  └─ 返回查询结果给CommandAdapter
+  ⚠️ ServiceAdapter只负责调用查询服务，不维护任务状态
 
 Time 11: [CommandAdapter] 发布查询结果
 response = CommandResponse(
@@ -1408,6 +1462,51 @@ class RequestValidator:
 
 **4. 服务适配器 (ServiceAdapter)**
 
+**职责边界说明 / Responsibility Boundaries**:
+
+ServiceAdapter是CMD层的"服务转译器"，其核心职责和边界如下：
+
+**✅ ServiceAdapter的职责 / Responsibilities**:
+1. **请求转译** - 将JSON请求转换为对应的ROS2服务调用
+2. **服务调用** - 同步调用MissionPlanner服务（超时5-10秒）
+3. **结果返回** - 将服务返回值（task_id/status）转换回JSON格式
+4. **映射管理** - 维护request_id到task_id的映射关系（用于后续查询）
+
+**❌ ServiceAdapter不负责 / Not Responsible For**:
+1. **任务执行追踪** - 不监控任务执行进度（由MissionPlanner维护）
+2. **任务状态管理** - 不维护任务队列和状态（由TaskManager维护）
+3. **推送式更新** - 不主动推送任务进度到CMD（仅响应查询）
+4. **任务完成等待** - 不等待任务执行完成才返回（立即返回task_id）
+
+**关键设计理念**:
+```
+ServiceAdapter只关心"服务调用是否成功" ✅
+不关心"任务是否执行成功" ❌
+
+示例：
+1. 导航请求 → 调用 /mission/navigate_to_pose
+   └─ 服务返回 task_id=123 (成功) ← ServiceAdapter职责结束
+   └─ 任务开始执行（22秒后完成）← 由MissionPlanner维护
+
+2. 查询请求 → 调用 /mission/get_task_status
+   └─ 服务返回 {task_id: 123, status: RUNNING, progress: 0.5}
+   └─ ServiceAdapter转换为JSON返回给CMD
+```
+
+**数据流分离**:
+```
+创建任务流程（短生命周期）:
+  用户 → CMD → ServiceAdapter → MissionPlanner服务 → 返回task_id
+                                                    ↓
+                                              CMD立即响应completed
+                                              ⚠️ 请求生命周期结束
+
+查询任务流程（新请求）:
+  用户 → CMD → ServiceAdapter → MissionPlanner查询服务 → 返回状态
+                                                      ↓
+                                                CMD返回查询结果
+```
+
 ```python
 """
 ServiceAdapter - ROS2服务调用适配器 / ROS2 Service Call Adapter
@@ -1436,6 +1535,17 @@ class ServiceAdapter:
     """
     请求到ROS2服务的适配器 / Request to ROS2 service adapter
     将统一的JSON请求转换为具体的ROS2 Service调用 / Convert unified JSON requests to specific ROS2 Service calls
+    
+    职责 / Responsibilities:
+    1. 请求转译：JSON请求 → ROS2服务调用
+    2. 服务调用：同步调用MissionPlanner服务（5-10秒超时）
+    3. 结果返回：服务响应 → JSON格式
+    4. 映射管理：维护request_id到task_id的映射
+    
+    不负责 / Not Responsible:
+    1. 任务执行追踪（由MissionPlanner维护）
+    2. 任务状态管理（由TaskManager维护）
+    3. 推送式更新（仅响应查询）
     
     线程安全性 / Thread Safety: ⚠️ service clients需要加锁保护（ROS2 client线程安全）/ service clients need lock protection (ROS2 client is thread-safe)
     """

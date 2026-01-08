@@ -240,6 +240,9 @@ class IntegrationTestSuite:
             print(f"{Fore.RED}✗ Test not found: {test_name}{Style.RESET_ALL}")
             return
         
+        # 清理之前的响应
+        self.node.responses.clear()
+        
         # 创建测试结果
         result = TestResult(test_name)
         
@@ -282,10 +285,12 @@ class IntegrationTestSuite:
         """测试1: 导航到目标点"""
         result.add_detail("Creating navigate_to_pose request...")
         
-        # 创建请求
+        # 创建请求 - 使用地图范围内的安全坐标
+        # exploration_test地图大小约122x122像素，分辨率0.05m/pixel
+        # 安全范围约 -3.0m 到 +3.0m
         request = CommandRequest(
             action=ActionType.NAVIGATE_TO_POSE,
-            params={'x': 2.0, 'y': 3.0, 'yaw': 1.57},
+            params={'x': 1.0, 'y': 1.5, 'yaw': 0.0},
             priority=3,
             timeout=300.0
         )
@@ -318,21 +323,46 @@ class IntegrationTestSuite:
     
     def test_emergency_stop(self, result: TestResult):
         """测试2: 紧急停止"""
-        result.add_detail("Creating emergency_stop request...")
+        result.add_detail("Step 1: Creating navigation task...")
         
-        request = CommandRequest(
+        # 先创建一个导航任务
+        nav_request = CommandRequest(
+            action=ActionType.NAVIGATE_TO_POSE,
+            params={'x': 2.0, 'y': 2.0, 'yaw': 0.0},  # 较远的目标点
+            priority=3,
+            timeout=300.0
+        )
+        
+        nav_request_id = self.node.send_request(nav_request)
+        result.add_detail(f"Created navigation task: {nav_request_id}")
+        
+        # 等待任务开始执行（queued -> executing）
+        time.sleep(0.5)
+        nav_executing = self.node.wait_for_response(nav_request_id, status='executing', timeout=5.0)
+        assert nav_executing, "Navigation task did not start executing"
+        
+        completed_nav = [r for r in self.node.responses[nav_request_id] if r.status == 'completed']
+        if completed_nav:
+            task_id = completed_nav[0].result.get('task_id')
+            result.add_detail(f"Navigation task_id: {task_id}")
+        
+        result.add_detail("Step 2: Sending emergency stop...")
+        time.sleep(0.5)  # 等待任务真正开始
+        
+        # 发送紧急停止
+        stop_request = CommandRequest(
             action=ActionType.EMERGENCY_STOP,
             params={'clear_tasks': True},
             priority=1,  # 最高优先级
             timeout=30.0
         )
         
-        request_id = self.node.send_request(request)
-        result.add_detail(f"Sent request: {request_id}")
+        stop_request_id = self.node.send_request(stop_request)
+        result.add_detail(f"Sent emergency stop: {stop_request_id}")
         
-        success, responses, error_msg = self.node.wait_for_complete_flow(request_id, timeout=10.0)
+        success, responses, error_msg = self.node.wait_for_complete_flow(stop_request_id, timeout=10.0)
         
-        result.add_detail(f"Received {len(responses)} responses")
+        result.add_detail(f"Received {len(responses)} responses for emergency stop")
         
         assert success, f"Emergency stop failed: {error_msg}"
         
@@ -421,10 +451,10 @@ class IntegrationTestSuite:
         """测试5: 暂停/恢复/取消任务"""
         result.add_detail("Creating navigation task for pause/resume/cancel test...")
         
-        # 创建导航任务
+        # 创建导航任务 - 使用地图范围内的坐标
         nav_request = CommandRequest(
             action=ActionType.NAVIGATE_TO_POSE,
-            params={'x': 5.0, 'y': 5.0, 'yaw': 0.0},
+            params={'x': 1.5, 'y': 2.0, 'yaw': 0.0},
             priority=3,
             timeout=300.0
         )
@@ -643,6 +673,17 @@ def main():
         # 等待节点初始化
         print(f"{Fore.CYAN}Initializing test node...{Style.RESET_ALL}")
         time.sleep(2.0)
+        
+        # 检查CommandAdapter是否运行
+        print(f"{Fore.CYAN}Checking if CommandAdapter is running...{Style.RESET_ALL}")
+        node_names = node.get_node_names()
+        if 'command_adapter' not in node_names:
+            print(f"{Fore.RED}✗ ERROR: CommandAdapter node not found!{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Please start the test environment first:{Style.RESET_ALL}")
+            print(f"  ros2 launch bot_bringup simulation_cmd_interface_test.launch.py slam:=false map_name:=exploration_test")
+            return 1
+        else:
+            print(f"{Fore.GREEN}✓ CommandAdapter is running{Style.RESET_ALL}")
         
         # 创建测试套件
         suite = IntegrationTestSuite(node, verbose=args.verbose)

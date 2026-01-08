@@ -52,9 +52,9 @@ from launch.actions import (
     IncludeLaunchDescription,
     LogInfo,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 import os
 
@@ -139,6 +139,7 @@ def generate_launch_description():
         launch_arguments={
             'world': world,
             'use_sim_time': use_sim_time,
+            'log_level': 'warn',
         }.items(),
         condition=IfCondition(slam)
     )
@@ -157,10 +158,9 @@ def generate_launch_description():
             'world': world,
             'map_name': map_name,
             'use_sim_time': use_sim_time,
+            'log_level': 'warn',
         }.items(),
-        condition=IfCondition(PythonExpression([
-            'not ', slam
-        ]))
+        condition=UnlessCondition(slam)
     )
     
     # ===== 3. 启动CommandAdapter =====
@@ -174,7 +174,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             'use_sim_time': use_sim_time,
-            'log_level': log_level,
+            'log_level': 'info',
             'use_mock': use_mock,
             'service_timeout': service_timeout,
         }.items()

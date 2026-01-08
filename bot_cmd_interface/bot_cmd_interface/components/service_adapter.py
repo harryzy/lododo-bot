@@ -14,6 +14,7 @@ import rclpy
 from rclpy.node import Node
 from typing import Dict, Any, Optional, Tuple
 import threading
+import asyncio
 
 # 导入服务消息类型 / Import service message types
 from bot_navigation_msgs.srv import (
@@ -37,6 +38,38 @@ class ServiceAdapter:
     
     将ActionType映射到对应的ROS2服务调用 /
     Maps ActionType to corresponding ROS2 service calls
+    
+    ========== 核心职责边界 / Core Responsibility Boundaries ==========
+    
+    ✅ ServiceAdapter负责 / Responsible For:
+    1. 请求转译：JSON请求 → ROS2服务调用参数
+    2. 服务调用：同步调用MissionPlanner服务（秒级超时）
+    3. 结果返回：服务响应（task_id/status）→ 字典格式
+    4. 错误处理：超时、服务不可用等错误码映射
+    
+    ❌ ServiceAdapter不负责 / Not Responsible For:
+    1. 任务执行追踪 - 不监控任务执行进度（由MissionPlanner维护）
+    2. 任务状态管理 - 不维护任务队列（由TaskManager维护）
+    3. 推送式更新 - 不主动推送任务状态（仅响应查询请求）
+    4. 任务完成等待 - 获得task_id后立即返回（不等待任务执行完成）
+    
+    ========== 典型调用流程 / Typical Call Flow ==========
+    
+    创建任务（短生命周期）:
+      CommandAdapter → ServiceAdapter.process_request()
+                    → _handle_navigate_to_pose()
+                    → _call_service('/mission/navigate_to_pose')
+                    → MissionPlanner服务返回 task_id (约0.5秒)
+                    → ServiceAdapter返回 {'task_id': xxx}
+      ⚠️ ServiceAdapter职责结束，不追踪后续任务执行
+    
+    查询任务（新请求）:
+      CommandAdapter → ServiceAdapter.process_request()
+                    → _handle_get_task_status()
+                    → _call_service('/mission/get_task_status')
+                    → MissionPlanner返回任务状态和进度
+                    → ServiceAdapter返回 {'state': 'RUNNING', 'progress': 0.5}
+      ⚠️ 这是一个全新的请求，不是之前任务的状态推送
     """
     
     def __init__(self, node: Node, timeout: float = 10.0):
@@ -198,6 +231,13 @@ class ServiceAdapter:
         """
         调用ROS2服务 / Call ROS2 service
         
+        使用asyncio.wait_for而非rclpy.spin_until_future_complete的原因：
+        Reason for using asyncio.wait_for instead of rclpy.spin_until_future_complete:
+        
+        - spin_until_future_complete会阻塞当前线程并尝试spin executor
+        - 在async上下文中会导致死锁（executor已被占用）
+        - asyncio.wait_for通过轮询future状态避免阻塞
+        
         Args:
             client_name: 客户端名称 / Client name
             request_msg: 服务请求消息 / Service request message
@@ -217,20 +257,24 @@ class ServiceAdapter:
             # 异步调用服务 / Call service asynchronously
             future = client.call_async(request_msg)
             
-            # 等待响应（使用rclpy的executor）/ Wait for response
-            rclpy.spin_until_future_complete(
-                self.node,
-                future,
-                timeout_sec=self.timeout
-            )
+            # 等待响应（使用asyncio，避免阻塞executor）/ Wait for response using asyncio
+            # 将rclpy Future包装为asyncio Future
+            loop = asyncio.get_event_loop()
             
-            if future.done():
-                response = future.result()
-                return True, response, ''
-            else:
-                with self._stats_lock:
-                    self._stats['timeout_calls'] += 1
-                return False, None, f'Service call timeout: {client_name}'
+            # 创建一个asyncio任务来轮询future状态
+            async def wait_for_future():
+                while not future.done():
+                    await asyncio.sleep(0.01)  # 10ms轮询间隔
+                return future.result()
+            
+            # 使用asyncio.wait_for添加超时
+            response = await asyncio.wait_for(wait_for_future(), timeout=self.timeout)
+            return True, response, ''
+        
+        except asyncio.TimeoutError:
+            with self._stats_lock:
+                self._stats['timeout_calls'] += 1
+            return False, None, f'Service call timeout: {client_name}'
         
         except Exception as e:
             return False, None, f'Service call failed: {str(e)}'
@@ -238,7 +282,18 @@ class ServiceAdapter:
     # ========== 具体服务处理方法 / Specific service handlers ==========
     
     async def _handle_navigate_to_pose(self, request: CommandRequest) -> Tuple[bool, Dict, str]:
-        """处理导航到目标位姿 / Handle navigate to pose"""
+        """
+        处理导航到目标位姿 / Handle navigate to pose
+        
+        职责范围 / Responsibility:
+        - 调用/mission/navigate_to_pose服务（同步，约0.5秒）
+        - 获取task_id后立即返回
+        - 不等待导航任务完成（任务由MissionPlanner后台执行）
+        
+        Returns:
+            (True, {'task_id': xxx}, message) - 服务调用成功，任务已创建
+            (False, {}, error_msg) - 服务调用失败
+        """
         params = request.params
         
         # 构造服务请求 / Construct service request
@@ -248,12 +303,13 @@ class ServiceAdapter:
         srv_request.yaw = float(params.get('yaw', 0.0))
         srv_request.frame_id = params.get('frame_id', 'map')
         
-        # 调用服务 / Call service
+        # 调用服务（立即返回task_id）/ Call service (returns task_id immediately)
         success, response, error_msg = await self._call_service('navigate_to_pose', srv_request)
         
         if success and response and response.success:
             with self._stats_lock:
                 self._stats['successful_calls'] += 1
+            # 返回task_id，任务在后台执行 / Return task_id, task executes in background
             return True, {'task_id': response.task_id}, response.message
         else:
             with self._stats_lock:
@@ -283,7 +339,14 @@ class ServiceAdapter:
             return False, {}, error
     
     async def _handle_start_exploration(self, request: CommandRequest) -> Tuple[bool, Dict, str]:
-        """处理开始探索 / Handle start exploration"""
+        """
+        处理开始探索 / Handle start exploration
+        
+        职责范围 / Responsibility:
+        - 调用/mission/start_exploration服务
+        - 获取task_id后立即返回
+        - 不等待探索任务完成（任务由MissionPlanner后台执行）
+        """
         params = request.params
         
         # 构造服务请求 / Construct service request
@@ -307,7 +370,14 @@ class ServiceAdapter:
             return False, {}, error
     
     async def _handle_start_patrol(self, request: CommandRequest) -> Tuple[bool, Dict, str]:
-        """处理开始巡航 / Handle start patrol"""
+        """
+        处理开始巡航 / Handle start patrol
+        
+        职责范围 / Responsibility:
+        - 调用/mission/start_patrol服务
+        - 获取task_id后立即返回
+        - 不等待巡航任务完成（任务由MissionPlanner后台执行）
+        """
         params = request.params
         
         # 构造服务请求 / Construct service request
@@ -330,7 +400,14 @@ class ServiceAdapter:
             return False, {}, error
     
     async def _handle_get_task_status(self, request: CommandRequest) -> Tuple[bool, Dict, str]:
-        """处理获取任务状态 / Handle get task status"""
+        """
+        处理获取任务状态 / Handle get task status
+        
+        职责范围 / Responsibility:
+        - 调用/mission/get_task_status查询服务
+        - 返回任务当前状态（state, progress）
+        - 这是一个新请求，不是之前任务的状态推送
+        """
         params = request.params
         
         # 构造服务请求 / Construct service request
