@@ -59,6 +59,9 @@ export class MapRenderer {
   // 机器人位姿缓存
   private robotPose: PoseMsg | null = null
   
+  // 导航目标
+  private navGoal: { x: number; y: number; yaw: number } | null = null
+  
   // 拖拽状态
   private isDragging = false
   private dragStartX = 0
@@ -107,6 +110,48 @@ export class MapRenderer {
   updateRobotPose(poseMsg: PoseMsg) {
     this.robotPose = poseMsg
     this.render()
+  }
+  
+  /**
+   * 设置导航目标
+   */
+  setNavGoal(x: number, y: number, yaw: number) {
+    this.navGoal = { x, y, yaw }
+    console.log('[MapRenderer] 设置导航目标:', x.toFixed(2), y.toFixed(2), 'yaw:', yaw.toFixed(2))
+    this.render()
+  }
+  
+  /**
+   * 清除导航目标
+   */
+  clearNavGoal() {
+    this.navGoal = null
+    this.render()
+  }
+  
+  /**
+   * 屏幕坐标 → ROS 坐标
+   */
+  screenToRos(screenX: number, screenY: number): { x: number; y: number } {
+    if (!this.mapData) {
+      return { x: 0, y: 0 }
+    }
+    
+    const { resolution, height, origin } = this.mapData.info
+    
+    // 1. 屏幕坐标 → Canvas像素坐标（逆变换）
+    const canvasX = (screenX - this.transform.offsetX) / this.transform.scale
+    const canvasY = (screenY - this.transform.offsetY) / this.transform.scale
+    
+    // 2. Canvas像素坐标 → 地图栅格坐标（Y轴翻转）
+    const gridX = canvasX
+    const gridY = height - canvasY
+    
+    // 3. 地图栅格坐标 → ROS世界坐标
+    const rosX = gridX * resolution + origin.position.x
+    const rosY = gridY * resolution + origin.position.y
+    
+    return { x: rosX, y: rosY }
   }
   
   /**
@@ -214,6 +259,11 @@ export class MapRenderer {
     if (this.robotPose && this.mapData) {
       this.renderRobot()
     }
+    
+    // 渲染导航目标
+    if (this.navGoal && this.mapData) {
+      this.renderNavGoal()
+    }
   }
   
   /**
@@ -273,6 +323,51 @@ export class MapRenderer {
     this.ctx.fillStyle = '#1890ff'
     this.ctx.beginPath()
     this.ctx.arc(0, 0, 5 * this.transform.scale, 0, Math.PI * 2)
+    this.ctx.fill()
+    
+    this.ctx.restore()
+  }
+  
+  /**
+   * 渲染导航目标（绿色箭头）
+   */
+  private renderNavGoal() {
+    if (!this.navGoal) return
+    
+    console.log('[MapRenderer] 开始渲染导航目标:', this.navGoal)
+    const screenPos = this.rosToScreen(this.navGoal.x, this.navGoal.y)
+    console.log('[MapRenderer] 屏幕坐标:', screenPos)
+    const yaw = this.navGoal.yaw
+    
+    this.ctx.save()
+    this.ctx.translate(screenPos.x, screenPos.y)
+    this.ctx.rotate(-yaw)  // Canvas Y轴向下，需要取反
+    
+    // 绘制箭头（长度30像素，比机器人大）
+    const arrowLength = 30 * this.transform.scale
+    const arrowWidth = 15 * this.transform.scale
+    
+    // 外边框（黑色）
+    this.ctx.strokeStyle = '#000'
+    this.ctx.lineWidth = 2
+    this.ctx.beginPath()
+    this.ctx.moveTo(arrowLength, 0)
+    this.ctx.lineTo(-arrowLength / 2, arrowWidth / 2)
+    this.ctx.lineTo(-arrowLength / 2, -arrowWidth / 2)
+    this.ctx.closePath()
+    this.ctx.stroke()
+    
+    // 填充（绿色）
+    this.ctx.fillStyle = '#52c41a'  // Ant Design 绿色
+    this.ctx.fill()
+    
+    // 绘制圆形底座
+    this.ctx.strokeStyle = '#000'
+    this.ctx.lineWidth = 2
+    this.ctx.beginPath()
+    this.ctx.arc(0, 0, 7 * this.transform.scale, 0, Math.PI * 2)
+    this.ctx.stroke()
+    this.ctx.fillStyle = '#52c41a'
     this.ctx.fill()
     
     this.ctx.restore()
