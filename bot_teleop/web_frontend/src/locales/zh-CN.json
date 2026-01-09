@@ -1,0 +1,55 @@
+{
+  "menu": {
+    "dashboard": "仪表盘",
+    "tasks": "任务控制",
+    "maps": "地图管理",
+    "waypoints": "路点管理",
+    "settings": "系统设置"
+  },
+  "connection": {
+    "connected": "已连接",
+    "disconnected": "未连接",
+    "connecting": "连接中..."
+  },
+  "tasks": {
+    "navigation": "导航任务",
+    "exploration": "探索建图",
+    "patrol": "巡逻任务",
+    "emergency": "紧急控制",
+    "start": "开始",
+    "stop": "停止",
+    "pause": "暂停",
+    "resume": "继续",
+    "cancel": "取消",
+    "startExploration": "开始探索",
+    "emergencyStop": "紧急停止"
+  },
+  "map": {
+    "title": "地图视图",
+    "zoom": "缩放",
+    "center": "居中",
+    "currentPosition": "当前位置"
+  },
+  "waypoints": {
+    "title": "路点管理",
+    "add": "添加路点",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存",
+    "load": "加载"
+  },
+  "settings": {
+    "title": "系统设置",
+    "language": "语言",
+    "theme": "主题",
+    "save": "保存设置"
+  },
+  "common": {
+    "ok": "确定",
+    "cancel": "取消",
+    "confirm": "确认",
+    "success": "成功",
+    "error": "错误",
+    "loading": "加载中..."
+  }
+}

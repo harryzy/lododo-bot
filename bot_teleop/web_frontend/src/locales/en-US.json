@@ -1,0 +1,55 @@
+{
+  "menu": {
+    "dashboard": "Dashboard",
+    "tasks": "Task Control",
+    "maps": "Map Management",
+    "waypoints": "Waypoint Management",
+    "settings": "Settings"
+  },
+  "connection": {
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "connecting": "Connecting..."
+  },
+  "tasks": {
+    "navigation": "Navigation Task",
+    "exploration": "Exploration",
+    "patrol": "Patrol Task",
+    "emergency": "Emergency Control",
+    "start": "Start",
+    "stop": "Stop",
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Cancel",
+    "startExploration": "Start Exploration",
+    "emergencyStop": "Emergency Stop"
+  },
+  "map": {
+    "title": "Map View",
+    "zoom": "Zoom",
+    "center": "Center",
+    "currentPosition": "Current Position"
+  },
+  "waypoints": {
+    "title": "Waypoint Management",
+    "add": "Add Waypoint",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "load": "Load"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "save": "Save Settings"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "success": "Success",
+    "error": "Error",
+    "loading": "Loading..."
+  }
+}
