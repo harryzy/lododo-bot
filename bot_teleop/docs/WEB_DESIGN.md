@@ -67,7 +67,7 @@
 │  │  │  React/Vue.js 前端应用                              │  │     │
 │  │  │  ┌─────────────┐  ┌──────────────┐  ┌──────────┐   │  │     │
 │  │  │  │ 地图组件    │  │ 任务控制面板 │  │ 状态监控 │   │  │     │
-│  │  │  │ (ros2djs)   │  │              │  │          │   │  │     │
+│  │  │  │(Canvas+ROS) │  │              │  │          │   │  │     │
 │  │  │  └─────────────┘  └──────────────┘  └──────────┘   │  │     │
 │  │  │  ┌─────────────┐  ┌──────────────┐  ┌──────────┐   │  │     │
 │  │  │  │ 路点编辑器  │  │ 地图管理     │  │ 日志查看 │   │  │     │
@@ -323,7 +323,7 @@ def generate_launch_description():
 ```
 React 18           - UI框架
 TypeScript         - 类型安全
-ros2djs            - 2D地图可视化（需自定义Costmap渲染）
+HTML5 Canvas       - 2D地图渲染（原生实现，无第三方依赖）
 roslibjs           - ROS通信库（rosbridge WebSocket）
 Ant Design v5      - UI组件库（使用默认亮色主题，简约风格）
 zustand            - 状态管理（轻量级）
@@ -365,13 +365,26 @@ uvicorn            - ASGI服务器
 
 #### 地图可视化 ✅
 
-**已选方案：ros2djs + 自定义Costmap渲染**
-- ros2djs提供基础occupancy grid、机器人位置、路径显示
-- **自定义开发**：Costmap膨胀区可视化（订阅`/local_costmap/costmap`，手动渲染半透明叠加层）
-- **自定义开发**：探索边界（frontier）标记
-- **自定义开发**：多层地图叠加（全局/局部costmap）
+**已选方案：原生HTML5 Canvas手动渲染**
+
+**技术决策理由**:
+- ❌ **放弃ros2djs**: 该库已6年未更新（最后版本0.10.0, 2018年），与ROS2 Humble存在兼容性问题，在测试中出现无法读取地图origin的错误
+- ✅ **采用Canvas原生实现**: 使用HTML5 Canvas API + ROSLIB.js手动渲染所有元素
+- ✅ **完全控制**: 实现OccupancyGrid渲染、Costmap叠加、机器人标记、路径显示等所有功能
+- ✅ **无依赖风险**: 不依赖过时的第三方库，代码完全可控
+- ✅ **性能优化**: 可针对特定场景优化渲染逻辑
+
+**实现内容**:
+- **MapRenderer工具类**：处理OccupancyGrid → Canvas图像转换、坐标系转换、变换矩阵管理
+- **Canvas地图渲染**：黑（障碍物）/白（自由空间）/灰（未知）三色渲染
+- **Costmap叠加层**：半透明渲染膨胀区（橙色）和致命障碍物（红色）
+- **机器人位置**：绘制蓝色箭头表示位置和朝向
+- **交互控制**：鼠标缩放/平移、重置视图、跟随机器人
+- **Nav Goal交互**：点击+拖拽设置导航目标（RViz风格）
 
 **关键决策**: 第一阶段必须实现Costmap显示，否则无法支持导航建图功能
+
+**代码量估算**: ~200行（MapRenderer工具类 + MapView组件），远少于集成ros2djs的复杂度
 
 ---
 
@@ -390,10 +403,12 @@ uvicorn            - ASGI服务器
 
 2. **Costmap可视化（⚠️ 第一阶段必须实现）** ✅
    - 订阅 `/local_costmap/costmap` 和 `/global_costmap/costmap`
-   - **手动渲染半透明叠加层**（ros2djs不支持，需自定义canvas绘制）
+   - **Canvas手动渲染半透明叠加层**：
+     - 使用独立的Canvas图层叠加在地图上
      - 解析OccupancyGrid数据（costmap值0-254）
-     - 绘制膨胀区（橙色半透明，costmap值 > 0 且 < 100）
-     - 绘制致命障碍物（红色半透明，costmap值 >= 100）
+     - 绘制膨胀区（橙色半透明，costmap值 > 0 且 < 100）：`rgba(255, 165, 0, 0.5)`
+     - 绘制致命障碍物（红色半透明，costmap值 >= 100）：`rgba(255, 0, 0, 0.7)`
+     - 使用OffscreenCanvas缓存提升性能
    - 图层控制：可切换显示/隐藏Costmap
    - **默认更新频率**: 5 Hz（在 `config/web_config.yaml` 中可配置）
    - **透明度**: 可配置（默认0.5）
@@ -464,20 +479,20 @@ rosbridge:
 
 **前端实现示例**:
 ```typescript
-// 地图组件伪代码
-import { Viewer2D } from 'ros2djs';
+// 地图组件伪代码 - Canvas实现
+import * as ROSLIB from 'roslib';
 
 class MapViewer {
-  private viewer: Viewer2D;
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
   private ros: ROSLIB.Ros;
+  private mapData: OccupancyGridData | null = null;
+  private transform = { scale: 1, offsetX: 0, offsetY: 0 };
   
-  constructor(divId: string) {
-    // 创建地图查看器
-    this.viewer = new Viewer2D({
-      divID: divId,
-      width: 800,
-      height: 600
-    });
+  constructor(canvasId: string) {
+    // 获取Canvas元素
+    this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
+    this.ctx = this.canvas.getContext('2d')!;
     
     // 连接rosbridge（从配置文件加载URL）
     this.ros = new ROSLIB.Ros({
@@ -793,11 +808,11 @@ POST   /api/emergency_stop      # 紧急停止
 - [ ] 单元测试
 
 #### 前端 (2天)
-- [ ] 创建React/Vue项目（Vite）
-- [ ] 集成ros2djs地图组件
+- [ ] 创建React项目（Vite）
+- [ ] 实现Canvas地图组件（MapRenderer工具类）
 - [ ] 实现基本UI布局（地图区域、控制面板）
-- [ ] 实现WebSocket连接
-- [ ] 实现点击地图导航
+- [ ] 实现WebSocket连接（rosbridge）
+- [ ] 实现点击地图导航（Canvas坐标转换）
 
 ### 5.2 第二阶段：核心功能（4-5天）
 
@@ -937,7 +952,6 @@ aiofiles>=23.2.1
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "roslibjs": "^1.3.0",
-    "ros2djs": "^0.10.0",
     "antd": "^5.0.0",
     "zustand": "^4.4.0",
     "@tanstack/react-query": "^5.0.0",
@@ -950,6 +964,8 @@ aiofiles>=23.2.1
   }
 }
 ```
+
+**注意**: 已移除 `ros2djs` 依赖，改用原生Canvas实现地图渲染。
 
 ---
 
@@ -1067,15 +1083,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 ### A3. 地图可视化对比
 
-| 特性 | ros2djs | Leaflet | Three.js |
-|------|---------|---------|----------|
-| 学习成本 | 低 | 中 | 高 |
-| ROS集成 | 原生 | 需适配 | 需适配 |
-| 2D地图 | 优秀 | 优秀 | 一般 |
-| 3D可视化 | 不支持 | 不支持 | 优秀 |
-| 性能 | 良好 | 优秀 | 中等 |
+| 特性 | Canvas原生 | ros2djs | Leaflet | Three.js |
+|------|-----------|---------|---------|----------|
+| 学习成本 | 低 | 低 | 中 | 高 |
+| ROS集成 | 手动实现 | 原生（已过时） | 需适配 | 需适配 |
+| 2D地图 | 优秀 | 优秀（不维护） | 优秀 | 一般 |
+| 3D可视化 | 不支持 | 不支持 | 不支持 | 优秀 |
+| 性能 | 极高 | 良好 | 优秀 | 中等 |
+| 可维护性 | 优秀（无依赖） | 差（2018年停更） | 优秀 | 中等 |
+| 代码量 | ~200行 | 0（依赖库） | 适配层>300行 | 适配层>500行 |
 
-**推荐**: ros2djs（专为ROS设计，开箱即用）
+**推荐**: **Canvas原生实现**
+- ros2djs已6年未更新，与ROS2 Humble不兼容
+- 原生Canvas提供完全控制，无第三方依赖风险
+- ~200行代码即可实现OccupancyGrid渲染、坐标转换、缩放平移
 
 ---
 
@@ -1088,7 +1109,7 @@ from fastapi.middleware.cors import CORSMiddleware
 | 前端框架 | React 18 + TypeScript | 类型安全，生态丰富，企业级应用首选 |
 | UI库 | Ant Design v5 | 组件丰富，中文友好，默认亮色主题 |
 | 后端框架 | FastAPI | 异步高性能，WebSocket原生支持，Pydantic数据验证 |
-| 地图可视化 | ros2djs + 自定义Costmap | ROS原生支持，需手动渲染Costmap叠加层 |
+| 地图可视化 | Canvas原生 + 自定义Costmap | 完全控制，无第三方依赖，手动渲染Costmap叠加层 |
 | 视频流方案 | web_video_server | ROS标准方案，MJPEG/H.264编码，端口8080 |
 | 状态管理 | Zustand | 轻量级，TypeScript友好 |
 | 国际化 | react-i18next | 成熟方案，支持中英双语 |

@@ -117,7 +117,7 @@ def generate_launch_description():
     
     declare_persistence_dir = DeclareLaunchArgument(
         'persistence_dir',
-        default_value='~/lododo_bot/mission_data',
+        default_value='~/workDisk/lododo_bot/mission_data',
         description='Directory for task persistence'
     )
     

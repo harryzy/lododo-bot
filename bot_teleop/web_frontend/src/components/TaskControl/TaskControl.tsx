@@ -1,4 +1,4 @@
-import { Card, Button, Space, Input, Form, Select, message } from 'antd'
+import { Card, Button, Space, Input, Form, message } from 'antd'
 import { SendOutlined, StopOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

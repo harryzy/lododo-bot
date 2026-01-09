@@ -7,6 +7,7 @@ Web控制界面 - FastAPI 主应用
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import asyncio
 import yaml
@@ -127,11 +128,11 @@ def get_websocket_handler() -> WebSocketHandler:
 
 
 # ============================================
-# 根路由
+# API 路由
 # ============================================
 
-@app.get("/")
-async def root():
+@app.get("/api")
+async def api_root():
     """API 根路径"""
     return {
         "name": "LeKiwi Robot Web API",
@@ -141,7 +142,7 @@ async def root():
     }
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     """健康检查"""
     return {
@@ -188,6 +189,25 @@ app.include_router(tasks.router, prefix="/api", tags=["tasks"])
 app.include_router(maps.router, prefix="/api", tags=["maps"])
 app.include_router(waypoints.router, prefix="/api", tags=["waypoints"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
+
+
+# ============================================
+# 挂载静态文件（前端）
+# ============================================
+
+# 获取前端构建目录
+frontend_dist = Path(__file__).parent.parent.parent / "web_frontend" / "dist"
+
+if frontend_dist.exists():
+    # 挂载静态资源（CSS、JS等）
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    
+    # 挂载根路径（index.html）
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+    print(f"[WebServer] 静态文件服务已启用: {frontend_dist}")
+else:
+    print(f"[WebServer] 警告: 前端构建目录不存在: {frontend_dist}")
+    print("[WebServer] 请运行: cd web_frontend && npm run build")
 
 
 # ============================================

@@ -1,106 +1,244 @@
-import { Card } from 'antd'
-import { useEffect, useRef } from 'react'
-import { useMapStore } from '../../stores/mapStore'
+/**
+ * 地图可视化组件 - Canvas实现
+ * 使用原生Canvas + ROSLIB.js手动渲染地图
+ */
+
+import { Card, Button, Space, Spin, Alert } from 'antd'
+import { ReloadOutlined, FullscreenOutlined, AimOutlined } from '@ant-design/icons'
+import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import * as ROSLIB from 'roslib'
+import rosConnection from '../../services/rosConnection'
+import { MapRenderer } from '../../utils/MapRenderer'
 
 function MapView() {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { mapData, robotPose } = useMapStore()
+  const mapRendererRef = useRef<MapRenderer | null>(null)
+  
+  const [rosConnected, setRosConnected] = useState(false)
+  const [error, setError] = useState<string>('')
+  const [mapReceived, setMapReceived] = useState(false)
 
+  // 初始化 ROS 连接
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    // 清空画布
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // 绘制背景
-    ctx.fillStyle = '#f0f0f0'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // 绘制网格
-    ctx.strokeStyle = '#d9d9d9'
-    ctx.lineWidth = 1
-    const gridSize = 50
-    for (let x = 0; x < canvas.width; x += gridSize) {
-      ctx.beginPath()
-      ctx.moveTo(x, 0)
-      ctx.lineTo(x, canvas.height)
-      ctx.stroke()
+    console.log('[MapView] 初始化 ROS 连接...')
+    
+    // 连接 rosbridge
+    rosConnection.connect('ws://localhost:9090')
+    
+    // 监听连接状态
+    const handleConnectionChange = (connected: boolean) => {
+      setRosConnected(connected)
+      if (connected) {
+        setError('')
+        console.log('[MapView] ✓ ROS 连接成功')
+      } else {
+        setError('与 rosbridge 断开连接，尝试重新连接...')
+      }
     }
-    for (let y = 0; y < canvas.height; y += gridSize) {
-      ctx.beginPath()
-      ctx.moveTo(0, y)
-      ctx.lineTo(canvas.width, y)
-      ctx.stroke()
+    
+    rosConnection.onConnectionChange(handleConnectionChange)
+    
+    return () => {
+      rosConnection.offConnectionChange(handleConnectionChange)
     }
+  }, [])
 
-    // 绘制机器人位置（如果有）
-    if (robotPose) {
-      const centerX = canvas.width / 2
-      const centerY = canvas.height / 2
+  // 初始化 MapRenderer
+  useEffect(() => {
+    if (!canvasRef.current) return
+    
+    try {
+      mapRendererRef.current = new MapRenderer(canvasRef.current)
+      mapRendererRef.current.render()
+      console.log('[MapView] ✓ MapRenderer 初始化成功')
+    } catch (err) {
+      console.error('[MapView] ✗ MapRenderer 初始化失败:', err)
+      setError('地图渲染器初始化失败')
+    }
+  }, [])
+
+  // 订阅地图数据 (/map)
+  useEffect(() => {
+    if (!rosConnected || !mapRendererRef.current) return
+    
+    console.log('[MapView] 订阅 /map 话题...')
+    
+    const mapTopic = new ROSLIB.Topic({
+      ros: rosConnection.getRos()!,
+      name: '/map',
+      messageType: 'nav_msgs/OccupancyGrid'
+    })
+    
+    mapTopic.subscribe((message: any) => {
+      console.log('[MapView] ✓ 收到地图数据:', message.info)
+      mapRendererRef.current?.updateMap(message)
       
-      // 将机器人坐标转换为画布坐标（简化版）
-      const scale = 50 // 1米 = 50像素
-      const robotX = centerX + robotPose.x * scale
-      const robotY = centerY - robotPose.y * scale
-
-      // 绘制机器人
-      ctx.fillStyle = '#1890ff'
-      ctx.beginPath()
-      ctx.arc(robotX, robotY, 10, 0, 2 * Math.PI)
-      ctx.fill()
-
-      // 绘制朝向
-      ctx.strokeStyle = '#1890ff'
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      ctx.moveTo(robotX, robotY)
-      ctx.lineTo(
-        robotX + Math.cos(0) * 20,
-        robotY - Math.sin(0) * 20
-      )
-      ctx.stroke()
+      // 首次收到地图时自动适应画布
+      if (!mapReceived) {
+        console.log('[MapView] 首次收到地图，自动适应画布')
+        setTimeout(() => {
+          mapRendererRef.current?.resetView()
+        }, 100)
+      }
+      
+      setMapReceived(true)
+    })
+    
+    return () => {
+      console.log('[MapView] 取消订阅 /map')
+      mapTopic.unsubscribe()
     }
+  }, [rosConnected])
 
-    // 绘制坐标轴
-    ctx.strokeStyle = '#000'
-    ctx.lineWidth = 2
-    const centerX = canvas.width / 2
-    const centerY = canvas.height / 2
+  // 订阅机器人位姿 (/localization_pose)
+  useEffect(() => {
+    if (!rosConnected || !mapRendererRef.current) return
     
-    // X轴
-    ctx.beginPath()
-    ctx.moveTo(0, centerY)
-    ctx.lineTo(canvas.width, centerY)
-    ctx.stroke()
+    console.log('[MapView] 订阅 /localization_pose 话题...')
     
-    // Y轴
-    ctx.beginPath()
-    ctx.moveTo(centerX, 0)
-    ctx.lineTo(centerX, canvas.height)
-    ctx.stroke()
+    const poseTopic = new ROSLIB.Topic({
+      ros: rosConnection.getRos()!,
+      name: '/localization_pose',
+      messageType: 'geometry_msgs/PoseWithCovarianceStamped'
+    })
+    
+    poseTopic.subscribe((message: any) => {
+      const pos = message.pose.pose.position
+      console.log('[MapView] ✓ 收到机器人位姿:', 
+        `x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(2)}`)
+      mapRendererRef.current?.updateRobotPose(message)
+    })
+    
+    return () => {
+      console.log('[MapView] 取消订阅 /localization_pose')
+      poseTopic.unsubscribe()
+    }
+  }, [rosConnected])
 
-    // 标注原点
-    ctx.fillStyle = '#000'
-    ctx.font = '14px Arial'
-    ctx.fillText('(0, 0)', centerX + 5, centerY - 5)
-
-  }, [mapData, robotPose])
+  // 鼠标事件处理
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+    
+    mapRendererRef.current?.zoom(-e.deltaY, mouseX, mouseY)
+  }
+  
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    
+    mapRendererRef.current?.startDrag(x, y)
+  }
+  
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    
+    mapRendererRef.current?.drag(x, y)
+  }
+  
+  const handleMouseUp = () => {
+    mapRendererRef.current?.endDrag()
+  }
+  
+  const handleResetView = () => {
+    mapRendererRef.current?.resetView()
+  }
+  
+  const handleFollowRobot = () => {
+    mapRendererRef.current?.followRobot()
+  }
 
   return (
-    <Card title="地图视图" style={{ width: '100%', marginTop: '16px' }}>
-      <canvas
+    <Card 
+      title={t('map.title', '地图视图')}
+      style={{ width: '100%', height: 'calc(100vh - 120px)' }}
+      extra={
+        <Space>
+          <Button 
+            icon={<AimOutlined />} 
+            disabled={!mapReceived}
+            onClick={handleFollowRobot}
+          >
+            跟随机器人
+          </Button>
+          <Button 
+            icon={<FullscreenOutlined />} 
+            disabled={!mapReceived}
+            onClick={handleResetView}
+          >
+            重置视图
+          </Button>
+          <Button 
+            icon={<ReloadOutlined />} 
+            onClick={() => window.location.reload()}
+          >
+            刷新
+          </Button>
+        </Space>
+      }
+    >
+      {error && (
+        <Alert 
+          message="连接错误" 
+          description={error} 
+          type="warning" 
+          showIcon 
+          closable
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      {!rosConnected && !error && (
+        <div style={{ textAlign: 'center', padding: '60px 0' }}>
+          <Spin size="large" />
+          <p style={{ marginTop: 16 }}>正在连接 rosbridge...</p>
+        </div>
+      )}
+
+      <canvas 
         ref={canvasRef}
-        width={800}
-        height={600}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
         style={{
+          width: '100%',
+          height: 'calc(100% - 60px)',
+          backgroundColor: '#f0f0f0',
           border: '1px solid #d9d9d9',
           borderRadius: '4px',
+          cursor: mapReceived ? 'grab' : 'default'
         }}
       />
+
+      {rosConnected && (
+        <div style={{ 
+          position: 'absolute', 
+          bottom: 16, 
+          right: 16, 
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          fontSize: '12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+        }}>
+          <div style={{ color: '#52c41a' }}>● 已连接 rosbridge</div>
+        </div>
+      )}
     </Card>
   )
 }

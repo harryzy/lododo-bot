@@ -98,16 +98,20 @@
 
 ### 阶段1: 地图可视化核心 (2天)
 
-**目标**: 实现基于ros2djs的地图显示，让用户能看到真实的ROS地图和机器人位置
+**目标**: 使用原生Canvas实现地图显示，让用户能看到真实的ROS地图和机器人位置
 
-#### 1.1 安装和配置ros2djs (0.5天)
+**技术方案**: 
+- ✅ **不使用ros2djs**（已过时，6年未更新，有兼容性问题）
+- ✅ 使用**原生HTML5 Canvas + ROSLIB.js**手动渲染
+- ✅ 优势：轻量级、无依赖、完全控制、性能好
+
+#### 1.1 安装和配置ROSLIB (0.5天)
 
 **前端任务**:
 - [ ] 1.1.1 安装依赖
   ```bash
   cd web_frontend
   npm install roslib@2.0.1 eventemitter2@6.4.9
-  # 注意：ros2djs 依赖 eventemitter2
   ```
 
 - [ ] 1.1.2 创建 ROS 连接服务
@@ -126,50 +130,86 @@
 
 **预计用时**: 4小时
 
-#### 1.2 实现基础地图显示 (1天)
+#### 1.2 实现Canvas地图渲染 (1天)
 
 **前端任务**:
-- [ ] 1.2.1 重构 MapView 组件
-  - 文件：`web_frontend/src/components/MapView/MapView.tsx`
-  - 删除现有静态canvas代码
-  - 使用 `<div>` 作为地图容器（ros2djs会在其中创建canvas）
+- [ ] 1.2.1 创建 MapRenderer 工具类
+  - 文件：`web_frontend/src/utils/MapRenderer.ts`
+  - 功能：
+    - OccupancyGrid → Canvas 图像数据转换
+    - 坐标系转换（ROS坐标 ↔ 屏幕坐标）
+    - 缩放/平移变换矩阵管理
 
-- [ ] 1.2.2 集成 ros2djs Viewer2D
+- [ ] 1.2.2 重构 MapView 组件
+  - 文件：`web_frontend/src/components/MapView/MapView.tsx`
+  - 使用 Canvas 标签：
+    ```tsx
+    <canvas 
+      ref={mapCanvasRef}
+      width={800}
+      height={600}
+      style={{ cursor: 'grab' }}
+    />
+    ```
+
+- [ ] 1.2.3 订阅 /map 话题并渲染
   ```typescript
   // 伪代码
-  import ROS2D from 'ros2d';
-  import ROSLIB from 'roslib';
-  
-  // 创建地图查看器
-  const viewer = new ROS2D.Viewer({
-    divID: 'map-container',
-    width: 800,
-    height: 600
+  const mapTopic = new ROSLIB.Topic({
+    ros: rosConnection.getRos(),
+    name: '/map',
+    messageType: 'nav_msgs/OccupancyGrid'
+  });
+
+  mapTopic.subscribe((message) => {
+    const imageData = convertOccupancyGridToImage(message);
+    renderToCanvas(imageData, mapCanvasRef.current);
   });
   
-  // 订阅 /map 话题
-  const gridClient = new ROS2D.OccupancyGridClient({
-    ros: rosConnection.ros,
-    rootObject: viewer.scene,
-    topic: '/map'
-  });
+  function convertOccupancyGridToImage(grid) {
+    const width = grid.info.width;
+    const height = grid.info.height;
+    const imageData = new ImageData(width, height);
+    
+    for (let i = 0; i < grid.data.length; i++) {
+      const value = grid.data[i];
+      const pixelIndex = i * 4;
+      
+      if (value === -1) {
+        // 未知区域：灰色
+        imageData.data[pixelIndex] = 128;
+        imageData.data[pixelIndex + 1] = 128;
+        imageData.data[pixelIndex + 2] = 128;
+      } else if (value === 0) {
+        // 空闲：白色
+        imageData.data[pixelIndex] = 255;
+        imageData.data[pixelIndex + 1] = 255;
+        imageData.data[pixelIndex + 2] = 255;
+      } else {
+        // 占用：黑色
+        imageData.data[pixelIndex] = 0;
+        imageData.data[pixelIndex + 1] = 0;
+        imageData.data[pixelIndex + 2] = 0;
+      }
+      imageData.data[pixelIndex + 3] = 255; // Alpha
+    }
+    
+    return imageData;
+  }
   ```
 
-- [ ] 1.2.3 添加地图控制功能
-  - 缩放（鼠标滚轮）
-  - 平移（拖拽）
+- [ ] 1.2.4 添加地图控制功能
+  - 鼠标滚轮缩放（Ctrl+Wheel）
+  - 鼠标拖拽平移
   - 重置视图按钮
-
-**后端任务**:
-- [ ] 1.2.4 实现地图话题桥接
-  - 确保 WebTerminalNode 订阅 `/map` 话题
-  - 通过 WebSocket 推送地图更新事件（可选，ros2djs直接订阅rosbridge）
+  - 实现平滑缩放动画
 
 **验收标准**:
 - ✅ 地图正确显示（黑色=障碍物，白色=空闲，灰色=未知）
 - ✅ 可以用鼠标缩放、平移地图
 - ✅ 地图数据来自真实的ROS `/map` 话题
 - ✅ 地图实时更新（1 Hz）
+- ✅ 无第三方地图库依赖
 
 **预计用时**: 8小时
 
@@ -178,23 +218,39 @@
 **前端任务**:
 - [ ] 1.3.1 添加机器人位姿监听
   ```typescript
-  // 订阅 /rtabmap/localization_pose 或 /odometry/filtered
   const poseTopic = new ROSLIB.Topic({
-    ros: rosConnection.ros,
+    ros: rosConnection.getRos(),
     name: '/rtabmap/localization_pose',
     messageType: 'geometry_msgs/PoseWithCovarianceStamped'
   });
   
   poseTopic.subscribe((message) => {
-    // 更新机器人位置标记
     updateRobotMarker(message.pose.pose);
   });
   ```
 
-- [ ] 1.3.2 绘制机器人图标
-  - 使用 ROS2D.NavigationArrow 显示方向
-  - 颜色：蓝色（#1890ff，Ant Design主色）
-  - 大小：根据地图缩放自动调整
+- [ ] 1.3.2 在Canvas上绘制机器人
+  ```typescript
+  function drawRobot(ctx, x, y, theta) {
+    // 转换到屏幕坐标
+    const screenPos = rosToScreen(x, y);
+    
+    ctx.save();
+    ctx.translate(screenPos.x, screenPos.y);
+    ctx.rotate(-theta); // Canvas坐标系Y轴向下
+    
+    // 绘制箭头
+    ctx.fillStyle = '#1890ff';
+    ctx.beginPath();
+    ctx.moveTo(20, 0);
+    ctx.lineTo(-10, 10);
+    ctx.lineTo(-10, -10);
+    ctx.closePath();
+    ctx.fill();
+    
+    ctx.restore();
+  }
+  ```
 
 - [ ] 1.3.3 添加机器人追踪功能
   - "跟随机器人"按钮
@@ -202,7 +258,7 @@
 
 **验收标准**:
 - ✅ 机器人位置实时显示（10 Hz）
-- ✅ 机器人朝向准确显示
+- ✅ 机器人朝向准确显示（蓝色箭头）
 - ✅ "跟随机器人"功能正常工作
 
 **预计用时**: 4小时
