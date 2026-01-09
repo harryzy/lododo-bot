@@ -80,10 +80,10 @@ def generate_launch_description():
     bot_navigation_dir = FindPackageShare('bot_navigation')
     
     # 默认地图路径
-    default_map_path = os.path.expanduser('~/lododo_bot/maps/new2_map/rtabmap.db')
+    default_map_path = os.path.expanduser('~/workDisk/lododo_bot/maps/new2_map/rtabmap.db')
     
     # 默认路点文件
-    default_waypoint_file = os.path.expanduser('~/lododo_bot/waypoints/new2_map.yaml')
+    default_waypoint_file = os.path.expanduser('~/workDisk/lododo_bot/waypoints/new2_map.yaml')
     
     # ===== 启动参数 =====
     

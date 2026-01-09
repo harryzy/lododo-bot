@@ -47,7 +47,7 @@ def generate_launch_description():
             PathJoinSubstitution([
                 FindPackageShare('bot_bringup'),
                 'launch',
-                'simple_simulation_nav2_rtabmap.launch.py'
+                'simulation_cmd_interface_test.launch.py'
             ])
         ]),
         launch_arguments={

@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import yaml
 import os
+import rclpy
 from pathlib import Path
 from typing import Optional
 
@@ -44,6 +45,13 @@ async def lifespan(app: FastAPI):
     # 创建 WebSocket 处理器
     websocket_handler = WebSocketHandler()
     
+    # 初始化 ROS2
+    try:
+        rclpy.init()
+        print("[WebServer] ROS2 已初始化")
+    except Exception as e:
+        print(f"[WebServer] ROS2 初始化失败: {e}")
+    
     # 创建 ROS2 节点
     try:
         web_terminal_node = WebTerminalNode(response_callback=websocket_handler.broadcast_response)
@@ -71,6 +79,13 @@ async def lifespan(app: FastAPI):
     
     if ros_executor:
         ros_executor.cancel()
+    
+    # 关闭 ROS2
+    try:
+        rclpy.shutdown()
+        print("[WebServer] ROS2 已关闭")
+    except Exception as e:
+        print(f"[WebServer] ROS2 关闭失败: {e}")
     
     print("[WebServer] 关闭完成")
 

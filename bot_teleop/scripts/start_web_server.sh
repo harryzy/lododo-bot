@@ -51,8 +51,8 @@ echo ""
 
 cd "$TELEOP_DIR"
 
-# 使用 uvicorn 启动
-python3 -m uvicorn web.backend.web_server:app \
+# 使用 uvicorn 启动（使用虚拟环境中的 python 绝对路径）
+"$PROJECT_ROOT/venv_ros2/bin/python" -m uvicorn web.backend.web_server:app \
     --host 0.0.0.0 \
     --port 8000 \
     --reload \
