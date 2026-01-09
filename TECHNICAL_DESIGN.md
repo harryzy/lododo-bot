@@ -4,7 +4,7 @@
 **ROS版本**: ROS2 Humble  
 **开发语言**: Python 3.10  
 **目标平台**: 树莓派4B + Ubuntu 22.04  
-**更新日期**: 2025年12月2日
+**更新日期**: 2026年1月8日
 
 ---
 
@@ -453,15 +453,41 @@ src/
 │
 ├── bot_bringup/              # 【核心】系统启动与集成
 │   ├── launch/
-│   │   ├── robot.launch.py           # 真实硬件总启动
-│   │   ├── simulation.launch.py     # Gazebo仿真总启动
-│   │   ├── navigation.launch.py     # 导航系统启动
-│   │   └── perception.launch.py     # 感知系统启动
+│   │   ├── robot.launch.py                      # 真实硬件总启动
+│   │   ├── simulation.launch.py                 # Gazebo仿真总启动
+│   │   ├── simulation_cmd_interface_test.launch.py  # 命令接口集成测试
+│   │   ├── navigation.launch.py                 # 导航系统启动
+│   │   └── perception.launch.py                 # 感知系统启动
 │   ├── config/
 │   │   ├── nav2_params.yaml          # Nav2参数
 │   │   ├── slam_params.yaml          # SLAM参数
 │   │   └── robot_localization.yaml   # EKF融合参数
 │   └── params/
+│
+├── bot_cmd_interface/        # ✨【新增】统一命令接口层 (v1.0.0 生产就绪)
+│   ├── bot_cmd_interface/
+│   │   ├── command_adapter_node.py   # 命令适配器主节点
+│   │   ├── sdk/                      # Python SDK（终端集成用）
+│   │   │   ├── message.py            # CommandRequest/Response
+│   │   │   ├── action_types.py       # 动作类型常量
+│   │   │   └── builders.py           # 请求构造函数
+│   │   ├── components/               # 核心组件
+│   │   │   ├── request_queue.py      # 请求队列（去重、优先级）
+│   │   │   ├── service_adapter.py    # 服务适配器（调用MissionPlanner）
+│   │   │   └── response_publisher.py # 响应发布器
+│   │   └── utils/                    # 工具模块
+│   ├── config/
+│   │   └── command_config.yaml       # 命令接口配置
+│   ├── launch/
+│   │   └── cmd_adapter.launch.py     # CommandAdapter启动
+│   ├── test/                         # 66个测试用例（100%通过）
+│   │   ├── test_integration.py       # 集成测试
+│   │   ├── test_performance.py       # 性能测试
+│   │   └── cmd_terminal.py           # 交互式测试终端
+│   └── docs/
+│       ├── ARCHITECTURE.md           # 架构设计文档
+│       ├── API.md                    # SDK API参考
+│       └── TERMINAL_INTEGRATION.md   # 终端集成指南
 │
 ├── bot_hardware/             # 硬件驱动层
 │   ├── bot_hardware/
@@ -601,6 +627,243 @@ src/
 /navigate_to_pose               # 导航到目标点
 /emergency_stop                 # 紧急停止
 ```
+
+### 4.3 统一命令接口层设计 (bot_cmd_interface)
+
+#### 4.3.1 设计背景与目标
+
+**问题**: 在传统架构中，各类终端（语音、Web、移动应用）需要直接调用后端的ROS2服务，这导致：
+- 终端与后端紧耦合，服务接口变更影响所有终端
+- 每个终端需要重复实现请求构造、结果解析、错误处理逻辑
+- 缺乏统一的请求追踪和管理机制
+
+**解决方案**: 引入 `bot_cmd_interface` 作为统一命令接口层，实现松耦合架构：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    统一命令接口架构                                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐           │
+│  │Voice Terminal│   │ Web Terminal │   │ App Terminal │           │
+│  │              │   │              │   │              │           │
+│  │  使用SDK     │   │  使用SDK     │   │  使用SDK     │           │
+│  └──────┬───────┘   └──────┬───────┘   └──────┬───────┘           │
+│         │                  │                  │                    │
+│         └──────────────────┼──────────────────┘                    │
+│                            │                                        │
+│                   /cmd/request (Topic)                             │
+│                   std_msgs/String (JSON)                           │
+│                            ↓                                        │
+│         ┌──────────────────────────────────────────┐               │
+│         │      CommandAdapter（无状态设计）          │               │
+│         │  ┌────────────────────────────────────┐  │               │
+│         │  │ RequestQueue                       │  │               │
+│         │  │ - 请求ID去重（5秒窗口）             │  │               │
+│         │  │ - 优先级管理                       │  │               │
+│         │  └────────────────────────────────────┘  │               │
+│         │  ┌────────────────────────────────────┐  │               │
+│         │  │ ServiceAdapter                     │  │               │
+│         │  │ - 调用MissionPlanner服务           │  │               │
+│         │  │ - 获取task_id后立即返回             │  │               │
+│         │  │ - 不等待任务执行完成                │  │               │
+│         │  └────────────────────────────────────┘  │               │
+│         │  ┌────────────────────────────────────┐  │               │
+│         │  │ ResponsePublisher                  │  │               │
+│         │  │ - 发布响应到/cmd/response          │  │               │
+│         │  └────────────────────────────────────┘  │               │
+│         └──────────────────────────────────────────┘               │
+│                            ↓                                        │
+│                   /cmd/response (Topic)                            │
+│                   std_msgs/String (JSON)                           │
+│                            ↓                                        │
+│         [终端订阅并根据request_id过滤消息]                           │
+│                                                                     │
+│         ┌──────────────────────────────────────────┐               │
+│         │      后端服务层（MissionPlanner）          │               │
+│         │  - 任务队列管理                           │               │
+│         │  - 任务执行与状态维护                      │               │
+│         │  - 提供服务：                             │               │
+│         │    * /mission/navigate_to_pose          │               │
+│         │    * /mission/start_exploration         │               │
+│         │    * /mission/start_patrol              │               │
+│         │    * /mission/get_task_status           │               │
+│         └──────────────────────────────────────────┘               │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### 4.3.2 核心设计原则
+
+##### 原则1: 松耦合架构
+- **终端与后端解耦**: 终端只需了解 `/cmd/request` 和 `/cmd/response` Topic，不需要知道后端服务细节
+- **协议驱动**: 通过标准化的JSON协议通信，减少依赖
+- **SDK标准化**: 提供Python SDK统一请求构造和响应解析逻辑
+
+##### 原则2: 无状态设计（短生命周期）
+- **CommandAdapter职责**: 仅处理请求ID与任务ID的映射
+- **生命周期**: `queued → executing → completed/failed`（约1秒内完成）
+- **立即返回**: 获得task_id后立即响应，不等待任务执行完成
+- **状态查询**: 通过新的 `get_task_status` 请求查询任务进度
+
+**错误示例（阻塞式）**:
+```python
+# ❌ WRONG: CommandAdapter等待任务完成
+用户请求导航 → CMD调用服务 → 等待导航完成(22秒) → 返回成功
+# 问题：阻塞队列，无法处理其他请求
+```
+
+**正确示例（非阻塞式）**:
+```python
+# ✅ CORRECT: CommandAdapter立即返回
+用户请求导航 → CMD调用服务(0.5秒) → 获得task_id → 立即响应completed
+                                    ↓
+                            任务在MissionPlanner后台执行(22秒)
+
+用户想知道进度 → 发送get_task_status请求 → CMD查询服务 → 返回{status: RUNNING, progress: 0.5}
+```
+
+##### 原则3: 请求ID驱动
+- **全生命周期追踪**: 每个请求分配唯一 `request_id`
+- **响应关联**: 终端通过 `request_id` 过滤属于自己的响应
+- **去重保护**: 5秒窗口内相同内容的请求自动拒绝
+
+#### 4.3.3 协议定义
+
+##### 请求协议 (/cmd/request)
+```json
+{
+  "header": {
+    "request_id": "nav-20260108-001",
+    "timestamp": "2026-01-08T12:00:00Z",
+    "priority": 3
+  },
+  "body": {
+    "action": "navigate_to_pose",
+    "params": {"x": 2.0, "y": 3.0, "yaw": 0.0},
+    "timeout": 300.0
+  }
+}
+```
+
+##### 响应协议 (/cmd/response)
+```json
+{
+  "header": {
+    "request_id": "nav-20260108-001",
+    "timestamp": "2026-01-08T12:00:01Z"
+  },
+  "body": {
+    "status": "completed",
+    "message": "Task created successfully",
+    "data": {"task_id": 123},
+    "error_code": 0
+  }
+}
+```
+
+#### 4.3.4 SDK使用示例
+
+##### 终端发送请求
+```python
+from bot_cmd_interface.sdk import create_navigate_request
+import rclpy
+from std_msgs.msg import String
+
+class MyTerminal(Node):
+    def __init__(self):
+        super().__init__('my_terminal')
+        self.request_pub = self.create_publisher(String, '/cmd/request', 10)
+        self.response_sub = self.create_subscription(
+            String, '/cmd/response', self._response_callback, 10)
+        self.pending = {}
+    
+    def send_navigation(self, x, y):
+        # 使用SDK构造请求
+        request = create_navigate_request(x, y)
+        
+        # 发布到Topic
+        msg = String(data=request.to_json())
+        self.request_pub.publish(msg)
+        
+        # 记录待处理请求
+        self.pending[request.request_id] = request
+    
+    def _response_callback(self, msg):
+        response = CommandResponse.from_json(msg.data)
+        
+        # 过滤自己的请求
+        if response.request_id in self.pending:
+            if response.is_completed():
+                task_id = response.body.data.get('task_id')
+                print(f"Task created: {task_id}")
+                del self.pending[response.request_id]
+```
+
+#### 4.3.5 与MissionPlanner集成
+
+```
+终端发送请求
+    ↓
+CommandAdapter.request_callback()
+    ↓
+RequestQueue.enqueue()  (去重、验证)
+    ↓
+ServiceAdapter.process_request()
+    ├─ action="navigate_to_pose" → 调用 /mission/navigate_to_pose
+    ├─ action="start_exploration" → 调用 /mission/start_exploration
+    └─ action="get_task_status" → 调用 /mission/get_task_status
+    ↓
+MissionPlanner返回task_id
+    ↓
+ResponsePublisher.publish()
+    ↓
+终端接收响应（根据request_id过滤）
+```
+
+#### 4.3.6 支持的动作类型（13种）
+
+```python
+NAVIGATE_TO_POSE      # 导航到坐标
+NAVIGATE_TO_LOCATION  # 导航到位置名称
+START_EXPLORATION     # 开始探索建图
+START_PATROL          # 开始巡逻
+PAUSE_TASK            # 暂停任务
+RESUME_TASK           # 恢复任务
+CANCEL_TASK           # 取消任务
+EMERGENCY_STOP        # 紧急停止
+GET_ROBOT_STATUS      # 获取机器人状态
+GET_TASK_STATUS       # 获取任务状态
+LIST_SAVED_MAPS       # 列出保存的地图
+LOAD_MAP              # 加载地图
+SAVE_MAP              # 保存地图
+```
+
+#### 4.3.7 开发新终端的标准流程
+
+1. **安装SDK**: `colcon build --packages-select bot_cmd_interface --symlink-install`
+2. **创建终端节点**: 继承 `rclpy.node.Node`
+3. **订阅响应**: 监听 `/cmd/response`，根据 `request_id` 过滤
+4. **发布请求**: 使用SDK构造请求，发布到 `/cmd/request`
+5. **处理响应**: 解析 `task_id`，后续通过 `get_task_status` 查询进度
+
+**完整示例**: 参考 `src/bot_cmd_interface/test/cmd_terminal.py`（600+行交互式终端实现）
+
+#### 4.3.8 性能指标（实测数据）
+
+- **队列响应时间**: 3.7ms（请求入队到首次响应）
+- **完成响应时间**: 13.9ms（服务调用完成到响应发布）
+- **吞吐量**: 960 req/s（单线程）
+- **并发处理**: 支持多终端同时发送请求
+- **测试覆盖**: 66个测试用例，100%通过
+
+#### 4.3.9 详细设计文档
+
+完整的架构设计、API参考、集成指南请参考：
+- **架构设计**: `src/bot_cmd_interface/docs/ARCHITECTURE.md`（4100+行）
+- **SDK API**: `src/bot_cmd_interface/docs/API.md`
+- **终端集成指南**: `src/bot_cmd_interface/docs/TERMINAL_INTEGRATION.md`
+- **包README**: `src/bot_cmd_interface/README.md`
 
 ---
 

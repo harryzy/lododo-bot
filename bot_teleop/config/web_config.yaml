@@ -1,0 +1,22 @@
+# Web控制界面配置文件
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: false  # 开发模式设为 true
+  workers: 1
+
+ros:
+  use_sim_time: false
+  
+websocket:
+  ping_interval: 30  # WebSocket心跳间隔（秒）
+  ping_timeout: 10
+
+ui:
+  language: "zh-CN"  # zh-CN 或 en-US
+  theme: "light"  # light 或 dark
+  
+paths:
+  maps_dir: "~/lododo_bot/maps"
+  waypoints_dir: "~/lododo_bot/waypoints"

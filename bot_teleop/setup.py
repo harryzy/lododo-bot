@@ -14,7 +14,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
-        (os.path.join('share', package_name, 'web'), glob('web/*')),
+        # Web 后端和前端独立运行，不需要安装到 ROS2 工作空间
     ],
     install_requires=['setuptools'],
     zip_safe=True,
