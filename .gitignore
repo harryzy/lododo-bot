@@ -1,2 +1,3 @@
 # Ignore bot_voice models (local model files, not for VCS)
 bot_voice/models/
+bot_teleop/web_frontend/node_modules/
