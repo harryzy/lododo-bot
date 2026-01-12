@@ -120,6 +120,94 @@ function MapView() {
     }
   }, [rosConnected])
 
+  // 订阅局部代价地图 (/local_costmap/costmap)
+  useEffect(() => {
+    if (!rosConnected || !mapRendererRef.current || !costmapVisible) return
+    
+    console.log('[MapView] 订阅 /local_costmap/costmap 话题...')
+    
+    const localCostmapTopic = new ROSLIB.Topic({
+      ros: rosConnection.getRos()!,
+      name: '/local_costmap/costmap',
+      messageType: 'nav_msgs/OccupancyGrid'
+    })
+    
+    localCostmapTopic.subscribe((message: any) => {
+      mapRendererRef.current?.updateLocalCostmap(message)
+    })
+    
+    return () => {
+      console.log('[MapView] 取消订阅 /local_costmap/costmap')
+      localCostmapTopic.unsubscribe()
+    }
+  }, [rosConnected, costmapVisible])
+
+  // 订阅局部代价地图增量更新 (/local_costmap/costmap_updates)
+  useEffect(() => {
+    if (!rosConnected || !mapRendererRef.current || !costmapVisible) return
+    
+    console.log('[MapView] 订阅 /local_costmap/costmap_updates 话题...')
+    
+    const localCostmapUpdateTopic = new ROSLIB.Topic({
+      ros: rosConnection.getRos()!,
+      name: '/local_costmap/costmap_updates',
+      messageType: 'map_msgs/OccupancyGridUpdate'
+    })
+    
+    localCostmapUpdateTopic.subscribe((message: any) => {
+      mapRendererRef.current?.updateLocalCostmapIncremental(message)
+    })
+    
+    return () => {
+      console.log('[MapView] 取消订阅 /local_costmap/costmap_updates')
+      localCostmapUpdateTopic.unsubscribe()
+    }
+  }, [rosConnected, costmapVisible])
+
+  // 订阅全局代价地图 (/global_costmap/costmap)
+  useEffect(() => {
+    if (!rosConnected || !mapRendererRef.current || !costmapVisible) return
+    
+    console.log('[MapView] 订阅 /global_costmap/costmap 话题...')
+    
+    const globalCostmapTopic = new ROSLIB.Topic({
+      ros: rosConnection.getRos()!,
+      name: '/global_costmap/costmap',
+      messageType: 'nav_msgs/OccupancyGrid'
+    })
+    
+    globalCostmapTopic.subscribe((message: any) => {
+      mapRendererRef.current?.updateGlobalCostmap(message)
+    })
+    
+    return () => {
+      console.log('[MapView] 取消订阅 /global_costmap/costmap')
+      globalCostmapTopic.unsubscribe()
+    }
+  }, [rosConnected, costmapVisible])
+
+  // 订阅全局代价地图增量更新 (/global_costmap/costmap_updates)
+  useEffect(() => {
+    if (!rosConnected || !mapRendererRef.current || !costmapVisible) return
+    
+    console.log('[MapView] 订阅 /global_costmap/costmap_updates 话题...')
+    
+    const globalCostmapUpdateTopic = new ROSLIB.Topic({
+      ros: rosConnection.getRos()!,
+      name: '/global_costmap/costmap_updates',
+      messageType: 'map_msgs/OccupancyGridUpdate'
+    })
+    
+    globalCostmapUpdateTopic.subscribe((message: any) => {
+      mapRendererRef.current?.updateGlobalCostmapIncremental(message)
+    })
+    
+    return () => {
+      console.log('[MapView] 取消订阅 /global_costmap/costmap_updates')
+      globalCostmapUpdateTopic.unsubscribe()
+    }
+  }, [rosConnected, costmapVisible])
+
   // 鼠标事件处理
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault()
@@ -232,6 +320,17 @@ function MapView() {
     message.info('已清除导航目标')
   }
   
+  const handleCostmapToggle = (visible: boolean) => {
+    setCostmapVisible(visible)
+    if (visible) {
+      message.info('已开启代价地图显示')
+    } else {
+      message.info('已关闭代价地图显示')
+      // 关闭时清除 Costmap 数据
+      mapRendererRef.current?.setCostmapVisibility(false, false)
+    }
+  }
+  
   const sendNavigationGoal = async (x: number, y: number, yaw: number) => {
     try {
       const goalTopic = new ROSLIB.Topic({
@@ -274,7 +373,7 @@ function MapView() {
         onResetView={handleResetView}
         onFollowRobot={handleFollowRobot}
         onClearGoal={handleClearGoal}
-        onCostmapToggle={setCostmapVisible}
+        onCostmapToggle={handleCostmapToggle}
         currentMode={toolMode}
         hasMap={mapReceived}
         costmapVisible={costmapVisible}
