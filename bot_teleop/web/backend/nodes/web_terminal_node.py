@@ -2,14 +2,17 @@
 """
 Web Terminal Node - ROS2 集成节点
 通过 bot_cmd_interface 与 MissionPlanner 交互
+
+架构设计：
+- 常驻监听 /cmd/response（被动接收，非主动轮询）
+- 所有响应委托给 TaskManager 处理（智能匹配 task_id/request_id）
+- WebSocketHandler 仅负责广播更新给前端
 """
 
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-from typing import Optional, Callable
-import asyncio
-import threading
+from typing import Optional
 
 from bot_cmd_interface.sdk import (
     CommandRequest,
@@ -26,18 +29,20 @@ from bot_cmd_interface.sdk import (
 
 
 class WebTerminalNode(Node):
-    """Web 终端节点"""
+    """Web 终端节点 - 负责 ROS2 通信和 CMD 消息路由"""
     
-    def __init__(self, response_callback: Optional[Callable] = None):
+    def __init__(self, task_manager, websocket_handler):
         """
         初始化节点
         
         Args:
-            response_callback: 响应回调函数（用于通过 WebSocket 推送给前端）
+            task_manager: TaskManager 实例（处理任务状态更新）
+            websocket_handler: WebSocketHandler 实例（广播更新给前端）
         """
         super().__init__('web_terminal_node')
         
-        self.response_callback = response_callback
+        self.task_manager = task_manager
+        self.websocket_handler = websocket_handler
         self._shutdown_flag = False
         
         # 发布器：发送命令请求到 /cmd/request
@@ -58,21 +63,43 @@ class WebTerminalNode(Node):
         self.get_logger().info('Web Terminal Node 已初始化')
     
     def _response_callback(self, msg: String):
-        """处理来自 /cmd/response 的响应"""
+        """
+        处理来自 /cmd/response 的响应（常驻监听）
+        
+        架构核心：被动接收所有响应，委托给 TaskManager 智能处理
+        - TaskManager 根据 task_id/request_id 匹配任务
+        - 不相关的响应自动忽略（not in cache）
+        - 完全异步，不阻塞 ROS2 线程
+        """
         try:
             # 使用 SDK 反序列化
             response = CommandResponse.from_json(msg.data)
             
-            self.get_logger().info(
+            self.get_logger().debug(
                 f"收到响应: request_id={response.request_id}, "
-                f"status={response.status}, code={response.code}, "
-                f"message={response.message}"
+                f"status={response.status}, code={response.code}"
             )
             
-            # 异步推送到 WebSocket
-            if self.response_callback:
-                asyncio.create_task(self.response_callback(response))
-                
+            # 委托给 TaskManager 处理（智能匹配）
+            response_dict = {
+                'header': {'request_id': response.request_id},
+                'body': {
+                    'status': response.status.value if hasattr(response.status, 'value') else response.status,
+                    'message': response.message,
+                    'data': response.result if hasattr(response, 'result') else {},
+                    'error_code': response.code.value if hasattr(response.code, 'value') else response.code
+                }
+            }
+            
+            updated_task = self.task_manager.update_task(response_dict)
+            
+            # 如果任务更新成功，通过 WebSocket 广播给前端（使用同步版本）
+            if updated_task:
+                self.websocket_handler.broadcast_task_update_sync(updated_task.to_dict())
+                self.get_logger().info(
+                    f"✓ 任务更新: {updated_task.request_id} -> {updated_task.status}"
+                )
+            
         except Exception as e:
             self.get_logger().error(f"处理响应失败: {e}")
     
@@ -91,7 +118,7 @@ class WebTerminalNode(Node):
             # 发布到 /cmd/request
             self.cmd_publisher.publish(msg)
             
-            request_id = request._header["request_id"]
+            request_id = request.request_id
             self.get_logger().info(f"已发送请求: request_id={request_id}")
             
             return request_id
@@ -185,6 +212,46 @@ class WebTerminalNode(Node):
             request_id: 请求 ID
         """
         request = create_cancel_task_request(task_id=task_id)
+        return self._publish_request(request)
+    
+    def pause_task(self, task_id: str) -> str:
+        """
+        暂停任务
+        
+        Args:
+            task_id: 任务 ID
+            
+        Returns:
+            request_id: 请求 ID
+        """
+        from bot_cmd_interface.sdk import ActionType
+        
+        request = CommandRequest(
+            action=ActionType.PAUSE_TASK,
+            params={'task_id': task_id},
+            priority=2,
+            timeout=5.0
+        )
+        return self._publish_request(request)
+    
+    def resume_task(self, task_id: str) -> str:
+        """
+        恢复任务
+        
+        Args:
+            task_id: 任务 ID
+            
+        Returns:
+            request_id: 请求 ID
+        """
+        from bot_cmd_interface.sdk import ActionType
+        
+        request = CommandRequest(
+            action=ActionType.RESUME_TASK,
+            params={'task_id': task_id},
+            priority=2,
+            timeout=5.0
+        )
         return self._publish_request(request)
     
     def emergency_stop(self) -> str:

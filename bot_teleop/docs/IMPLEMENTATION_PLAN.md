@@ -2,8 +2,229 @@
 
 **版本**: v1.0.0  
 **创建日期**: 2026-01-09  
+**更新日期**: 2026-01-12  
 **项目状态**: 📋 计划阶段  
 **预计工期**: 14天 (2周完成MVP)
+
+---
+
+## 🚨 关键架构约束：bot_cmd_interface 统一接口协议
+
+### 核心设计原则
+
+**⚠️ 强制规则 - 所有后端控制命令必须遵守以下架构**：
+
+```
+命令流设计（松耦合）:
+  Web前端 → FastAPI HTTP API → WebTerminalNode 
+    ↓ 使用SDK构造JSON请求
+  /cmd/request Topic (std_msgs/String) 
+    ↓
+  CommandAdapter Node（统一接口层）
+    ├─ 请求解析、验证、去重
+    ├─ 队列管理（基于request_id）
+    ├─ 调用 MissionPlanner 服务
+    └─ 获得 task_id 后立即响应
+    ↓
+  /cmd/response Topic (std_msgs/String)
+    ↓
+  WebTerminalNode 订阅 → WebSocket → Web前端
+
+关键点：
+1. 后端不直接调用 MissionPlanner 服务
+2. 通过 bot_cmd_interface SDK 构造请求
+3. 使用 request_id 追踪请求-响应关联
+4. CommandAdapter 短生命周期（~1秒）
+5. 任务执行状态由 MissionPlanner 维护
+```
+
+### 禁止的错误模式
+
+```python
+# ❌ 严禁：在 Web 后端直接调用 ROS 服务
+from bot_navigation_msgs.srv import StartExploration
+
+mission_client = node.create_client(StartExploration, '/mission/start_exploration')
+response = mission_client.call_async(request)  # 违反松耦合原则！
+```
+
+### 正确的实现模式
+
+```python
+# ✅ 正确：使用 bot_cmd_interface SDK
+
+# 步骤1：导入 SDK
+from bot_cmd_interface.sdk import (
+    CommandRequest,
+    CommandResponse,
+    ActionType
+)
+
+# 步骤2：构造请求（SDK 自动生成 request_id）
+request = CommandRequest(
+    action=ActionType.START_EXPLORATION,
+    params={
+        "map_name": "office_floor1",
+        "save_on_completion": True
+    }
+)
+
+# 步骤3：发布到统一接口
+msg = String()
+msg.data = request.to_json()
+self.cmd_publisher.publish(msg)  # 发布到 /cmd/request
+
+# 步骤4：订阅响应（WebTerminalNode 自动处理）
+# 响应通过 /cmd/response 返回，包含 task_id
+```
+
+### 短生命周期模型
+
+**命令请求的生命周期（约1秒）**：
+```
+Time 0:    用户点击"开始探索"
+Time 0.1:  FastAPI 接收请求
+Time 0.2:  WebTerminalNode.start_exploration()
+           ├─ 构造 CommandRequest
+           └─ 发布到 /cmd/request
+
+Time 0.3:  CommandAdapter 接收
+           ├─ 发布 status="queued"
+           └─ 加入队列
+
+Time 0.5:  CommandAdapter 处理
+           ├─ 发布 status="executing"
+           ├─ 调用 /mission/start_exploration 服务
+           └─ MissionPlanner 返回 task_id=123
+
+Time 0.8:  CommandAdapter 发布最终响应
+           ├─ status="completed"
+           ├─ result={'task_id': 123}
+           └─ 清理 request_id 状态 ⚠️
+
+Time 1.0:  WebTerminalNode 接收响应
+           ├─ 解析 task_id
+           └─ 通过 WebSocket 推送到前端
+
+⚠️ 命令请求生命周期结束
+⚠️ 此后不再有该 request_id 的任何更新
+```
+
+**任务执行状态查询（新请求）**：
+```
+Time 10:   用户想知道进度 → 前端发起查询
+Time 10.1: WebTerminalNode.query_task_status(task_id=123)
+           ├─ 构造新的 CommandRequest（新的 request_id）
+           ├─ action="get_task_status"
+           ├─ params={'task_id': 123}
+           └─ 发布到 /cmd/request
+
+Time 10.5: CommandAdapter 处理查询
+           ├─ 调用 /mission/get_task_status 服务
+           ├─ MissionPlanner 返回: status=RUNNING, progress=0.5
+           └─ 发布响应: result={'task_status': 'RUNNING', 'progress': 0.5}
+
+Time 11:   前端接收响应 → 更新进度条显示 50%
+```
+
+### SDK 消息格式
+
+**请求格式（/cmd/request）**：
+```json
+{
+  "action": "start_exploration",
+  "params": {
+    "map_name": "office_floor1",
+    "save_on_completion": true
+  },
+  "request_id": "exploration_20260112_103045",
+  "source": "web_terminal",
+  "timestamp": 1736659845.123
+}
+```
+
+**响应格式（/cmd/response）**：
+```json
+{
+  "request_id": "exploration_20260112_103045",
+  "status": "completed",
+  "message": "Exploration task created",
+  "data": {
+    "task_id": 123
+  },
+  "timestamp": 1736659846.456
+}
+```
+
+### WebTerminalNode 公共接口
+
+**已实现的方法**（位于 `web/backend/nodes/web_terminal_node.py`）：
+
+```python
+class WebTerminalNode:
+    def navigate_to_pose(x: float, y: float, yaw: float) -> str:
+        """返回 request_id"""
+        
+    def start_exploration(map_name: str, save_on_completion: bool) -> str:
+        """返回 request_id"""
+        
+    def start_patrol(waypoint_file: str, mode: str) -> str:
+        """返回 request_id"""
+        
+    def query_task_status(task_id: str) -> str:
+        """返回 request_id（查询响应包含任务进度）"""
+        
+    def cancel_task(task_id: str) -> str:
+        """返回 request_id"""
+        
+    def emergency_stop() -> str:
+        """返回 request_id"""
+```
+
+### 暂停/恢复任务的实现方法
+
+**⚠️ 关键发现：SDK 已定义 ActionType，但未提供便捷构造函数**
+
+根据 bot_cmd_interface 文档分析：
+- ✅ `ActionType.PAUSE_TASK` 和 `ActionType.RESUME_TASK` 已定义
+- ❌ SDK 未提供 `create_pause_task_request()` / `create_resume_task_request()`
+- ✅ 可以直接使用 `CommandRequest` 构造
+
+**实现方案（不修改 SDK）**：
+
+```python
+# 在 WebTerminalNode 中添加新方法
+def pause_task(self, task_id: str) -> str:
+    """暂停任务"""
+    request = CommandRequest(
+        action=ActionType.PAUSE_TASK,
+        params={'task_id': task_id},
+        priority=2,
+        timeout=5.0
+    )
+    return self._publish_request(request)
+
+def resume_task(self, task_id: str) -> str:
+    """恢复任务"""
+    request = CommandRequest(
+        action=ActionType.RESUME_TASK,
+        params={'task_id': task_id},
+        priority=2,
+        timeout=5.0
+    )
+    return self._publish_request(request)
+```
+
+### 开发检查清单
+
+在实现任何后端功能前，必须确认：
+
+- [ ] ✅ 使用 `bot_cmd_interface.sdk` 导入 `CommandRequest` / `ActionType`
+- [ ] ✅ 通过 WebTerminalNode 公共方法调用（不直接访问 ROS 服务）
+- [ ] ✅ FastAPI 端点返回 `request_id`（不等待任务完成）
+- [ ] ❌ 禁止导入 `bot_navigation_msgs.srv.*`
+- [ ] ❌ 禁止使用 `node.create_client()`
+- [ ] ❌ 禁止在响应中返回任务进度（进度通过查询获得）
 
 ---
 

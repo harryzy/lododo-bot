@@ -50,6 +50,7 @@ export interface TaskResponse {
   message: string
   request_id: string
   task_id?: string
+  task_data?: any  // 任务完整数据（从缓存）
 }
 
 const tasks = {
@@ -68,18 +69,38 @@ const tasks = {
   // 查询任务状态
   getTaskStatus: (task_id?: string) =>
     apiClient.get<any, any>('/tasks/status', { params: { task_id } }),
+  
+  // 查询单个任务状态（用户手动查询）
+  queryTaskStatus: (task_id: string) =>
+    apiClient.post<any, TaskResponse>(`/tasks/${task_id}/query`),
 
   // 取消任务
-  cancelTask: (task_id: string) =>
+  cancelTask: (task_id: string | number) =>
     apiClient.post<any, TaskResponse>('/tasks/cancel', { task_id }),
+
+  // 暂停任务
+  pauseTask: (task_id: string) =>
+    apiClient.post<any, TaskResponse>(`/tasks/${task_id}/pause`),
+
+  // 恢复任务
+  resumeTask: (task_id: string) =>
+    apiClient.post<any, TaskResponse>(`/tasks/${task_id}/resume`),
 
   // 紧急停止
   emergencyStop: () =>
     apiClient.post<any, TaskResponse>('/tasks/emergency_stop'),
 
-  // 获取任务列表
+  // 获取任务列表（活跃 + 历史）
   listTasks: () =>
     apiClient.get<any, any>('/tasks/list'),
+  
+  // 获取活跃任务
+  getActiveTasks: () =>
+    apiClient.get<any, any>('/tasks/active'),
+  
+  // 获取任务历史
+  getTaskHistory: (limit?: number) =>
+    apiClient.get<any, any>('/tasks/history', { params: { limit } }),
 }
 
 // ============================================
@@ -178,8 +199,14 @@ const settings = {
 
 // 导出 API 服务
 export const apiService = {
-  ...tasks,
+  tasks,
   maps,
   waypoints,
   settings,
 }
+
+// 默认导出
+export default apiService;
+
+// 单独导出各模块（兼容性）
+export { tasks, maps, waypoints, settings };

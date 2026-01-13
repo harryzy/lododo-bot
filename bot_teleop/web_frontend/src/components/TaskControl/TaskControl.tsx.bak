@@ -9,8 +9,8 @@ function TaskControl() {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
   const [form] = Form.useForm()
-
-  const handleNavigate = async (values: any) => {
+  
+  const handleNavigate = async (values: any) {
     setLoading(true)
     try {
       const response = await apiService.tasks.createNavigationTask({
@@ -18,10 +18,10 @@ function TaskControl() {
         y: parseFloat(values.y),
         yaw: parseFloat(values.yaw || 0),
       })
-      message.success('Navigation task created: ' + response.request_id)
+      message.success(`Navigation task created: ${response.request_id}`)
       form.resetFields()
     } catch (error: any) {
-      message.error('Failed to create navigation task: ' + error.message)
+      message.error(`Failed to create navigation task: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -34,9 +34,9 @@ function TaskControl() {
         map_name: 'web_exploration',
         save_on_completion: true,
       })
-      message.success('Exploration task created: ' + response.request_id)
+      message.success(`Exploration task created: ${response.request_id}`)
     } catch (error: any) {
-      message.error('Failed to create exploration task: ' + error.message)
+      message.error(`Failed to create exploration task: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -47,27 +47,45 @@ function TaskControl() {
       await apiService.tasks.emergencyStop()
       message.warning('Emergency stop triggered')
     } catch (error: any) {
-      message.error('Failed to stop: ' + error.message)
+      message.error(`Failed to stop: ${error.message}`)
     }
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      {/* 任务列表（活跃任务 + 历史记录） */}
       <TaskList />
 
       <Card title={t('tasks.navigation')} style={{ width: '100%' }}>
-        <Form form={form} layout="inline" onFinish={handleNavigate}>
-          <Form.Item name="x" label="X" rules={[{ required: true, message: 'Please input X coordinate' }]}>
+        <Form
+          form={form}
+          layout="inline"
+          onFinish={handleNavigate}
+        >
+          <Form.Item
+            name="x"
+            label="X"
+            rules={[{ required: true, message: 'Please input X coordinate' }]}
+          >
             <Input placeholder="0.0" style={{ width: 100 }} />
           </Form.Item>
-          <Form.Item name="y" label="Y" rules={[{ required: true, message: 'Please input Y coordinate' }]}>
+          <Form.Item
+            name="y"
+            label="Y"
+            rules={[{ required: true, message: 'Please input Y coordinate' }]}
+          >
             <Input placeholder="0.0" style={{ width: 100 }} />
           </Form.Item>
           <Form.Item name="yaw" label="Yaw">
             <Input placeholder="0.0" style={{ width: 100 }} />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={loading}>
+            <Button
+              type="primary"
+              htmlType="submit"
+              icon={<SendOutlined />}
+              loading={loading}
+            >
               {t('tasks.start')}
             </Button>
           </Form.Item>
@@ -75,13 +93,23 @@ function TaskControl() {
       </Card>
 
       <Card title={t('tasks.exploration')} style={{ width: '100%' }}>
-        <Button type="primary" onClick={handleExploration} loading={loading} icon={<SendOutlined />}>
+        <Button
+          type="primary"
+          onClick={handleExploration}
+          loading={loading}
+          icon={<SendOutlined />}
+        >
           {t('tasks.startExploration')}
         </Button>
       </Card>
 
       <Card title={t('tasks.emergency')} style={{ width: '100%' }}>
-        <Button danger type="primary" onClick={handleEmergencyStop} icon={<StopOutlined />}>
+        <Button
+          danger
+          type="primary"
+          onClick={handleEmergencyStop}
+          icon={<StopOutlined />}
+        >
           {t('tasks.emergencyStop')}
         </Button>
       </Card>

@@ -411,11 +411,9 @@ export class MapRenderer {
     // 渲染 Costmap（在地图之后，机器人之前）
     if (this.mapData) {
       if (this.showGlobalCostmap && this.globalCostmap) {
-        console.log('[MapRenderer] 正在渲染全局代价地图')
         this.renderCostmap(this.globalCostmap, 'global')
       }
       if (this.showLocalCostmap && this.localCostmap) {
-        console.log('[MapRenderer] 正在渲染局部代价地图')
         this.renderCostmap(this.localCostmap, 'local')
       }
     }
@@ -470,23 +468,6 @@ export class MapRenderer {
     const { width, height, origin } = costmapMsg.info
     const data = costmapMsg.data
     const isLocal = _type === 'local'
-    
-    // 调试：输出 Costmap 信息
-    console.log(`[MapRenderer] 渲染${_type}代价地图:`, {
-      frame_id: costmapMsg.header.frame_id,
-      width, height,
-      resolution: costmapMsg.info.resolution,
-      origin_x: origin.position.x,
-      origin_y: origin.position.y,
-      origin_orientation: origin.orientation
-    })
-    
-    if (isLocal && this.robotPose) {
-      console.log('[MapRenderer] 机器人当前位姿 (map):', {
-        x: this.robotPose.pose.pose.position.x,
-        y: this.robotPose.pose.pose.position.y
-      })
-    }
     
     // 创建临时 canvas
     const tempCanvas = document.createElement('canvas')
@@ -583,17 +564,6 @@ export class MapRenderer {
       }
     }
     
-    console.log('[MapRenderer] Costmap 代价值统计:', {
-      type: isLocal ? 'local' : 'global',
-      total: data.length,
-      zero: stats.zero,
-      low: stats.low,
-      mid: stats.mid,
-      high: stats.high,
-      lethal: stats.lethal,
-      nonZero: stats.low + stats.mid + stats.high + stats.lethal
-    })
-    
     tempCtx.putImageData(imageData, 0, 0)
     
     // 计算 Costmap 在主 canvas 上的位置（与主地图相同的坐标系）
@@ -658,20 +628,6 @@ export class MapRenderer {
     const canvasX = gridX
     const canvasY = mapHeight - gridY - height  // costmap 左上角的 Canvas Y 坐标
     
-    console.log('[MapRenderer] Costmap 坐标转换:', {
-      type: isLocal ? 'local' : 'global',
-      ros_origin: { x: costmapOriginX, y: costmapOriginY },
-      grid: { x: gridX, y: gridY },
-      canvas: { x: canvasX, y: canvasY },
-      canvas_center: { x: canvasX + width/2, y: canvasY + height/2 },
-      screen_center: { 
-        x: (canvasX + width/2) * this.transform.scale + this.transform.offsetX,
-        y: (canvasY + height/2) * this.transform.scale + this.transform.offsetY
-      },
-      costmapSize: { w: width, h: height },
-      mapSize: { w: this.mapData.info.width, h: mapHeight }
-    })
-    
     // 应用与主地图相同的变换并绘制
     this.ctx.save()
     this.ctx.globalAlpha = 1.0  // 透明度已在 imageData 中处理
@@ -690,12 +646,6 @@ export class MapRenderer {
     const { position, orientation } = this.robotPose.pose.pose
     const screenPos = this.rosToScreen(position.x, position.y)
     const yaw = this.quaternionToYaw(orientation)
-    
-    // 调试：输出机器人的屏幕坐标
-    console.log('[MapRenderer] 机器人屏幕坐标:', {
-      ros: { x: position.x, y: position.y },
-      screen: screenPos
-    })
     
     this.ctx.save()
     this.ctx.translate(screenPos.x, screenPos.y)

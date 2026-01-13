@@ -118,6 +118,10 @@ class TaskManager:
         self._active_tasks_file = os.path.join(self._persistence_dir, 'active_tasks.json')
         self._history_dir = os.path.join(self._persistence_dir, 'history')
         os.makedirs(self._history_dir, exist_ok=True)
+        
+        # 历史任务查询缓存（性能优化）/ History task query cache (performance optimization)
+        self._history_cache: Dict[str, Task] = {}  # 缓存最近查询的历史任务
+        self._cache_max_size = 100  # 最大缓存100个历史任务
     
     def create_task(self, 
                    task_type: TaskType,
@@ -168,9 +172,31 @@ class TaskManager:
         
         self._task_queue.insert(insert_index, task_id)
     
-    def get_task(self, task_id: str) -> Optional[Task]:
-        """获取任务"""
-        return self._tasks.get(task_id)
+    def get_task(self, task_id: str, include_history: bool = True) -> Optional[Task]:
+        """
+        获取任务（支持历史查询）/ Get task (with history query support)
+        
+        Args:
+            task_id: 任务ID / Task ID
+            include_history: 是否查询历史记录（默认True）/ Whether to query history (default True)
+        
+        Returns:
+            Task对象，未找到返回None / Task object, None if not found
+        
+        查询顺序 / Query order:
+        1. 活动任务（内存，最快）/ Active tasks (in-memory, fastest)
+        2. 历史记录（磁盘+缓存，慢速路径）/ History (disk + cache, slow path)
+        """
+        # 快速路径：查询活动任务 / Fast path: query active tasks
+        task = self._tasks.get(task_id)
+        if task:
+            return task
+        
+        # 慢速路径：查询历史记录 / Slow path: query history
+        if include_history:
+            return self._get_task_from_history(task_id, days=1)
+        
+        return None
     
     def get_all_tasks(self) -> List[Task]:
         """获取所有任务"""
@@ -598,3 +624,78 @@ class TaskManager:
         # 保存
         with open(history_file, 'w') as f:
             json.dump(history, f, indent=2)
+    
+    def _get_task_from_history(self, task_id: str, days: int = 1) -> Optional[Task]:
+        """
+        从历史记录查询任务 / Query task from history
+        
+        Args:
+            task_id: 任务ID / Task ID
+            days: 搜索天数（0=今天，1=今天+昨天）/ Days to search (0=today, 1=today+yesterday)
+        
+        Returns:
+            Task对象，未找到返回None / Task object, None if not found
+        
+        性能优化 / Performance optimization:
+        - 使用LRU缓存减少磁盘读取 / Use LRU cache to reduce disk reads
+        - 优先查询缓存，未命中再读文件 / Check cache first, read file on miss
+        """
+        # 检查缓存 / Check cache
+        if task_id in self._history_cache:
+            return self._history_cache[task_id]
+        
+        # 搜索历史文件（今天 + 过去N天）/ Search history files (today + past N days)
+        from datetime import timedelta
+        
+        for i in range(days + 1):
+            date = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
+            history_file = os.path.join(self._history_dir, f'tasks_{date}.json')
+            
+            if not os.path.exists(history_file):
+                continue
+            
+            try:
+                with open(history_file, 'r') as f:
+                    history = json.load(f)
+                    
+                    for task_data in history:
+                        if task_data.get('task_id') == task_id:
+                            # 找到任务，反序列化并缓存 / Found task, deserialize and cache
+                            task = Task.from_dict(task_data)
+                            self._cache_history_task(task)
+                            return task
+            
+            except Exception as e:
+                # 记录错误但继续搜索其他文件 / Log error but continue searching
+                print(f"Warning: Failed to read history file {history_file}: {e}")
+                continue
+        
+        # 未找到 / Not found
+        return None
+    
+    def _cache_history_task(self, task: Task):
+        """
+        缓存历史任务（LRU淘汰策略）/ Cache history task (LRU eviction)
+        
+        Args:
+            task: 要缓存的任务 / Task to cache
+        """
+        # 添加到缓存 / Add to cache
+        self._history_cache[task.task_id] = task
+        
+        # LRU淘汰：如果超过最大大小，删除最旧的项 / LRU eviction: remove oldest if exceeds max size
+        if len(self._history_cache) > self._cache_max_size:
+            # Python 3.7+ dict保持插入顺序，删除第一个键（最旧）
+            # Python 3.7+ dict maintains insertion order, delete first key (oldest)
+            oldest_key = next(iter(self._history_cache))
+            del self._history_cache[oldest_key]
+    
+    def clear_history_cache(self):
+        """
+        清空历史查询缓存 / Clear history query cache
+        
+        使用场景 / Use cases:
+        - 测试后清理 / Cleanup after tests
+        - 内存压力下释放资源 / Release resources under memory pressure
+        """
+        self._history_cache.clear()

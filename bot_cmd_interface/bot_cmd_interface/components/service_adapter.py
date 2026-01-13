@@ -290,18 +290,54 @@ class ServiceAdapter:
         - 获取task_id后立即返回
         - 不等待导航任务完成（任务由MissionPlanner后台执行）
         
+        支持两种参数格式 / Supports two parameter formats:
+        1. SDK标准格式（嵌套）/ SDK standard format (nested):
+           {"goal_pose": {"position": {"x": 1.0, "y": 2.0}, "orientation": {"yaw": 0.0}}}
+        
+        2. 扁平格式（向后兼容）/ Flat format (backward compatible):
+           {"x": 1.0, "y": 2.0, "yaw": 0.0}
+        
         Returns:
             (True, {'task_id': xxx}, message) - 服务调用成功，任务已创建
             (False, {}, error_msg) - 服务调用失败
         """
         params = request.params
         
+        # 解析参数 - 支持两种格式 / Parse params - support both formats
+        if 'goal_pose' in params:
+            # SDK标准格式（嵌套）/ SDK standard format (nested)
+            goal_pose = params['goal_pose']
+            position = goal_pose.get('position', {})
+            orientation = goal_pose.get('orientation', {})
+            x = float(position.get('x', 0.0))
+            y = float(position.get('y', 0.0))
+            yaw = float(orientation.get('yaw', 0.0))
+            frame_id = params.get('frame_id', 'map')
+            
+            self.node.get_logger().debug(
+                f'[ServiceAdapter] Using SDK standard format (nested goal_pose)'
+            )
+        else:
+            # 扁平格式（向后兼容）/ Flat format (backward compatible)
+            x = float(params.get('x', 0.0))
+            y = float(params.get('y', 0.0))
+            yaw = float(params.get('yaw', 0.0))
+            frame_id = params.get('frame_id', 'map')
+            
+            self.node.get_logger().debug(
+                f'[ServiceAdapter] Using flat format (backward compatible)'
+            )
+        
         # 构造服务请求 / Construct service request
         srv_request = NavigateToPose.Request()
-        srv_request.x = float(params.get('x', 0.0))
-        srv_request.y = float(params.get('y', 0.0))
-        srv_request.yaw = float(params.get('yaw', 0.0))
-        srv_request.frame_id = params.get('frame_id', 'map')
+        srv_request.x = x
+        srv_request.y = y
+        srv_request.yaw = yaw
+        srv_request.frame_id = frame_id
+        
+        self.node.get_logger().info(
+            f'[ServiceAdapter] Navigate to: x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}, frame={frame_id}'
+        )
         
         # 调用服务（立即返回task_id）/ Call service (returns task_id immediately)
         success, response, error_msg = await self._call_service('navigate_to_pose', srv_request)

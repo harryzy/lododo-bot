@@ -2,6 +2,11 @@
 """
 Web控制界面 - FastAPI 主应用
 提供 REST API 和 WebSocket 服务
+
+架构重构后：
+- 使用 TaskManager 管理任务状态（单例模式）
+- WebTerminalNode 被动监听 /cmd/response（常驻监听）
+- WebSocketHandler 仅负责广播（移除轮询）
 """
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
@@ -18,65 +23,81 @@ from typing import Optional
 
 from .nodes.web_terminal_node import WebTerminalNode
 from .websocket_handler import WebSocketHandler
+from .managers.task_manager import TaskManager
 from .api import tasks, maps, waypoints, settings
 
 # 全局变量
 web_terminal_node: Optional[WebTerminalNode] = None
 websocket_handler: Optional[WebSocketHandler] = None
+task_manager: Optional[TaskManager] = None
 ros_executor: Optional[asyncio.Future] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    global web_terminal_node, websocket_handler, ros_executor
+    global web_terminal_node, websocket_handler, task_manager, ros_executor
     
-    print("[WebServer] 启动中...")
+    print("[WebServer] 🚀 启动中...")
     
     # 加载配置
     config_path = Path(__file__).parent.parent.parent / "config" / "web_config.yaml"
     if config_path.exists():
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
-            print(f"[WebServer] 配置已加载: {config_path}")
+            print(f"[WebServer] ✓ 配置已加载: {config_path}")
     else:
         config = {}
-        print(f"[WebServer] 配置文件不存在，使用默认配置: {config_path}")
+        print(f"[WebServer] ⚠ 配置文件不存在，使用默认配置: {config_path}")
     
-    # 创建 WebSocket 处理器
-    websocket_handler = WebSocketHandler()
+    # 获取当前事件循环
+    loop = asyncio.get_event_loop()
+    
+    # 创建 TaskManager（单例模式）
+    task_manager = TaskManager()
+    print("[WebServer] ✓ TaskManager 已创建")
+    
+    # 创建 WebSocket 处理器（传入事件循环）
+    websocket_handler = WebSocketHandler(event_loop=loop)
+    print("[WebServer] ✓ WebSocketHandler 已创建")
     
     # 初始化 ROS2
     try:
         rclpy.init()
-        print("[WebServer] ROS2 已初始化")
+        print("[WebServer] ✓ ROS2 已初始化")
     except Exception as e:
-        print(f"[WebServer] ROS2 初始化失败: {e}")
+        print(f"[WebServer] ✗ ROS2 初始化失败: {e}")
     
     # 创建 ROS2 节点
     try:
-        web_terminal_node = WebTerminalNode(response_callback=websocket_handler.broadcast_response)
-        print("[WebServer] WebTerminalNode 已创建")
+        # 创建 WebTerminalNode（注入 TaskManager 和 WebSocketHandler）
+        web_terminal_node = WebTerminalNode(
+            task_manager=task_manager,
+            websocket_handler=websocket_handler
+        )
+        print("[WebServer] ✓ WebTerminalNode 已创建")
+        print("[WebServer] ✓ CMD 响应监听服务已启动（常驻监听 /cmd/response）")
         
         # 在后台线程运行 ROS2 spin
         loop = asyncio.get_event_loop()
         ros_executor = loop.run_in_executor(None, web_terminal_node.spin)
-        print("[WebServer] ROS2 节点已启动")
+        print("[WebServer] ✓ ROS2 节点已启动")
         
     except Exception as e:
-        print(f"[WebServer] 初始化 ROS2 节点失败: {e}")
+        print(f"[WebServer] ✗ 初始化 ROS2 节点失败: {e}")
         web_terminal_node = None
     
-    print("[WebServer] 启动完成 ✓")
+    print("[WebServer] ✅ 启动完成")
+    print("[WebServer] 📌 架构模式: 被动监听 /cmd/response（非轮询）")
     
     yield
     
     # 清理资源
-    print("[WebServer] 关闭中...")
+    print("[WebServer] 🛑 关闭中...")
     
     if web_terminal_node:
         web_terminal_node.shutdown()
-        print("[WebServer] ROS2 节点已关闭")
+        print("[WebServer] ✓ ROS2 节点已关闭")
     
     if ros_executor:
         ros_executor.cancel()
@@ -84,11 +105,11 @@ async def lifespan(app: FastAPI):
     # 关闭 ROS2
     try:
         rclpy.shutdown()
-        print("[WebServer] ROS2 已关闭")
+        print("[WebServer] ✓ ROS2 已关闭")
     except Exception as e:
-        print(f"[WebServer] ROS2 关闭失败: {e}")
+        print(f"[WebServer] ✗ ROS2 关闭失败: {e}")
     
-    print("[WebServer] 关闭完成")
+    print("[WebServer] ✅ 关闭完成")
 
 
 # 创建 FastAPI 应用
@@ -127,6 +148,13 @@ def get_websocket_handler() -> WebSocketHandler:
     return websocket_handler
 
 
+def get_task_manager():
+    """获取 TaskManager 实例（依赖注入）"""
+    if task_manager is None:
+        raise HTTPException(status_code=503, detail="TaskManager not available")
+    return task_manager
+
+
 # ============================================
 # API 路由
 # ============================================
@@ -138,17 +166,22 @@ async def api_root():
         "name": "LeKiwi Robot Web API",
         "version": "1.0.0",
         "status": "running",
-        "ros_node": web_terminal_node is not None
+        "ros_node": web_terminal_node is not None,
+        "architecture": "passive_listener"
     }
 
 
 @app.get("/api/health")
 async def health_check():
     """健康检查"""
+    active_tasks = task_manager.get_active_tasks() if task_manager else []
+    
     return {
         "status": "healthy",
         "ros_node": web_terminal_node is not None,
-        "websocket_clients": len(websocket_handler.active_connections) if websocket_handler else 0
+        "websocket_clients": len(websocket_handler.active_connections) if websocket_handler else 0,
+        "active_tasks": len(active_tasks),
+        "architecture": "passive_listener (non-polling)"
     }
 
 
