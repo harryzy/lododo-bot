@@ -1,0 +1,288 @@
+import React, { useState, useEffect } from 'react';
+import { Table, Button, Space, message, Modal, Tag, Image, Card, Statistic, Row, Col } from 'antd';
+import {
+  ReloadOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+  DatabaseOutlined,
+  FileImageOutlined,
+  ClockCircleOutlined
+} from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
+import apiService from '../../services/api';
+import type { ColumnsType } from 'antd/es/table';
+
+interface MapInfo {
+  name: string;
+  version: number;
+  size: string;
+  resolution: number;
+  created_at: string;
+  updated_at?: string;
+  description?: string;
+  tags: string[];
+  thumbnail_url?: string;
+  has_rtabmap_db: boolean;
+  has_pgm: boolean;
+  has_yaml: boolean;
+}
+
+const MapManager: React.FC = () => {
+  const { t } = useTranslation();
+  const [maps, setMaps] = useState<MapInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingMap, setLoadingMap] = useState<string | null>(null);
+  const [deletingMap, setDeletingMap] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadMaps();
+  }, []);
+
+  const loadMaps = async () => {
+    setLoading(true);
+    try {
+      const response = await apiService.maps.list();
+      setMaps(response.maps);
+    } catch (error: any) {
+      message.error(t('maps.loadFailed') + ': ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadMap = async (mapName: string) => {
+    Modal.confirm({
+      title: t('maps.loadConfirmTitle'),
+      content: t('maps.loadConfirmContent', { mapName }),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        setLoadingMap(mapName);
+        try {
+          await apiService.maps.load({ map_name: mapName });
+          message.success(t('maps.loadSuccess', { mapName }));
+        } catch (error: any) {
+          message.error(t('maps.loadFailed') + ': ' + error.message);
+        } finally {
+          setLoadingMap(null);
+        }
+      }
+    });
+  };
+
+  const handleDeleteMap = async (mapName: string) => {
+    Modal.confirm({
+      title: t('maps.deleteConfirmTitle'),
+      content: t('maps.deleteConfirmContent', { mapName }),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      okType: 'danger',
+      onOk: async () => {
+        setDeletingMap(mapName);
+        try {
+          await apiService.maps.delete(mapName);
+          message.success(t('maps.deleteSuccess', { mapName }));
+          await loadMaps(); // 重新加载列表
+        } catch (error: any) {
+          message.error(t('maps.deleteFailed') + ': ' + error.message);
+        } finally {
+          setDeletingMap(null);
+        }
+      }
+    });
+  };
+
+  const columns: ColumnsType<MapInfo> = [
+    {
+      title: t('maps.thumbnail'),
+      dataIndex: 'thumbnail_url',
+      key: 'thumbnail',
+      width: 100,
+      render: (url: string) => (
+        <Image
+          width={60}
+          height={60}
+          src={url}
+          placeholder={true}
+          fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTIiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjOTk5Ij5NYXA8L3RleHQ+PC9zdmc+"
+          preview={{
+            mask: <EyeOutlined />
+          }}
+        />
+      )
+    },
+    {
+      title: t('maps.name'),
+      dataIndex: 'name',
+      key: 'name',
+      sorter: (a: MapInfo, b: MapInfo) => a.name.localeCompare(b.name),
+      render: (name: string, record: MapInfo) => (
+        <Space direction="vertical" size={2}>
+          <span style={{ fontWeight: 500 }}>{name}</span>
+          {record.description && (
+            <span style={{ fontSize: '12px', color: '#999' }}>
+              {record.description}
+            </span>
+          )}
+        </Space>
+      )
+    },
+    {
+      title: t('maps.version'),
+      dataIndex: 'version',
+      key: 'version',
+      width: 80,
+      render: (version: number) => `v${version}`
+    },
+    {
+      title: t('maps.size'),
+      dataIndex: 'size',
+      key: 'size',
+      width: 120
+    },
+    {
+      title: t('maps.resolution'),
+      dataIndex: 'resolution',
+      key: 'resolution',
+      width: 100,
+      render: (res: number) => `${res}m`
+    },
+    {
+      title: t('maps.createdAt'),
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 180,
+      sorter: (a: MapInfo, b: MapInfo) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      render: (date: string) => {
+        try {
+          return new Date(date).toLocaleString();
+        } catch {
+          return date;
+        }
+      }
+    },
+    {
+      title: t('maps.files'),
+      key: 'files',
+      width: 150,
+      render: (_: any, record: MapInfo) => (
+        <Space size={4}>
+          {record.has_rtabmap_db && (
+            <Tag icon={<DatabaseOutlined />} color="green">DB</Tag>
+          )}
+          {record.has_pgm && (
+            <Tag icon={<FileImageOutlined />} color="blue">PGM</Tag>
+          )}
+        </Space>
+      )
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 200,
+      fixed: 'right',
+      render: (_: any, record: MapInfo) => (
+        <Space>
+          <Button
+            type="primary"
+            icon={<EyeOutlined />}
+            size="small"
+            onClick={() => handleLoadMap(record.name)}
+            loading={loadingMap === record.name}
+            disabled={!record.has_rtabmap_db}
+          >
+            {t('maps.load')}
+          </Button>
+          <Button
+            icon={<DeleteOutlined />}
+            size="small"
+            danger
+            onClick={() => handleDeleteMap(record.name)}
+            loading={deletingMap === record.name}
+          >
+            {t('common.delete')}
+          </Button>
+        </Space>
+      )
+    },
+    {
+      title: t('maps.tags'),
+      dataIndex: 'tags',
+      key: 'tags',
+      render: (tags: string[]) => (
+        <>
+          {tags.map(tag => (
+            <Tag key={tag} color="blue">{tag}</Tag>
+          ))}
+        </>
+      )
+    }
+  ];
+
+  return (
+    <div style={{ padding: 24 }}>
+      {/* 统计卡片 */}
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title={t('maps.totalMaps')}
+              value={maps.length}
+              prefix={<DatabaseOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title={t('maps.withRTABMap')}
+              value={maps.filter(m => m.has_rtabmap_db).length}
+              prefix={<DatabaseOutlined />}
+              valueStyle={{ color: '#3f8600' }}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title={t('maps.lastUpdated')}
+              value={maps.length > 0 ? new Date(maps[0].created_at).toLocaleDateString() : '-'}
+              prefix={<ClockCircleOutlined />}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 表格 */}
+      <Card
+        title={t('maps.title')}
+        extra={
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={loadMaps}
+            loading={loading}
+          >
+            {t('common.refresh')}
+          </Button>
+        }
+      >
+        <Table
+          columns={columns}
+          dataSource={maps}
+          rowKey="name"
+          loading={loading}
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50'],
+            showTotal: (total) => t('maps.totalCount', { count: total })
+          }}
+          scroll={{ x: 1200 }}
+        />
+      </Card>
+    </div>
+  );
+};
+
+export default MapManager;

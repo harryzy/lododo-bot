@@ -102,16 +102,35 @@ class MapLibraryManager:
         
         try:
             with open(self.metadata_file, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
+                content = f.read()
+                if not content.strip():
+                    self.node.get_logger().warn("地图库索引文件为空")
+                    return {}
+                data = yaml.safe_load(content) or {}
+            
+            if not isinstance(data, dict):
+                self.node.get_logger().error(f"地图库索引格式错误: 期望dict，实际{type(data)}")
+                return {}
+            
+            maps_data = data.get('maps', {})
+            if not isinstance(maps_data, dict):
+                self.node.get_logger().error(f"maps字段格式错误: 期望dict，实际{type(maps_data)}")
+                return {}
             
             index = {}
-            for map_name, meta_dict in data.get('maps', {}).items():
-                index[map_name] = MapMetadata.from_dict(meta_dict)
+            for map_name, meta_dict in maps_data.items():
+                try:
+                    index[map_name] = MapMetadata.from_dict(meta_dict)
+                except Exception as e:
+                    self.node.get_logger().error(f"解析地图 {map_name} 失败: {e}")
             
+            self.node.get_logger().info(f"成功加载 {len(index)} 个地图: {list(index.keys())}")
             return index
         
         except Exception as e:
             self.node.get_logger().error(f"加载地图库索引失败: {e}")
+            import traceback
+            self.node.get_logger().error(traceback.format_exc())
             return {}
     
     def _save_index(self) -> bool:

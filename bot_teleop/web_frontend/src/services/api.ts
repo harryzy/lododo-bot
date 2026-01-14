@@ -107,26 +107,101 @@ const tasks = {
 // 地图管理 API
 // ============================================
 
+interface MapInfo {
+  name: string
+  version: number  // 当前活动版本
+  versions: number[]  // 所有可用版本列表
+  size: string
+  resolution: number
+  created_at: string
+  updated_at?: string
+  description?: string
+  tags: string[]
+  thumbnail_url?: string
+  has_rtabmap_db: boolean
+  has_pgm: boolean
+  has_yaml: boolean
+}
+
+interface VersionInfo {
+  version: number
+  is_current: boolean
+  size: string
+  has_rtabmap_db: boolean
+  has_pgm: boolean
+  has_yaml: boolean
+  created_at?: string
+}
+
+interface VersionListResponse {
+  success: boolean
+  map_name: string
+  current_version: number
+  versions: VersionInfo[]
+}
+
+interface SwitchVersionRequest {
+  version: number
+}
+
+interface SwitchVersionResponse {
+  success: boolean
+  message: string
+  new_version: number
+}
+
+interface MapListResponse {
+  success: boolean
+  maps: MapInfo[]
+  total: number
+}
+
+interface LoadMapRequest {
+  map_name: string
+  version?: number
+}
+
 const maps = {
-  // 获取地图列表
-  listMaps: () =>
-    apiClient.get<any, any>('/maps'),
+  // 获取地图列表（增强版 - 支持版本管理）
+  list: () =>
+    apiClient.get<any, MapListResponse>('/maps'),
 
   // 获取地图详情
   getMapInfo: (map_name: string) =>
     apiClient.get<any, any>(`/maps/${map_name}`),
 
   // 加载地图
-  loadMap: (map_name: string) =>
-    apiClient.post<any, any>('/maps/load', { map_name }),
+  load: (data: LoadMapRequest) =>
+    apiClient.post<any, any>('/maps/load', data),
 
   // 保存地图
   saveMap: (map_name: string, description?: string, tags?: string[]) =>
     apiClient.post<any, any>('/maps/save', { map_name, description, tags }),
 
-  // 删除地图
-  deleteMap: (map_name: string) =>
+  // 删除整个地图
+  delete: (map_name: string) =>
     apiClient.delete<any, any>(`/maps/${map_name}`),
+
+  // 获取地图缩略图 URL
+  getThumbnailUrl: (map_name: string) => 
+    `${API_BASE_URL}/maps/${map_name}/thumbnail`,
+
+  // ========== 版本管理 API ==========
+  
+  // 获取地图所有版本
+  getVersions: (map_name: string) =>
+    apiClient.get<any, VersionListResponse>(`/maps/${map_name}/versions`),
+  
+  // 切换当前版本
+  switchVersion: (map_name: string, version: number) =>
+    apiClient.post<SwitchVersionRequest, SwitchVersionResponse>(
+      `/maps/${map_name}/switch_version`, 
+      { version }
+    ),
+  
+  // 删除特定版本
+  deleteVersion: (map_name: string, version: number) =>
+    apiClient.delete<any, any>(`/maps/${map_name}/versions/${version}`),
 }
 
 // ============================================

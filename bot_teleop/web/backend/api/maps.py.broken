@@ -1,0 +1,351 @@
+"""
+地图管理 API
+提供地图库的查询、加载、保存等功能
+"""
+
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import List, Optional
+import yaml
+from pathlib import Path
+import os
+
+from ..dependencies import get_settings
+
+router = APIRouter()
+
+
+# ============================================
+# 数据模型
+# ============================================
+
+class MapInfo(BaseModel):
+    """地图信息（增强版 - 支持版本管理）"""
+    name: str
+    version: int
+    size: str  # e.g., "384x384"
+    resolution: float  # 0.05
+    created_at: str  # ISO 8601
+    updated_at: Optional[str] = None
+    description: Optional[str] = None
+    tags: List[str] = []
+    thumbnail_url: Optional[str] = None
+    has_rtabmap_db: bool = False
+    has_pgm: bool = False
+    has_yaml: bool = False
+
+
+class MapListResponse(BaseModel):
+    """地图列表响应"""
+    success: bool
+    maps: List[MapInfo]
+    total: int
+
+
+class MapLoadRequest(BaseModel):
+    """地图加载请求"""
+    map_name: str
+    version: Optional[int] = None  # 如果为None，加载最新版本
+
+
+class MapSaveRequest(BaseModel):
+    """地图保存请求"""
+    map_name: str
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class DeleteMapResponse(BaseModel):
+    """删除地图响应"""
+    success: bool
+    message: str
+
+
+# ============================================
+# 工具函数
+# ============================================
+
+def get_maps_directory() -> Path:
+    """获取地图目录"""
+    # 默认地图目录
+    map
+    扫描地图库（支持版本管理）
+    
+    读取map_library.yaml获取地图元数据
+    """
+    maps_dir = get_maps_directory()
+    map_list = []
+    
+    # 读取map_library.yaml
+    library_file = maps_dir / "map_library.yaml"
+    
+    if not library_file.exists():
+        # 如果没有library文件，返回空列表
+        return map_list
+    
+    try:
+        with open(library_file, 'r', encoding='utf-8') as f:
+            library_data = yaml.safe_load(f) or {}
+        
+        # 从maps字段读取地图信息
+        maps_data = library_data.get('maps', {})
+        
+        for map_name, metadata in maps_data.items():
+            # 检查文件是否存在
+            map_dir = maps_dir / map_name
+            version = metadata.get('version', 1)
+            
+            has_rtabmap_db = (map_dir / f"rtabmap_v{version}.db").exists() or (map_dir / "rtabmap.db").exists()
+            has_pgm = (map_dir / f"{map_name}_v{version}.pgm").exists() or (map_dir / "map.pgm").exists()
+            has_yaml = (map_dir / f"{map_name}_v{version}.yaml").exists() or (map_dir / "map.yaml").exists()
+            
+            # 构造MapInfo
+            map_info = MapInfo(
+                name=map_name,
+                version=version,
+                size=f"{metadata.get('width', 0)}x{metadata.get('height', 0)}",
+                resolution=metadata.get('resolution', 0.05),
+                created_at=metadata.get('created_at', ''),
+                updated_at=metadata.get('updated_at'),
+                description=metadata.get('description', ''),
+                tags=metadata.get('tags', []),
+                thumbnail_url=f"/api/maps/{map_name}/thumbnail",
+                has_rtabmap_db=has_rtabmap_db,
+                has_pgm=has_pgm,
+                has_yaml=has_yaml
+            )
+            
+            map_list.append(map_info)
+        
+        return map_list
+    
+    except Exception as e:
+        print(f"[MapAPI] 扫描地图库失败: {e}")
+                has_pgm=has_pgm,
+            has_yaml=has_yaml,
+            metadata=metadata
+        )
+        及其版本信息
+    """
+    try:
+        maps = scan_map_library()
+        return MapListResponse(
+            success=True,
+            maps=maps,
+            total=len(maps)=========================
+# API 端点
+# ============================================
+
+@router.get("/maps", response_model=MapListResponse)
+async def list_maps():
+    """
+    获取地图列表
+    
+    扫描地图库，返回所有可用地图
+    """
+    try:
+        maps = scan_map_library()
+        return MapListResponse(
+            success=True,
+            maps=maps
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/maps/{map_name}")
+async def get_map_info(map_name: str):
+    """
+    获取指定地图的详细信息
+    
+    Args:
+        map_name: 地图名称
+    """
+    try:
+        maps_dir = get_maps_directory()
+        map_path = maps_dir / map_name
+        
+        if not map_path.exists():
+            raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found")
+        
+        # 读取地图配置
+        map_yaml_path = map_path / "map.yaml"
+        map_config = None
+        if map_yaml_path.exists():
+            with open(map_yaml_path, 'r', encoding='utf-8') as f:
+                map_config = yaml.safe_load(f)
+        
+        # 读取元数据
+        metadata_path = map_path / "metadata.yaml"
+        metadata = None
+        if metadata_path.exists():
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                metadata = yaml.safe_load(f)
+        
+        return {
+            "success": True,
+            "name": map_name,
+            "path": str(map_path),
+            "config": map_config,
+            "metadata": metadata,
+            "files": {
+                "rtabmap_db": (map_path / "rtabmap.db").exists(),
+                "pgm": (map_path / "map.pgm").exists(),
+                "yaml": (map_path / "map.yaml").exists()
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/maps/load")
+async def load_map(req: MapLoadRequest):
+    """
+    加载地图
+    
+    切换到指定的地图（需要重启定位节点）
+    """
+    try:
+        maps_dir = get_maps_directory()
+        map_path = maps_dir / req.map_name
+        
+        if not map_path.exists():
+            raise HTTPException(status_code=404, detail=f"Map '{req.map_name}' not found")
+        
+        if not (map_path / "rtabmap.db").exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Map '{req.map_name}' does not have rtabmap.db"
+            )
+        
+        # 实际加载地图需要重启 RTABMap 节点
+        # 这里返回成功，实际加载由用户手动重启 launch 文件完成
+        return {
+            "success": True,
+            "message": f"To load map '{req.map_name}', restart launch file with map_name:={req.map_name}",
+            "map_name": req.map_name,
+            "map_path": str(map_path)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/maps/save")
+async def save_map(req: MapSaveRequest):
+    """
+    保存当前地图
+    
+    保存当前 SLAM 会话的地图到地图库
+    """
+    try:
+        maps_dir = get_maps_directory()
+        map_path = maps_dir / req.map_name
+        
+        # 创建地图目录
+        map_path.mkdir(parents=True, exist_ok=True)
+        
+        # 保存元数据
+        if req.description or req.tags:
+            metadata = {
+                "description": req.description,
+                "tags": req.tags or [],
+                "created_at": None  # TODO: 添加时间戳
+            }
+            
+            metadata_path = map_path / "metadata.yaml"
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                yaml.dump(metadata, f, allow_unicode=True)
+        
+        # 实际保存由 MissionPlanner 的 save_on_completion 功能完成
+        return {
+            "success": True,
+            "message": f"Map directory created: {map_path}. Map will be saved by exploration task.",
+            "map_name": req.map_name,
+            "map_path": str(map_path)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+, response_model=DeleteMapResponse)
+async def delete_map(map_name: str):
+    """
+    删除地图
+    
+    从地图库中删除指定地图（包括所有版本）
+    """
+    try:
+        maps_dir = get_maps_directory()
+        map_path = maps_dir / map_name
+        
+        if not map_path.exists():
+            raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found")
+        
+        # 删除整个地图目录
+        import shutil
+        shutil.rmtree(map_path)
+        
+        # 更新map_library.yaml
+        library_file = maps_dir / "map_library.yaml"
+        if library_file.exists():
+            with open(library_file, 'r', encoding='utf-8') as f:
+                library_data = yaml.safe_load(f) or {}
+            
+            if 'maps' in library_data and map_name in library_data['maps']:
+                del library_data['maps'][map_name]
+                
+                with open(library_file, 'w', encoding='utf-8') as f:
+                    yaml.dump(library_data, f, default_flow_style=False, allow_unicode=True)
+        
+        return DeleteMapResponse(
+            success=True,
+            message=f"Map '{map_name}' deleted successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/maps/{map_name}/thumbnail")
+async def get_map_thumbnail(map_name: str):
+    """
+    获取地图缩略图
+    
+    返回PNG可视化图（优先返回最新版本）
+    """
+    try:
+        maps_dir = get_maps_directory()
+        map_dir = maps_dir / map_name
+        
+        if not map_dir.exists():
+            raise HTTPException(status_code=404, detail="Map not found")
+        
+        # 查找PNG文件（版本化命名）
+        png_files = list(map_dir.glob(f"{map_name}_v*.png"))
+        
+        if not png_files:
+            # 尝试查找旧格式的PNG
+            legacy_png = map_dir / f"{map_name}.png"
+            if legacy_png.exists():
+                return FileResponse(legacy_png, media_type="image/png")
+            
+            raise HTTPException(status_code=404, detail="Thumbnail not found")
+        
+        # 返回最新版本的PNG
+        latest_png = sorted(png_files, key=lambda p: p.name)[-1]
+        return FileResponse(latest_png, media_type="image/png")
+    }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

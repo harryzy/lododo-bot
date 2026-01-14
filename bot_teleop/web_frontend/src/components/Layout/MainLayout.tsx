@@ -7,11 +7,13 @@ import {
   SettingOutlined,
   WifiOutlined,
   DisconnectOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useConnectionStore } from '../../stores/connectionStore'
 import TaskControl from '../TaskControl/TaskControl'
 import MapView from '../MapView/MapView'
+import MapManager from '../MapManager'
 
 const { Header, Sider, Content } = Layout
 
@@ -35,7 +37,7 @@ function MainLayout() {
     },
     {
       key: 'maps',
-      icon: <EnvironmentOutlined />,
+      icon: <GlobalOutlined />,
       label: t('menu.maps'),
     },
     {
@@ -67,12 +69,7 @@ function MainLayout() {
           </div>
         )
       case 'maps':
-        return (
-          <div style={{ padding: '24px' }}>
-            <h2>{t('menu.maps')}</h2>
-            <p>地图管理功能</p>
-          </div>
-        )
+        return <MapManager />
       case 'waypoints':
         return (
           <div style={{ padding: '24px' }}>

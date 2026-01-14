@@ -5,8 +5,47 @@
     "maps": "地图管理",
     "waypoints": "路点管理",
     "settings": "系统设置"
-  },
-  "connection": {
+  },  "maps": {
+    "title": "地图管理",
+    "name": "地图名称",
+    "version": {
+      "title": "版本",
+      "number": "版本号",
+      "current": "当前版本",
+      "hasHistory": "共 {{count}} 个版本",
+      "switched": "已切换到版本 {{version}}",
+      "deleted": "版本 {{version}} 已删除",
+      "switchTo": "设为当前",
+      "switchConfirm": "确定要切换到这个版本吗？",
+      "deleteConfirm": "确定要删除版本 {{version}} 吗？",
+      "loadError": "加载版本信息失败",
+      "switchError": "切换版本失败",
+      "deleteError": "删除版本失败"
+    },
+    "size": "尺寸",
+    "resolution": "分辨率",
+    "createdAt": "创建时间",
+    "updatedAt": "更新时间",
+    "description": "描述",
+    "tags": "标签",
+    "thumbnail": "缩略图",
+    "files": "文件",
+    "totalMaps": "地图总数",
+    "rtabmapMaps": "RTABMap数据库",
+    "lastUpdated": "最后更新",
+    "mapList": "地图列表",
+    "items": "项",
+    "actions": "操作",
+    "load": "加载",
+    "loadSuccess": "地图加载成功",
+    "loadError": "加载地图失败",
+    "loadConfirm": "确认加载地图",
+    "loadWarning": "加载地图 {{name}} 将中断当前任务，是否继续？",
+    "deleteSuccess": "地图删除成功",
+    "deleteError": "删除地图失败",
+    "deleteConfirm": "确认删除地图",
+    "deleteWarning": "确定要删除地图 {{name}} 吗？此操作不可撤销。"
+  },  "connection": {
     "connected": "已连接",
     "disconnected": "未连接",
     "connecting": "连接中..."
@@ -158,6 +197,8 @@
     "loading": "加载中...",
     "refresh": "刷新",
     "yes": "是",
-    "no": "否"
+    "no": "否",
+    "actions": "操作",
+    "delete": "删除"
   }
 }

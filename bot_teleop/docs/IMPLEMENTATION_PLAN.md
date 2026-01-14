@@ -2,8 +2,8 @@
 
 **版本**: v1.0.0  
 **创建日期**: 2026-01-09  
-**更新日期**: 2026-01-13  
-**项目状态**: 🚧 开发中 - 阶段3已完成  
+**更新日期**: 2026-01-14  
+**项目状态**: 🚧 开发中 - 阶段3完成，准备进入阶段4  
 **预计工期**: 14天 (2周完成MVP)
 
 ---
@@ -749,15 +749,106 @@ def resume_task(self, task_id: str) -> str:
 - Tabs界面布局 - 活跃任务、导航、探索、巡逻、历史
 - 中英双语完整支持
 
-**实际用时**: 1天 ✅ (2026-01-14)
+**实际用时**: 1.5天 ✅ (2026-01-14)
+
+**关键Bug修复（2026-01-14）**:
+- [x] ✅ 修复i18n插值变量语法错误
+  - taskControl.history.totalCount等使用{{variable}}双花括号
+  - taskControl.patrol.created使用{{requestId}}
+  - taskControl.action.exploration等任务类型翻译
+  
+- [x] ✅ 修复巡逻任务loop模式不生效
+  - CommandAdapter的patrol_mode字段名错误（mode→patrol_mode）
+  - PatrolManager.load_route_from_waypoints_file支持loop参数
+  - PatrolHandler正确传递loop参数
+  - 添加patrol_manager.py单元测试验证loop逻辑
+  
+- [x] ✅ 修复巡逻任务失败状态未保存到历史
+  - PatrolManager添加NavigationState.CANCELED处理
+  - PatrolHandler调用fail_task时添加permanent_failure=True
+  - 移除不必要的remove_task()调用，让TaskManager管理生命周期
+  - 巡逻完成/失败任务正确移入历史记录
+  
+- [x] ✅ 修复Nav2控制器参数优化
+  - min_vel_x保持-0.1允许倒退脱困
+  - PathAlign.scale提升到256.0，forward_point_distance=0.6
+  - 巡逻时机器人优先车头朝前，仅脱困时倒退
+  
+- [x] ✅ 修复探索完成后地图保存失败
+  - MapLibraryManager容错无发布者情况（TRANSIENT_LOCAL QoS latched消息）
+  - 无发布者时等待3秒确保latched消息可用
+  - 探索完成后正确保存地图到工作空间
+  
+- [x] ✅ 修复地图保存路径配置
+  - ExplorationHandler支持绝对路径和地图名两种模式
+  - 绝对路径：直接使用指定目录
+  - 地图名：使用工作空间相对路径（~/lododo_bot/maps）
+  - 与waypoints路径处理逻辑保持一致
+
+**技术债务清理**:
+- Python __pycache__ 缓存清理自动化
+- TaskManager permanent_failure参数向后兼容
+- 前端JSON翻译文件重复key检测
 
 ---
 
-### 阶段4: 地图管理功能 (1.5天)
+### 阶段4: 地图管理功能 (1.5天) 🚧 进行中
 
-**目标**: 实现地图列表、加载、保存功能
+**目标**: 实现地图列表、加载、保存、删除功能
+
+**设计原则**:
+- ROS节点与Web松耦合：地图路径配置化
+- 支持绝对路径和地图名两种模式
+- 与探索任务地图保存逻辑保持一致
 
 #### 4.1 地图列表与加载 (1天)
+
+**前端任务**:
+- [ ] 4.1.1 创建 MapManager 组件
+  - 文件：`web_frontend/src/components/MapManager/MapManager.tsx`
+  - 顶部导航栏"地图管理"菜单项
+  - 与WaypointManager布局风格保持一致
+
+- [ ] 4.1.2 实现地图列表
+  - Table组件显示：地图名称、版本、尺寸、创建时间、操作
+  - 缩略图预览（PNG可视化图）
+  - 搜索和过滤功能（按名称、标签）
+  - 分页支持（每页10/20/50条）
+
+- [ ] 4.1.3 实现地图加载
+  - "加载"按钮触发地图切换
+  - 确认对话框（提示会中断当前任务）
+  - 调用后端 API 加载地图
+  - 加载后重新订阅/map话题更新地图显示
+
+**后端任务**:
+- [ ] 4.1.4 实现地图管理 API
+  - `GET /api/maps` - 获取地图列表
+    - 扫描配置的maps_dir目录（从web_config.yaml读取）
+    - 读取map_library.yaml获取元数据
+    - 返回：name, version, size, resolution, created_at, tags, thumbnail_url
+  
+- [ ] 4.1.5 实现地图加载功能
+  - `POST /api/maps/load` - 加载指定地图
+    - 请求参数：{map_name: string, version?: number}
+    - 调用MapLibraryManager.load_map()
+    - 通过ROS服务重新加载map_server
+    - 返回加载结果和task_id（如果异步）
+
+- [ ] 4.1.6 实现地图缩略图服务
+  - `GET /api/maps/{map_name}/thumbnail` - 获取缩略图
+    - 返回PNG可视化图（如果存在）
+    - 自动生成缩略图（如果不存在）
+
+**验收标准**:
+- ✅ 地图列表正确显示所有保存的地图（包括版本信息）
+- ✅ 缩略图正确显示（或占位图）
+- ✅ 可以点击加载地图
+- ✅ 加载后机器人定位到新地图，前端地图显示更新
+
+**预计用时**: 8小时
+
+#### 4.2 地图保存与删除 (0.5天)
 
 **前端任务**:
 - [ ] 4.1.1 创建 MapManager 组件

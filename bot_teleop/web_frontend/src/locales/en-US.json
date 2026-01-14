@@ -6,6 +6,46 @@
     "waypoints": "Waypoint Management",
     "settings": "Settings"
   },
+  "maps": {
+    "title": "Map Management",
+    "name": "Map Name",
+    "version": {
+      "title": "Version",
+      "number": "Version Number",
+      "current": "Current",
+      "hasHistory": "{{count}} versions",
+      "switched": "Switched to version {{version}}",
+      "deleted": "Version {{version}} deleted",
+      "switchTo": "Set as Current",
+      "switchConfirm": "Are you sure to switch to this version?",
+      "deleteConfirm": "Are you sure to delete version {{version}}?",
+      "loadError": "Failed to load version info",
+      "switchError": "Failed to switch version",
+      "deleteError": "Failed to delete version"
+    },
+    "size": "Size",
+    "resolution": "Resolution",
+    "createdAt": "Created At",
+    "updatedAt": "Updated At",
+    "description": "Description",
+    "tags": "Tags",
+    "thumbnail": "Thumbnail",
+    "files": "Files",
+    "totalMaps": "Total Maps",
+    "withRTABMap": "With RTABMap DB",
+    "lastUpdated": "Last Updated",
+    "load": "Load",
+    "loadSuccess": "Map {{mapName}} loaded successfully",
+    "loadFailed": "Failed to load map",
+    "loadConfirmTitle": "Confirm Load Map",
+    "loadConfirmContent": "Loading map {{mapName}} will interrupt current tasks. Continue?",
+    "delete": "Delete",
+    "deleteSuccess": "Map {{mapName}} deleted successfully",
+    "deleteFailed": "Failed to delete map",
+    "deleteConfirmTitle": "Confirm Delete Map",
+    "deleteConfirmContent": "Are you sure you want to delete map {{mapName}}? This action cannot be undone.",
+    "totalCount": "Total {{count}} maps"
+  },
   "connection": {
     "connected": "Connected",
     "disconnected": "Disconnected",
@@ -153,6 +193,8 @@
     "loading": "Loading...",
     "refresh": "Refresh",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "actions": "Actions",
+    "delete": "Delete"
   }
 }
