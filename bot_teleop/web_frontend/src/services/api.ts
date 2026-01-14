@@ -141,10 +141,23 @@ export interface Waypoint {
   dwell_time?: number
 }
 
+export interface WaypointFileInfo {
+  name: string
+  waypoint_count: number
+  path?: string
+  description?: string
+}
+
 const waypoints = {
-  // 获取路点路线列表
+  // 获取路点文件列表
+  list: () =>
+    apiClient.get<any, { success: boolean; routes: WaypointFileInfo[] }>('/waypoints')
+      .then(response => response.routes),
+
+  // 获取路点路线列表（别名）
   listRoutes: () =>
-    apiClient.get<any, any>('/waypoints'),
+    apiClient.get<any, { success: boolean; routes: WaypointFileInfo[] }>('/waypoints')
+      .then(response => response.routes),
 
   // 获取路点路线详情
   getRoute: (route_name: string) =>

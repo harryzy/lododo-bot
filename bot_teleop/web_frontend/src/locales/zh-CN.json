@@ -33,11 +33,16 @@
     "activeTasks": "活跃任务",
     "taskHistory": "任务历史",
     "taskId": "任务ID",
+    "requestId": "请求ID",
     "actionLabel": "任务类型",
     "statusLabel": "状态",
     "progress": "进度",
+    "duration": "耗时",
+    "startTime": "开始时间",
+    "endTime": "结束时间",
     "message": "消息",
     "operations": "操作",
+    "actions": "操作",
     "completedAt": "完成时间",
     "query": "查询",
     "pause": "暂停",
@@ -56,7 +61,61 @@
     "resumeFailed": "恢复失败",
     "cancelSuccess": "取消请求已发送",
     "cancelFailed": "取消失败",
+    "viewDetails": "查看详情",
+    "taskDetails": "任务详情",
+    "type": "类型",
+    "parameters": "参数",
+    "result": "结果",
+    "error": "错误信息",
+    "tabs": {
+      "activeTasks": "活跃任务",
+      "navigation": "导航任务",
+      "exploration": "探索建图",
+      "patrol": "巡逻任务",
+      "history": "任务历史"
+    },
+    "history": {
+      "title": "任务历史",
+      "empty": "暂无历史记录",
+      "totalCount": "共 {{count}} 条",
+      "pageInfo": "显示 {{start}}-{{end}} 条，共 {{total}} 条"
+    },
+    "exploration": {
+      "title": "探索建图",
+      "mapName": "地图名称",
+      "mapNameTooltip": "探索完成后保存的地图名称，留空则自动生成",
+      "mapNamePlaceholder": "例如：office_floor1",
+      "saveOption": "完成后保存地图",
+      "start": "开始探索",
+      "exploring": "探索中...",
+      "progress": "探索进度",
+      "created": "探索任务已创建：{requestId}",
+      "createFailed": "创建探索任务失败",
+      "hint": "探索过程中，机器人将自动导航至未知区域。使用任务控制按钮可以暂停或取消。"
+    },
+    "patrol": {
+      "title": "巡逻任务",
+      "waypointFile": "路点文件",
+      "selectFileRequired": "请选择路点文件",
+      "selectFilePlaceholder": "选择要巡逻的路点文件",
+      "waypoints": "个路点",
+      "mode": "巡逻模式",
+      "modeLoop": "循环巡逻（到达终点后返回起点）",
+      "modeOnce": "单次巡逻（到达终点后停止）",
+      "modeBounce": "往返巡逻（到达终点后反向巡逻）",
+      "start": "开始巡逻",
+      "patrolling": "巡逻中...",
+      "progress": "巡逻进度",
+      "currentWaypoint": "当前路点",
+      "created": "巡逻任务已创建：{{requestId}}",
+      "createFailed": "创建巡逻任务失败",
+      "loadFilesFailed": "加载路点文件失败",
+      "noWaypointFiles": "未找到路点文件",
+      "noWaypointFilesHint": "请先录制或创建路点文件。",
+      "hint": "机器人将按照路点顺序依次导航。使用任务控制按钮可以暂停或取消。"
+    },
     "status": {
+      "label": "状态",
       "queued": "排队中",
       "executing": "执行中",
       "paused": "已暂停",
@@ -66,7 +125,7 @@
     },
     "action": {
       "navigate": "导航",
-      "exploration": "探索",
+      "explore": "探索",
       "patrol": "巡逻"
     }
   },
@@ -96,6 +155,9 @@
     "confirm": "确认",
     "success": "成功",
     "error": "错误",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "refresh": "刷新",
+    "yes": "是",
+    "no": "否"
   }
 }

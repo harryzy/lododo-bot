@@ -385,6 +385,14 @@ class PatrolManager:
                 self._patrol_state = PatrolState.FAILED
                 if self._on_failed_callback:
                     self._on_failed_callback(error_msg)
+                    
+            elif nav_state == NavigationState.CANCELED:
+                # 导航被取消（通常是因为无法继续前进）
+                error_msg = "Navigation was canceled"
+                self._node.get_logger().error(f"Navigation to waypoint {self._current_waypoint_index} was canceled")
+                self._patrol_state = PatrolState.FAILED
+                if self._on_failed_callback:
+                    self._on_failed_callback(error_msg)
         
         elif self._patrol_state == PatrolState.DWELLING:
             # 停留中：检查停留时间

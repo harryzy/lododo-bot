@@ -39,14 +39,14 @@ class PatrolHandler(TaskExecutionHandler):
         状态流转：
         WAITING_EXECUTION → (acquire executor) → RUNNING → (patrol) → COMPLETED/FAILED
         """
-        self._node.get_logger().info(f"[PatrolHandler] execute() called for task {task.task_id}, state={task.state.value}")
+        self._node.get_logger().debug(f"[PatrolHandler] execute() called for task {task.task_id}, state={task.state.value}")
         
         # 1. WAITING_EXECUTION 状态 - 尝试获取 NavigationExecutor
         if task.state == TaskState.WAITING_EXECUTION:
             nav_state = self._nav_executor.get_state()
             is_owner = self.is_executor_owner(task.task_id)
             
-            self._node.get_logger().info(
+            self._node.get_logger().debug(
                 f"[PatrolHandler] Task {task.task_id} in WAITING_EXECUTION: "
                 f"nav_state={nav_state.name}, is_owner={is_owner}"
             )
@@ -125,7 +125,7 @@ class PatrolHandler(TaskExecutionHandler):
             
             if not waypoint_file:
                 error_msg = "No waypoint file specified"
-                self._task_manager.fail_task(task.task_id, error_msg)
+                self._task_manager.fail_task(task.task_id, error_msg, permanent_failure=True)
                 self.release_executor(task.task_id)
                 self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
                 return
@@ -133,7 +133,32 @@ class PatrolHandler(TaskExecutionHandler):
             # 加载路点文件
             try:
                 import os
-                expanded_path = os.path.expanduser(waypoint_file)
+                
+                # 如果传入的是文件名（不包含路径），则从PatrolManager的persistence_dir拼接
+                if '/' not in waypoint_file and not waypoint_file.startswith('~'):
+                    # 获取PatrolManager的waypoints目录（实际是patrol_routes目录）
+                    # 但路点文件应该从独立的waypoints目录加载
+                    # 从ament_index获取workspace路径
+                    try:
+                        from ament_index_python.packages import get_package_share_directory
+                        import pathlib
+                        pkg_share = get_package_share_directory('bot_navigation')
+                        workspace_root = pathlib.Path(pkg_share).parent.parent.parent.parent
+                        waypoints_base_dir = workspace_root / 'waypoints'
+                    except Exception:
+                        # 降级方案：使用环境变量或默认路径
+                        waypoints_base_dir = os.path.expanduser('~/lododo_bot/waypoints')
+                    
+                    # 自动添加.yaml扩展名（如果没有）
+                    if not waypoint_file.endswith('.yaml'):
+                        waypoint_file = f"{waypoint_file}.yaml"
+                    
+                    expanded_path = os.path.join(str(waypoints_base_dir), waypoint_file)
+                else:
+                    # 如果已经是完整路径或相对路径，直接展开
+                    expanded_path = os.path.expanduser(waypoint_file)
+                
+                self._node.get_logger().info(f"[PatrolHandler] Loading waypoints from: {expanded_path}")
                 
                 # 使用 PatrolManager 的路点加载方法
                 route_id = self._patrol_manager.load_route_from_waypoints_file(
@@ -143,7 +168,7 @@ class PatrolHandler(TaskExecutionHandler):
                 
                 if not route_id:
                     error_msg = f"Failed to load waypoints from {waypoint_file}"
-                    self._task_manager.fail_task(task.task_id, error_msg)
+                    self._task_manager.fail_task(task.task_id, error_msg, permanent_failure=True)
                     self.release_executor(task.task_id)
                     self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
                     return
@@ -152,7 +177,7 @@ class PatrolHandler(TaskExecutionHandler):
                 route = self._patrol_manager._routes.get(route_id)
                 if not route:
                     error_msg = "Route not found after loading"
-                    self._task_manager.fail_task(task.task_id, error_msg)
+                    self._task_manager.fail_task(task.task_id, error_msg, permanent_failure=True)
                     self.release_executor(task.task_id)
                     self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
                     return
@@ -163,7 +188,7 @@ class PatrolHandler(TaskExecutionHandler):
                 # 启动巡航
                 if not self._patrol_manager.start_patrol(route_id):
                     error_msg = "Failed to start patrol"
-                    self._task_manager.fail_task(task.task_id, error_msg)
+                    self._task_manager.fail_task(task.task_id, error_msg, permanent_failure=True)
                     self.release_executor(task.task_id)
                     self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
                     return
@@ -185,7 +210,7 @@ class PatrolHandler(TaskExecutionHandler):
         
         # 执行巡航（使用现有的 PatrolManager 方法）
         patrol_state = self._patrol_manager._patrol_state
-        self._node.get_logger().info(
+        self._node.get_logger().debug(
             f"[DEBUG] PatrolHandler._execute_patrol: patrol_state={patrol_state.value}, task_id={task.task_id}"
         )
         
@@ -197,20 +222,20 @@ class PatrolHandler(TaskExecutionHandler):
             self._node.get_logger().info(
                 f"[PatrolHandler] Task {task.task_id} completed"
             )
-            # 删除任务
-            self._task_manager.remove_task(task.task_id)
+            # 不删除任务，complete_task已将其移入历史
+            # self._task_manager.remove_task(task.task_id)
             return
         
         elif patrol_state == PatrolState.FAILED:
-            # 巡航失败
-            error_msg = "Patrol failed"
-            self._task_manager.fail_task(task.task_id, error_msg)
+            # 巡航失败（导航失败或取消）
+            error_msg = self._patrol_manager.get_current_progress().get('error_message', 'Patrol failed')
+            self._task_manager.fail_task(task.task_id, error_msg, permanent_failure=True)
             self.release_executor(task.task_id)
             self._node.get_logger().warn(
-                f"[PatrolHandler] Task {task.task_id} failed"
+                f"[PatrolHandler] Task {task.task_id} failed: {error_msg}"
             )
-            # 删除任务
-            self._task_manager.remove_task(task.task_id)
+            # 不删除任务，fail_task已将其移入历史
+            # self._task_manager.remove_task(task.task_id)
             return
         
         # 继续执行巡航 - 调用 PatrolManager 的执行循环

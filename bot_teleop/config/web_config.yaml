@@ -1,41 +1,29 @@
-# Web控制界面配置文件
-
 server:
-  host: "0.0.0.0"
+  host: 0.0.0.0
   port: 8000
-  reload: false  # 开发模式设为 true
+  reload: false
   workers: 1
-
 ros:
   use_sim_time: false
-  
 websocket:
-  ping_interval: 30  # WebSocket心跳间隔（秒）
+  ping_interval: 30
   ping_timeout: 10
-
-# rosbridge 配置
 rosbridge:
-  url: "ws://localhost:9090"
+  url: ws://localhost:9090
   reconnect_attempts: 5
-  reconnect_interval: 5  # 秒
-
-# 话题更新频率（Hz）
+  reconnect_interval: 5
 update_rates:
-  map: 1.0              # 地图更新频率
-  pose: 10.0            # 机器人位姿更新频率
-  costmap: 5.0          # Costmap更新频率
-  planned_path: 2.0     # 规划路径更新频率
-
-# Costmap 可视化配置
+  map: 1.0
+  pose: 10.0
+  costmap: 5.0
+  planned_path: 2.0
 costmap:
-  opacity: 0.5          # 透明度 (0.0-1.0)
-  inflation_color: "rgba(255, 165, 0, 0.5)"  # 膨胀区颜色（橙色）
-  lethal_color: "rgba(255, 0, 0, 0.5)"       # 致命障碍物颜色（红色）
-
+  opacity: 0.5
+  inflation_color: rgba(255, 165, 0, 0.5)
+  lethal_color: rgba(255, 0, 0, 0.5)
 ui:
-  language: "zh-CN"  # zh-CN 或 en-US
-  theme: "light"  # light 或 dark
-  
+  language: zh-CN
+  theme: light
 paths:
-  maps_dir: "~/lododo_bot/maps"
-  waypoints_dir: "~/lododo_bot/waypoints"
+  maps_dir: ~/workDisk/lododo_bot/maps
+  waypoints_dir: ~/workDisk/lododo_bot/waypoints

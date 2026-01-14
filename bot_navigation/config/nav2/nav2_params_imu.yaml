@@ -169,7 +169,7 @@ controller_server:
       # 速度限制 / Velocity limits (Ground Truth里程计支持更高速度)
       # Higher speed enabled with accurate Ground Truth odometry
       # 允许小速度后退用于脱困，依赖local_costmap障碍物信息
-      min_vel_x: -0.1               # 允许小速度后退(-0.1m/s)用于脱困场景
+      min_vel_x: -0.25               # 允许小速度后退(-0.1m/s)用于脱困场景
       max_vel_x: 0.30               # 提升到0.30m/s（Ground Truth精度保证）
       min_vel_y: -0.30              # 允许侧移（FOV可部分覆盖）
       max_vel_y: 0.30               # 全向最大速度提升

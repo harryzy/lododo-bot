@@ -23,11 +23,23 @@ interface Task {
   completed_at?: string;
 }
 
-const TaskList: React.FC = () => {
+interface TaskListProps {
+  onTaskChange?: (task: Task | null) => void;  // 当前活跃任务变化回调
+}
+
+const TaskList: React.FC<TaskListProps> = ({ onTaskChange }) => {
   const { t } = useTranslation();
   const [activeTasks, setActiveTasks] = useState<Task[]>([]);
   const [historyTasks, setHistoryTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // 通知父组件当前活跃任务
+  useEffect(() => {
+    if (onTaskChange) {
+      const activeTask = activeTasks.length > 0 ? activeTasks[0] : null;
+      onTaskChange(activeTask);
+    }
+  }, [activeTasks, onTaskChange]);
 
   // 加载任务列表
   const loadTasks = async () => {

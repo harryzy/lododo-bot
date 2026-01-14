@@ -33,7 +33,12 @@ class SettingsUpdateRequest(BaseModel):
 
 def get_config_path() -> Path:
     """获取配置文件路径"""
-    return Path(__file__).parent.parent.parent / "config" / "web_config.yaml"
+    # __file__ = .../web/backend/api/settings.py
+    # parent: .../web/backend/api
+    # parent: .../web/backend
+    # parent: .../web
+    # parent: .../bot_teleop
+    return Path(__file__).parent.parent.parent.parent / "config" / "web_config.yaml"
 
 
 def load_settings() -> Dict[str, Any]:

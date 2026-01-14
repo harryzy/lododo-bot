@@ -7,7 +7,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import yaml
+import os
 from pathlib import Path
+from .settings import load_settings
 
 router = APIRouter()
 
@@ -50,11 +52,27 @@ class WaypointSaveRequest(BaseModel):
 # ============================================
 
 def get_waypoints_directory() -> Path:
-    """获取路点目录"""
-    waypoints_dir = Path.home() / "lododo_bot" / "waypoints"
-    if not waypoints_dir.exists():
-        waypoints_dir.mkdir(parents=True, exist_ok=True)
-    return waypoints_dir
+    """获取路点目录（从配置文件读取）"""
+    try:
+        # 从配置文件加载路径
+        settings = load_settings()
+        waypoints_path = settings.get('paths', {}).get('waypoints_dir', '~/lododo_bot/waypoints')
+        
+        # 展开用户目录符号 ~
+        waypoints_dir = Path(os.path.expanduser(waypoints_path))
+        
+        # 确保目录存在
+        if not waypoints_dir.exists():
+            waypoints_dir.mkdir(parents=True, exist_ok=True)
+            
+        return waypoints_dir
+    except Exception as e:
+        # 配置加载失败时使用默认路径
+        print(f"Warning: Failed to load waypoints directory from config, using default. Error: {e}")
+        waypoints_dir = Path.home() / "lododo_bot" / "waypoints"
+        if not waypoints_dir.exists():
+            waypoints_dir.mkdir(parents=True, exist_ok=True)
+        return waypoints_dir
 
 
 def load_waypoint_file(filepath: Path) -> dict:

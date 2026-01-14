@@ -338,8 +338,20 @@ class TaskManager:
         
         return True
     
-    def fail_task(self, task_id: str, error_message: str) -> bool:
-        """任务失败"""
+    def fail_task(self, task_id: str, error_message: str, permanent_failure: bool = False) -> bool:
+        """
+        任务失败
+        
+        Args:
+            task_id: 任务ID
+            error_message: 错误信息
+            permanent_failure: 是否为永久性失败（不可重试）
+                - True: 立即标记为FAILED，不重试（配置错误、文件不存在等）
+                - False: 根据max_retries决定是否重试（临时性错误，默认行为）
+        
+        Returns:
+            bool: 操作是否成功
+        """
         task = self._tasks.get(task_id)
         if task is None:
             return False
@@ -349,15 +361,24 @@ class TaskManager:
         task.error_message = error_message
         task.retry_count += 1
         
-        # 检查是否可以重试
-        if task.retry_count < task.max_retries:
-            task.state = TaskState.PENDING
-            task.error_message = f"Retry {task.retry_count}/{task.max_retries}: {error_message}"
-        else:
+        # 区分永久性失败和临时性失败
+        if permanent_failure:
+            # 永久性失败，直接标记为FAILED，不重试
             if task_id == self._current_task_id:
                 self._current_task_id = None
             self._remove_from_queue(task_id)
             self._save_to_history(task)
+        else:
+            # 临时性失败，检查是否可以重试
+            if task.retry_count < task.max_retries:
+                task.state = TaskState.PENDING
+                task.error_message = f"Retry {task.retry_count}/{task.max_retries}: {error_message}"
+            else:
+                # 超过重试次数，标记为FAILED
+                if task_id == self._current_task_id:
+                    self._current_task_id = None
+                self._remove_from_queue(task_id)
+                self._save_to_history(task)
             
             # 注意：不在这里删除任务，留给handler清理资源
             # handler处理完FAILED状态后，会调用remove_task删除
