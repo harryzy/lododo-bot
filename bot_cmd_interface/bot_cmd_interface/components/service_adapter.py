@@ -419,7 +419,7 @@ class ServiceAdapter:
         # 构造服务请求 / Construct service request
         srv_request = StartPatrol.Request()
         srv_request.waypoint_file = params.get('waypoint_file', '')
-        srv_request.patrol_mode = params.get('patrol_mode', 'loop')
+        srv_request.patrol_mode = params.get('mode', 'loop')  # 修复：SDK使用'mode'字段
         srv_request.speed_factor = float(params.get('speed_factor', 1.0))
         
         # 调用服务 / Call service

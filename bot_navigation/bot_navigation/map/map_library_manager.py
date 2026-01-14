@@ -211,15 +211,21 @@ class MapLibraryManager:
                         pass
             
             if publisher_count == 0:
-                error_msg = f"{map_topic} 话题没有发布者 (Publisher count: {publisher_count})"
-                self.node.get_logger().error(error_msg)
-                self.node.get_logger().error(f"话题信息输出:\n{result.stdout}")
-                return False, error_msg
+                # 警告但不失败：SLAM完成后发布者可能已关闭，但latched消息仍可用
+                # Warning but not fatal: Publisher may be closed after SLAM completion, but latched message may still be available
+                self.node.get_logger().warn(
+                    f"⚠️ {map_topic} 话题当前无发布者，尝试订阅最后一次latched消息..."
+                )
+                self.node.get_logger().info(f"话题信息（用于诊断）:\n{result.stdout}")
+                # 继续尝试保存，依赖TRANSIENT_LOCAL QoS的latched消息
             
             self.node.get_logger().info(f"✅ /map 话题已就绪，发布者数量: {publisher_count}")
             
-            # 等待1秒确保有数据 / Wait 1 second to ensure data is available
-            time.sleep(1.0)
+            # 如果没有发布者，等待更长时间确保latched消息可用
+            # If no publishers, wait longer to ensure latched message is available
+            wait_time = 3.0 if publisher_count == 0 else 1.0
+            self.node.get_logger().info(f"⏳ 等待{wait_time}秒以确保地图数据可用...")
+            time.sleep(wait_time)
             
             # 调用 map_saver 保存地图 / Call map_saver to save map
             # 使用正确的ROS 2参数格式

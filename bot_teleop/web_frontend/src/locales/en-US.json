@@ -84,7 +84,7 @@
       "start": "Start Exploration",
       "exploring": "Exploring...",
       "progress": "Progress",
-      "created": "Exploration task created: {requestId}",
+      "created": "Exploration task created: {{requestId}}",
       "createFailed": "Failed to create exploration task",
       "hint": "The robot will automatically navigate to unknown areas. Use task controls to pause or cancel."
     },
@@ -120,7 +120,7 @@
     },
     "action": {
       "navigate": "Navigation",
-      "explore": "Exploration",
+      "exploration": "Exploration",
       "patrol": "Patrol"
     }
   },

@@ -143,14 +143,18 @@ class ExplorationHandler(TaskExecutionHandler):
         self._setup_local_costmap_subscription()
         
         # 🎯 地图库管理器（用于版本管理和保存）
+        # 使用工作空间相对路径作为默认地图目录
         try:
-            if self._node.has_parameter('maps_directory'):
-                maps_dir = self._node.get_parameter('maps_directory').get_parameter_value().string_value
-            else:
-                maps_dir = '~/lododo_bot/maps'
+            from ament_index_python.packages import get_package_share_directory
+            import pathlib
+            pkg_share = get_package_share_directory('bot_navigation')
+            workspace_root = pathlib.Path(pkg_share).parent.parent.parent.parent
+            maps_dir = str(workspace_root / 'maps')
         except Exception:
+            # 降级方案：使用默认路径
             maps_dir = '~/lododo_bot/maps'
         
+        self._default_maps_dir = maps_dir  # 保存默认目录，用于后续处理
         self._map_library_manager = MapLibraryManager(self._node, maps_dir)
         
         # 🎯 重构：初始化新的抽象组件
@@ -2549,10 +2553,45 @@ class ExplorationHandler(TaskExecutionHandler):
             self._save_map(map_name)
     
     def _save_map(self, map_name: str):
-        """保存地图（使用MapLibraryManager，支持版本管理）"""
+        """
+        保存地图（使用MapLibraryManager，支持版本管理）
+        
+        支持两种模式：
+        1. 绝对路径：直接使用该路径的父目录作为maps_dir
+        2. 地图名：使用工作空间相对路径（self._default_maps_dir）
+        """
         try:
+            import os
+            from pathlib import Path
+            
+            # 判断是否为绝对路径（包含 / 或 ~ 或是完整路径）
+            is_absolute_path = ('/' in map_name or map_name.startswith('~'))
+            
+            if is_absolute_path:
+                # 绝对路径模式：提取目录和文件名
+                map_path = Path(map_name).expanduser().resolve()
+                maps_dir = str(map_path.parent)
+                actual_map_name = map_path.name
+                
+                self._node.get_logger().info(
+                    f"[ExplorationHandler] Using absolute path mode: dir={maps_dir}, name={actual_map_name}"
+                )
+                
+                # 创建临时MapLibraryManager使用指定目录
+                from bot_navigation.map.map_library_manager import MapLibraryManager
+                temp_manager = MapLibraryManager(self._node, maps_dir)
+                map_library = temp_manager
+            else:
+                # 地图名模式：使用工作空间默认目录
+                actual_map_name = map_name
+                map_library = self._map_library_manager
+                
+                self._node.get_logger().info(
+                    f"[ExplorationHandler] Using workspace relative path mode: dir={self._default_maps_dir}, name={actual_map_name}"
+                )
+            
             self._node.get_logger().info(
-                f"[ExplorationHandler] Saving map '{map_name}' with version management..."
+                f"[ExplorationHandler] Saving map '{actual_map_name}' with version management..."
             )
             
             # 🎯 关键：等待 RTABMap 数据库写入完成
@@ -2563,8 +2602,8 @@ class ExplorationHandler(TaskExecutionHandler):
             
             # 使用 MapLibraryManager 保存地图
             # 自动处理版本号递增、元数据管理、可视化生成
-            success, message = self._map_library_manager.save_map(
-                map_name=map_name,
+            success, message = map_library.save_map(
+                map_name=actual_map_name,
                 map_topic='/map',
                 description=f"Exploration completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                 tags=['exploration', 'auto_saved']

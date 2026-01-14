@@ -492,13 +492,14 @@ class PatrolManager:
                 except Exception as e:
                     print(f"Failed to load route from {filename}: {e}")
     
-    def load_route_from_waypoints_file(self, filepath: str, route_name: str = None) -> Optional[str]:
+    def load_route_from_waypoints_file(self, filepath: str, route_name: str = None, loop: bool = True) -> Optional[str]:
         """
         从简单的waypoints YAML文件加载路线（patrol_node格式）
         
         Args:
             filepath: waypoints YAML文件路径
             route_name: 路线名称（可选，默认使用文件名）
+            loop: 是否循环巡航（默认True保持向后兼容）
             
         Returns:
             str: 创建的路线ID，失败返回None
@@ -544,10 +545,13 @@ class PatrolManager:
                 route_id=route_id,
                 name=route_name,
                 waypoints=route_waypoints,
-                loop=True
+                loop=loop  # 使用传入的loop参数
             )
             
             self._routes[route_id] = route
+            self._node.get_logger().info(
+                f"[PatrolManager] Loaded route '{route_name}' with {len(route_waypoints)} waypoints, loop={loop}"
+            )
             return route_id
             
         except Exception as e:

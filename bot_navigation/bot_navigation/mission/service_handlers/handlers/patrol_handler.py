@@ -158,12 +158,17 @@ class PatrolHandler(TaskExecutionHandler):
                     # 如果已经是完整路径或相对路径，直接展开
                     expanded_path = os.path.expanduser(waypoint_file)
                 
-                self._node.get_logger().info(f"[PatrolHandler] Loading waypoints from: {expanded_path}")
+                # 确定是否循环模式
+                is_loop = (patrol_mode == 'loop')
+                self._node.get_logger().info(
+                    f"[PatrolHandler] Loading waypoints from: {expanded_path}, mode={patrol_mode}, loop={is_loop}"
+                )
                 
-                # 使用 PatrolManager 的路点加载方法
+                # 使用 PatrolManager 的路点加载方法，传递loop参数
                 route_id = self._patrol_manager.load_route_from_waypoints_file(
                     expanded_path,
-                    route_name=f"route_{task.task_id}"
+                    route_name=f"route_{task.task_id}",
+                    loop=is_loop
                 )
                 
                 if not route_id:
@@ -173,7 +178,7 @@ class PatrolHandler(TaskExecutionHandler):
                     self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
                     return
                 
-                # 获取加载的路线
+                # 获取加载的路线（验证是否加载成功）
                 route = self._patrol_manager._routes.get(route_id)
                 if not route:
                     error_msg = "Route not found after loading"
@@ -182,8 +187,10 @@ class PatrolHandler(TaskExecutionHandler):
                     self._node.get_logger().error(f"[PatrolHandler] {error_msg}")
                     return
                 
-                # 设置巡航模式
-                route.loop = (patrol_mode == 'loop')
+                # 验证loop设置（已在load_route_from_waypoints_file中设置）
+                self._node.get_logger().info(
+                    f"[PatrolHandler] Route loaded: {len(route.waypoints)} waypoints, loop={route.loop} (expected: {is_loop})"
+                )
                 
                 # 启动巡航
                 if not self._patrol_manager.start_patrol(route_id):
@@ -194,7 +201,7 @@ class PatrolHandler(TaskExecutionHandler):
                     return
                 
                 self._node.get_logger().info(
-                    f"[PatrolHandler] Started patrol with {len(route.waypoints)} waypoints, mode={patrol_mode}"
+                    f"[PatrolHandler] Started patrol: {len(route.waypoints)} waypoints, mode={patrol_mode}, loop={route.loop}"
                 )
                 
             except Exception as e:

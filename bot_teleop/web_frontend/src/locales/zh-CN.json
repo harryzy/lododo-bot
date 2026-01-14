@@ -89,7 +89,7 @@
       "start": "开始探索",
       "exploring": "探索中...",
       "progress": "探索进度",
-      "created": "探索任务已创建：{requestId}",
+      "created": "探索任务已创建：{{requestId}}",
       "createFailed": "创建探索任务失败",
       "hint": "探索过程中，机器人将自动导航至未知区域。使用任务控制按钮可以暂停或取消。"
     },
@@ -125,7 +125,7 @@
     },
     "action": {
       "navigate": "导航",
-      "explore": "探索",
+      "exploration": "探索",
       "patrol": "巡逻"
     }
   },
