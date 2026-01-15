@@ -118,7 +118,7 @@ function MapView() {
         setError('')
         console.log('[MapView] ✓ ROS 连接成功')
       } else {
-        setError('与 rosbridge 断开连接，尝试重新连接...')
+        setError(t('mapView.error.disconnected'))
       }
     }
     
@@ -139,7 +139,7 @@ function MapView() {
       console.log('[MapView] ✓ MapRenderer 初始化成功')
     } catch (err) {
       console.error('[MapView] ✗ MapRenderer 初始化失败:', err)
-      setError('地图渲染器初始化失败')
+      setError(t('mapView.error.rendererFailed'))
     }
   }, [])
 
@@ -462,10 +462,10 @@ function MapView() {
       
       {/* 路点显示控制 */}
       <Space style={{ marginBottom: 12 }}>
-        <Text>显示路点:</Text>
+        <Text>{t('mapView.showWaypoints')}:</Text>
         <Select
           style={{ width: 200 }}
-          placeholder="选择路点路线"
+          placeholder={t('mapView.selectRoute')}
           value={selectedRoute}
           onChange={handleRouteChange}
           allowClear
@@ -473,7 +473,7 @@ function MapView() {
         >
           {waypointRoutes.map(route => (
             <Select.Option key={route.name} value={route.name}>
-              {route.name} ({route.waypoint_count}个路点)
+              {route.name} ({route.waypoint_count}{t('mapView.waypointsCount')})
             </Select.Option>
           ))}
         </Select>
@@ -481,15 +481,15 @@ function MapView() {
           <Switch
             checked={showWaypoints}
             onChange={handleWaypointsToggle}
-            checkedChildren="显示"
-            unCheckedChildren="隐藏"
+            checkedChildren={t('mapView.show')}
+            unCheckedChildren={t('mapView.hide')}
           />
         )}
       </Space>
       
       {error && (
         <Alert 
-          message="连接错误" 
+          message={t('mapView.connectionError')} 
           description={error} 
           type="warning" 
           showIcon 
@@ -501,7 +501,7 @@ function MapView() {
       {!rosConnected && !error && (
         <div style={{ textAlign: 'center', padding: '60px 0' }}>
           <Spin size="large" />
-          <p style={{ marginTop: 16 }}>正在连接 rosbridge...</p>
+          <p style={{ marginTop: 16 }}>{t('mapView.connecting')}</p>
         </div>
       )}
 
@@ -533,7 +533,7 @@ function MapView() {
           fontSize: '12px',
           boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
         }}>
-          <div style={{ color: '#52c41a' }}>● 已连接 rosbridge</div>
+          <div style={{ color: '#52c41a' }}>● {t('mapView.connected')}</div>
         </div>
       )}
     </Card>

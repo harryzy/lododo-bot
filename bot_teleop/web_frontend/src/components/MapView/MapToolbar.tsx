@@ -13,6 +13,7 @@ import {
   EyeInvisibleOutlined
 } from '@ant-design/icons'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export type ToolMode = 'none' | 'nav_goal' | 'waypoint'
 
@@ -37,6 +38,7 @@ function MapToolbar({
   hasMap,
   costmapVisible
 }: MapToolbarProps) {
+  const { t } = useTranslation()
   const [followMode, setFollowMode] = useState(false)
 
   const handleNavGoalClick = () => {
@@ -52,53 +54,53 @@ function MapToolbar({
   return (
     <Space size="middle" style={{ marginBottom: 12 }}>
       {/* 导航目标设置 */}
-      <Tooltip title="点击地图设置导航目标（类似RViz 2D Nav Goal）">
+      <Tooltip title={t('mapView.toolbar.navGoalTooltip')}>
         <Button 
           type={currentMode === 'nav_goal' ? 'primary' : 'default'}
           icon={<EnvironmentOutlined />} 
           disabled={!hasMap}
           onClick={handleNavGoalClick}
         >
-          {currentMode === 'nav_goal' ? '取消导航目标' : '设置导航目标'}
+          {currentMode === 'nav_goal' ? t('mapView.toolbar.cancelNavGoal') : t('mapView.toolbar.setNavGoal')}
         </Button>
       </Tooltip>
 
       {/* 清除目标 */}
-      <Tooltip title="清除当前导航目标">
+      <Tooltip title={t('mapView.toolbar.clearGoalTooltip')}>
         <Button 
           icon={<ClearOutlined />} 
           disabled={!hasMap}
           onClick={onClearGoal}
         >
-          清除目标
+          {t('mapView.toolbar.clearGoal')}
         </Button>
       </Tooltip>
 
       {/* 跟随机器人 */}
-      <Tooltip title="自动跟随机器人位置">
+      <Tooltip title={t('mapView.toolbar.followRobotTooltip')}>
         <Button 
           type={followMode ? 'primary' : 'default'}
           icon={<AimOutlined />} 
           disabled={!hasMap}
           onClick={handleFollowRobot}
         >
-          {followMode ? '停止跟随' : '跟随机器人'}
+          {followMode ? t('mapView.toolbar.stopFollow') : t('mapView.toolbar.followRobot')}
         </Button>
       </Tooltip>
 
       {/* 重置视图 */}
-      <Tooltip title="重置地图视图到初始状态">
+      <Tooltip title={t('mapView.toolbar.resetViewTooltip')}>
         <Button 
           icon={<FullscreenOutlined />} 
           disabled={!hasMap}
           onClick={onResetView}
         >
-          重置视图
+          {t('mapView.toolbar.resetView')}
         </Button>
       </Tooltip>
 
       {/* Costmap显示开关 */}
-      <Tooltip title="显示/隐藏代价地图（Costmap）">
+      <Tooltip title={t('mapView.toolbar.costmapTooltip')}>
         <Space>
           {costmapVisible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
           <Switch 
@@ -106,7 +108,7 @@ function MapToolbar({
             onChange={onCostmapToggle}
             disabled={!hasMap}
           />
-          <span>Costmap</span>
+          <span>{t('mapView.toolbar.costmap')}</span>
         </Space>
       </Tooltip>
     </Space>

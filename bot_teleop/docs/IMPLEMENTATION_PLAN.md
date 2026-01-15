@@ -1349,146 +1349,181 @@ def resume_task(self, task_id: str) -> str:
 
 ---
 
-### 阶段7: 国际化与UI优化 (1.5天) 🎯 下一阶段
+### 阶段7: 国际化与UI优化 (1.5天) 🚧 进行中
 
 **目标**: 完善中英双语支持，优化用户体验
 
-#### 7.1 国际化完善 (1天)
+#### 7.1 国际化完善 (1天) ✅ 已完成
 
 **前端任务**:
-- [ ] 7.1.1 完善翻译文件
-  - 文件：`web_frontend/src/locales/zh-CN.json`、`en-US.json`
-  - 按模块组织：common、map、task、waypoint、debug、error
+- [x] ✅ 7.1.1 完善翻译文件
+  - 文件：`web_frontend/src/locales/zh-CN.json`（286行）、`en-US.json`（281行）
+  - 已按模块组织：menu、maps、connection、tasks、taskControl、map、settings、waypoints、status、systemStatus、common、language
+  - 覆盖所有UI文本（菜单、按钮、标签、提示、错误信息、占位符）
 
-- [ ] 7.1.2 添加语言切换
-  - 右上角下拉菜单
-  - 切换后立即生效
-  - 保存用户偏好（localStorage）
+- [x] ✅ 7.1.2 添加语言切换
+  - 位置：Header右上角Select下拉菜单
+  - 选项：中文（zh-CN）、English（en-US）
+  - 即时切换：使用i18n.changeLanguage()
+  - 持久化：localStorage.setItem('preferred_language')
 
-- [ ] 7.1.3 翻译所有界面文本
-  - 菜单、按钮、标签
-  - 提示信息、错误信息
-  - 占位符文本
+- [x] ✅ 7.1.3 翻译所有界面文本
+  - 所有组件已使用useTranslation钩子
+  - 菜单、按钮、标签：完整翻译
+  - 提示信息、错误信息：完整翻译
+  - 占位符文本：完整翻译
 
 **验收标准**:
 - ✅ 所有界面文本支持中英切换
-- ✅ 切换语言后无遗漏
-- ✅ 用户偏好保存
+- ✅ 切换语言后立即生效（无需刷新）
+- ✅ 用户偏好保存到localStorage（刷新后保持）
 
-**预计用时**: 8小时
+**实际用时**: 1小时 ✅
 
-#### 7.2 UI优化 (0.5天)
+**关键实现**:
+- **i18n配置** ([i18n.ts](src/bot_teleop/web_frontend/src/i18n.ts)): 从localStorage读取用户偏好
+- **语言选择器** ([MainLayout.tsx](src/bot_teleop/web_frontend/src/components/Layout/MainLayout.tsx)): Header中的Select组件
+- **翻译文件**: 320行中文 + 307行英文，14个模块分类
+- **Ant Design locale**: 动态切换（zhCN/enUS）
+- **错误信息国际化**: MapView所有提示文本
+
+#### 7.2 系统设置页面 (1.5天) 📋 待开始
+
+**目标**: 实现系统设置页面，提供配置管理、系统信息、参数调整功能
 
 **前端任务**:
-- [ ] 7.2.1 优化布局
-  - 响应式设计（桌面端 1920x1080、1366x768）
-  - 调整间距和对齐
-  - 优化颜色和字体
+- [ ] 7.2.1 设置页面布局 (4小时)
+  - 文件：`web_frontend/src/components/Settings/Settings.tsx`
+  - 左侧Tab导航：基础设置、导航参数、地图参数、高级设置
+  - 右侧内容区：表单+保存按钮
+  - 使用Ant Design Tabs + Form组件
 
-- [ ] 7.2.2 添加交互动画
-  - 按钮点击效果
-  - 页面切换动画
-  - 加载骨架屏
+- [ ] 7.2.2 基础设置模块 (2小时)
+  - 语言切换（中文/English）
+  - 主题切换（亮色/暗色，预留接口）
+  - 默认地图分辨率（0.05m）
+  - 更新频率配置：
+    * 地图更新频率（1-10Hz，默认1Hz）
+    * 位置更新频率（5-30Hz，默认10Hz）
+    * Costmap更新频率（1-10Hz，默认5Hz）
+  
+- [ ] 7.2.3 导航参数设置 (2小时)
+  - 导航速度限制：
+    * 最大线速度（0.1-1.0 m/s，默认0.3）
+    * 最大角速度（0.1-2.0 rad/s，默认0.5）
+  - 安全距离：
+    * 障碍物安全距离（0.1-1.0m，默认0.3m）
+    * 充电桩安全距离（0.05-0.5m，默认0.15m）
+  - 导航超时（30-600秒，默认300秒）
 
-- [ ] 7.2.3 优化性能
-  - React 组件优化（useMemo、useCallback）
-  - 地图渲染优化
-  - WebSocket 消息去重
+- [ ] 7.2.4 系统信息模块 (1小时)
+  - 机器人信息：
+    * 机器人名称（只读）
+    * ROS版本（Humble）
+    * 系统启动时间
+  - 网络信息：
+    * WebSocket状态（已连接/断开）
+    * rosbridge状态
+    * FastAPI服务器地址
+  - 磁盘使用：
+    * 地图库大小
+    * 路点文件大小
 
-**验收标准**:
-- ✅ 界面美观、统一
-- ✅ 动画流畅
-- ✅ 无明显卡顿
+- [ ] 7.2.5 高级设置模块 (2小时)
+  - 调试选项：
+    * 显示机器人轨迹（开/关）
+    * 显示代价地图（开/关）
+    * 显示全局路径（开/关）
+  - 日志级别：
+    * INFO / DEBUG / WARNING / ERROR
+  - 性能优化：
+    * Canvas渲染帧率限制（10-60 FPS）
+    * WebSocket消息队列大小（10-1000）
 
-**预计用时**: 4小时
+- [ ] 7.2.6 配置持久化 (1小时)
+  - 前端：localStorage存储用户偏好
+  - 后端：
+    * API端点：POST `/api/settings/save`
+    * 保存到：`config/user_preferences.yaml`
+    * 需重启生效的参数（显示提示）
 
----
+**后端任务**:
+- [ ] 7.2.7 设置API开发 (2小时)
+  - 文件：`web/api/settings.py`
+  - API端点：
+    * GET `/api/settings` - 获取当前配置
+    * POST `/api/settings/save` - 保存配置
+    * POST `/api/settings/reset` - 恢复默认
+    * GET `/api/settings/system_info` - 系统信息
+  - 配置文件：`config/user_preferences.yaml`
 
-### 阶段8: 测试与文档 (2天)
-
-**目标**: 全面测试，编写用户文档
-
-#### 8.1 功能测试 (1天)
-
-**测试任务**:
-- [ ] 8.1.1 地图可视化测试
-  - 地图正确显示
-  - Costmap 叠加正确
-  - 机器人位置准确
-
-- [ ] 8.1.2 交互式导航测试
-  - 点击地图导航功能
-  - 目标点设置准确
-  - 机器人正确导航
-
-- [ ] 8.1.3 任务管理测试
-  - 创建各类任务
-  - 任务状态实时更新
-  - 任务控制（暂停/恢复/取消）
-
-- [ ] 8.1.4 地图管理测试
-  - 地图列表、加载、保存、删除
-  - 地图元数据管理
-
-- [ ] 8.1.5 路点管理测试
-  - 路点录制、显示、编辑
-  - 路点导入/导出
-
-- [ ] 8.1.6 状态监控测试
-  - 机器人状态显示
-  - 系统状态检查
-  - 实时日志
-
-**验收标准**:
-- ✅ 所有功能正常工作
-- ✅ 无明显BUG
-
-**预计用时**: 8小时
-
-#### 8.2 性能测试 (0.5天)
-
-**测试任务**:
-- [ ] 8.2.1 地图渲染性能
-  - 测试帧率（目标 ≥15 FPS）
-  - 大地图加载时间
-
-- [ ] 8.2.2 WebSocket 延迟
-  - 测试命令响应延迟（目标 <100ms）
-  - 状态更新延迟
-
-- [ ] 8.2.3 并发连接测试
-  - 测试3个客户端同时连接
-  - 测试第4个连接被拒绝
+**翻译任务**:
+- [ ] 7.2.8 添加settings模块翻译 (0.5小时)
+  - zh-CN.json: 添加settings模块（约50个翻译键）
+  - en-US.json: 对应英文翻译
 
 **验收标准**:
-- ✅ 性能指标满足要求
-- ✅ 无内存泄漏
+- ✅ 设置页面布局美观，Tab切换流畅
+- ✅ 所有设置项支持修改并保存
+- ✅ 配置保存后立即生效（或提示需重启）
+- ✅ 表单验证（范围检查、类型检查）
+- ✅ 支持恢复默认设置
+- ✅ 系统信息准确显示
+- ✅ 完整的中英双语支持
 
-**预计用时**: 4小时
+**预计用时**: 12小时
 
-#### 8.3 文档编写 (0.5天)
+**技术细节**:
+```tsx
+// Settings.tsx 结构示例
+<Tabs defaultActiveKey="basic">
+  <TabPane tab={t('settings.basic')} key="basic">
+    <Form>
+      <Form.Item label={t('settings.language')}>
+        <Select value={language} onChange={handleLanguageChange}>
+          <Option value="zh-CN">中文</Option>
+          <Option value="en-US">English</Option>
+        </Select>
+      </Form.Item>
+      {/* 更多设置项... */}
+      <Button type="primary" onClick={handleSave}>
+        {t('common.save')}
+      </Button>
+    </Form>
+  </TabPane>
+  {/* 其他Tab... */}
+</Tabs>
+```
 
-**文档任务**:
-- [ ] 8.3.1 用户手册
-  - 文件：`docs/WEB_USER_GUIDE.md`
-  - 安装、启动、使用说明
-  - 功能介绍、截图
+**配置文件示例** (`user_preferences.yaml`):
+```yaml
+# 用户偏好设置
+basic:
+  language: zh-CN
+  theme: light
+  map_resolution: 0.05
+  update_rates:
+    map: 1
+    pose: 10
+    costmap: 5
 
-- [ ] 8.3.2 API 文档
-  - 文件：`docs/WEB_API.md`
-  - REST API 端点说明
-  - WebSocket 消息格式
+navigation:
+  max_linear_velocity: 0.3
+  max_angular_velocity: 0.5
+  obstacle_distance: 0.3
+  charging_distance: 0.15
+  timeout: 300
 
-- [ ] 8.3.3 开发者文档
-  - 文件：`docs/WEB_DEVELOPER_GUIDE.md`
-  - 项目结构、代码规范
-  - 如何添加新功能
+debug:
+  show_trajectory: true
+  show_costmap: true
+  show_path: true
+  log_level: INFO
 
-**验收标准**:
-- ✅ 文档完整、清晰
-- ✅ 包含足够示例
-
-**预计用时**: 4小时
+performance:
+  canvas_fps_limit: 30
+  websocket_queue_size: 100
+```
 
 ---
 
@@ -1501,9 +1536,12 @@ def resume_task(self, task_id: str) -> str:
 | ✅ 阶段2 | 2026-01-12 | 交互导航+Costmap | 点击地图导航，Costmap 叠加 |
 | ✅ 阶段3 | 2026-01-14 | 任务管理 | 任务状态实时监控，探索/巡逻面板 |
 | ✅ 阶段4 | 2026-01-15 | 地图管理 | 地图列表/加载/删除/重命名/版本管理/元数据编辑 |
-| 📋 阶段5 | Day 10 | 路点管理 | 路点录制、编辑 |
-| 📋 阶段6 | Day 11.5 | 状态监控 | 机器人状态、日志查看 |
-| 📋 阶段7 | Day 14 | 测试发布 | 全功能测试通过 |
+| ✅ 阶段5 | 2026-01-15 | 路点管理 | 路点录制、显示、编辑 |
+| ✅ 阶段6 | 2026-01-15 | 状态监控 | 机器人状态、系统状态 |
+| ✅ 阶段7.1 | 2026-01-15 | 国际化完善 | 完整中英双语支持 |
+| 📋 阶段7.2 | Day 13 | 系统设置 | 配置管理、参数调整 |
+
+**注**: 原阶段8（测试与文档）已取消，集成到各阶段的验收标准中。
 
 ---
 
@@ -1511,27 +1549,19 @@ def resume_task(self, task_id: str) -> str:
 
 ### 高风险项
 
-1. **ros2djs 集成复杂度**
-   - 风险：ros2djs 文档不完善，可能需要大量调试
-   - 缓解：阶段1优先级最高，及时发现问题
+1. **设置参数生效时机**
+   - 风险：部分参数需重启才能生效，用户体验不佳
+   - 缓解：明确标注需重启的参数，提供一键重启功能（可选）
 
-2. **Costmap 手动渲染**
-   - 风险：性能可能不达标，渲染逻辑复杂
-   - 缓解：使用 canvas 离屏渲染，优化算法
-
-3. **WebSocket 并发管理**
-   - 风险：多客户端连接可能导致消息混乱
-   - 缓解：使用连接ID区分客户端，消息路由机制
+2. **配置验证**
+   - 风险：用户输入无效参数导致系统异常
+   - 缓解：前后端双重验证，范围检查，默认值回退
 
 ### 中风险项
 
-1. **坐标转换准确性**
-   - 风险：像素坐标转地图坐标可能有误差
-   - 缓解：使用 ros2djs 提供的 API，充分测试
-
-2. **任务状态同步**
-   - 风险：前端显示的任务状态可能与后端不一致
-   - 缓解：定期轮询，WebSocket 实时推送
+1. **配置文件冲突**
+   - 风险：web_config.yaml与user_preferences.yaml参数重复
+   - 缓解：明确划分系统配置（web_config）与用户偏好（user_preferences）
 
 ---
 
@@ -1539,7 +1569,7 @@ def resume_task(self, task_id: str) -> str:
 
 ### 人力
 - 全栈开发者 1人（React + Python + ROS2）
-- 每天工作 8小时
+- 总计13天（已完成12天，剩余1.5天）
 
 ### 硬件
 - 开发机器人（Gazebo 仿真）

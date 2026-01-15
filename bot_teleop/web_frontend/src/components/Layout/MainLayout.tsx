@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Layout, Menu, Button, Badge, Space } from 'antd'
+import { Layout, Menu, Button, Badge, Space, Select } from 'antd'
 import {
   RobotOutlined,
   DashboardOutlined,
@@ -18,13 +18,21 @@ import WaypointManager from '../WaypointManager/WaypointManager'
 import StatusMonitor from '../StatusMonitor'
 
 const { Header, Sider, Content } = Layout
+const { Option } = Select
 
 type MenuKey = 'dashboard' | 'tasks' | 'maps' | 'waypoints' | 'settings'
 
 function MainLayout() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [selectedMenu, setSelectedMenu] = useState<MenuKey>('dashboard')
   const { isConnected } = useConnectionStore()
+
+  // 处理语言切换
+  const handleLanguageChange = (lang: string) => {
+    i18n.changeLanguage(lang)
+    // 保存到localStorage
+    localStorage.setItem('preferred_language', lang)
+  }
 
   const menuItems = [
     {
@@ -102,15 +110,39 @@ function MainLayout() {
           <h1 style={{ color: '#fff', margin: 0 }}>LeKiwi Robot</h1>
         </Space>
         
-        <Space>
-          <Badge status={isConnected ? 'success' : 'error'} />
-          <Button
-            type="text"
-            icon={isConnected ? <WifiOutlined /> : <DisconnectOutlined />}
-            style={{ color: '#fff' }}
+        <Space size="large">
+          {/* 语言选择器 */}
+          <Select
+            value={i18n.language}
+            onChange={handleLanguageChange}
+            style={{ width: 120 }}
+            dropdownStyle={{ zIndex: 9999 }}
           >
-            {isConnected ? t('connection.connected') : t('connection.disconnected')}
-          </Button>
+            <Option value="zh-CN">
+              <Space>
+                <GlobalOutlined />
+                中文
+              </Space>
+            </Option>
+            <Option value="en-US">
+              <Space>
+                <GlobalOutlined />
+                English
+              </Space>
+            </Option>
+          </Select>
+
+          {/* 连接状态 */}
+          <Space>
+            <Badge status={isConnected ? 'success' : 'error'} />
+            <Button
+              type="text"
+              icon={isConnected ? <WifiOutlined /> : <DisconnectOutlined />}
+              style={{ color: '#fff' }}
+            >
+              {isConnected ? t('connection.connected') : t('connection.disconnected')}
+            </Button>
+          </Space>
         </Space>
       </Header>
 

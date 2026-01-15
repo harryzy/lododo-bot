@@ -305,7 +305,7 @@ const MapManager: React.FC = () => {
     const isLoading = loadingVersions[record.name];
 
     if (isLoading) {
-      return <div style={{ padding: '16px', textAlign: 'center' }}>加载版本信息...</div>;
+      return <div style={{ padding: '16px', textAlign: 'center' }}>{t('maps.version.loading')}</div>;
     }
 
     const versionColumns = [

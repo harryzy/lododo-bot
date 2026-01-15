@@ -14,6 +14,7 @@
       "number": "Version Number",
       "current": "Current",
       "hasHistory": "{{count}} versions",
+      "loading": "Loading versions...",
       "switched": "Switched to version {{version}}",
       "deleted": "Version {{version}} deleted",
       "switchTo": "Set as Current",
@@ -32,11 +33,18 @@
     "thumbnail": "Thumbnail",
     "files": "Files",
     "totalMaps": "Total Maps",
+    "rtabmapMaps": "RTABMap Database",
     "withRTABMap": "With RTABMap DB",
     "lastUpdated": "Last Updated",
+    "mapList": "Map List",
+    "items": "items",
+    "actions": "Actions",
     "load": "Load",
     "loadSuccess": "Map {{mapName}} loaded successfully",
+    "loadError": "Failed to load map",
     "loadFailed": "Failed to load map",
+    "loadConfirm": "Confirm Load Map",
+    "loadWarning": "Loading map {{name}} will interrupt current tasks. Continue?",
     "loadConfirmTitle": "Confirm Load Map",
     "loadConfirmContent": "Loading map {{mapName}} will interrupt current tasks. Continue?",
     "loadRequiresRestart": "Map Loading Requires System Restart",
@@ -45,7 +53,10 @@
     "hardwareCommand": "Hardware Environment Command",
     "delete": "Delete",
     "deleteSuccess": "Map {{mapName}} deleted successfully",
+    "deleteError": "Failed to delete map",
     "deleteFailed": "Failed to delete map",
+    "deleteConfirm": "Confirm Delete Map",
+    "deleteWarning": "Are you sure you want to delete map {{name}}? This action cannot be undone.",
     "deleteConfirmTitle": "Confirm Delete Map",
     "deleteConfirmContent": "Are you sure you want to delete map {{mapName}}? This action cannot be undone.",
     "rename": "Rename",
@@ -276,5 +287,39 @@
     "copied": "Copied to clipboard",
     "understand": "I Understand",
     "total": "Total"
+  },
+  "language": {
+    "select": "Select Language",
+    "zhCN": "简体中文",
+    "enUS": "English",
+    "switchSuccess": "Language switched"
+  },
+  "mapView": {
+    "showWaypoints": "Show Waypoints",
+    "selectRoute": "Select Route",
+    "waypointsCount": " waypoints",
+    "show": "Show",
+    "hide": "Hide",
+    "connectionError": "Connection Error",
+    "connecting": "Connecting to rosbridge...",
+    "connected": "Connected to rosbridge",
+    "toolbar": {
+      "navGoalTooltip": "Click map to set navigation goal (like RViz 2D Nav Goal)",
+      "setNavGoal": "Set Nav Goal",
+      "cancelNavGoal": "Cancel Nav Goal",
+      "clearGoalTooltip": "Clear current navigation goal",
+      "clearGoal": "Clear Goal",
+      "followRobotTooltip": "Auto follow robot position",
+      "followRobot": "Follow Robot",
+      "stopFollow": "Stop Follow",
+      "resetViewTooltip": "Reset map view to initial state",
+      "resetView": "Reset View",
+      "costmapTooltip": "Show/Hide costmap layer",
+      "costmap": "Costmap Heatmap"
+    },
+    "error": {
+      "disconnected": "Disconnected from rosbridge, attempting to reconnect...",
+      "rendererFailed": "Map renderer initialization failed"
+    }
   }
 }

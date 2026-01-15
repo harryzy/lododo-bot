@@ -3,6 +3,10 @@ import { initReactI18next } from 'react-i18next'
 import zhCN from './locales/zh-CN.json'
 import enUS from './locales/en-US.json'
 
+// 从localStorage读取用户偏好语言
+const savedLanguage = localStorage.getItem('preferred_language')
+const defaultLanguage = savedLanguage || 'zh-CN'
+
 i18n
   .use(initReactI18next)
   .init({
@@ -14,7 +18,7 @@ i18n
         translation: enUS,
       },
     },
-    lng: 'zh-CN', // 默认语言
+    lng: defaultLanguage, // 使用保存的语言或默认语言
     fallbackLng: 'zh-CN',
     interpolation: {
       escapeValue: false,

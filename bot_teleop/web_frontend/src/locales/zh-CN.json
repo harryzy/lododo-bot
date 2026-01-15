@@ -13,6 +13,7 @@
       "number": "版本号",
       "current": "当前版本",
       "hasHistory": "共 {{count}} 个版本",
+      "loading": "加载版本信息...",
       "switched": "已切换到版本 {{version}}",
       "deleted": "版本 {{version}} 已删除",
       "switchTo": "设为当前",
@@ -281,5 +282,39 @@
     "understand": "我知道了",
     "delete": "删除",
     "total": "共"
+  },
+  "language": {
+    "select": "选择语言",
+    "zhCN": "简体中文",
+    "enUS": "English",
+    "switchSuccess": "语言已切换"
+  },
+  "mapView": {
+    "showWaypoints": "显示路点",
+    "selectRoute": "选择路点路线",
+    "waypointsCount": "个路点",
+    "show": "显示",
+    "hide": "隐藏",
+    "connectionError": "连接错误",
+    "connecting": "正在连接 rosbridge...",
+    "connected": "已连接 rosbridge",
+    "toolbar": {
+      "navGoalTooltip": "点击地图设置导航目标（类似RViz 2D Nav Goal）",
+      "setNavGoal": "设置导航目标",
+      "cancelNavGoal": "取消导航目标",
+      "clearGoalTooltip": "清除当前导航目标",
+      "clearGoal": "清除目标",
+      "followRobotTooltip": "自动跟随机器人位置",
+      "followRobot": "跟随机器人",
+      "stopFollow": "停止跟随",
+      "resetViewTooltip": "重置地图视图到初始状态",
+      "resetView": "重置视图",
+      "costmapTooltip": "显示/隐藏代价地图（Costmap）",
+      "costmap": "Costmap显示热点"
+    },
+    "error": {
+      "disconnected": "与 rosbridge 断开连接，尝试重新连接...",
+      "rendererFailed": "地图渲染器初始化失败"
+    }
   }
 }
