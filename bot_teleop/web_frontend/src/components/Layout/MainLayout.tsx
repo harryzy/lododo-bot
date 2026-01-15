@@ -16,6 +16,7 @@ import MapView from '../MapView/MapView'
 import MapManager from '../MapManager'
 import WaypointManager from '../WaypointManager/WaypointManager'
 import StatusMonitor from '../StatusMonitor'
+import Settings from '../Settings/Settings'
 
 const { Header, Sider, Content } = Layout
 const { Option } = Select
@@ -83,12 +84,7 @@ function MainLayout() {
       case 'waypoints':
         return <WaypointManager />
       case 'settings':
-        return (
-          <div style={{ padding: '24px' }}>
-            <h2>{t('menu.settings')}</h2>
-            <p>系统设置</p>
-          </div>
-        )
+        return <Settings />
       default:
         return null
     }
@@ -107,7 +103,7 @@ function MainLayout() {
       >
         <Space>
           <RobotOutlined style={{ fontSize: '24px', color: '#fff' }} />
-          <h1 style={{ color: '#fff', margin: 0 }}>LeKiwi Robot</h1>
+          <h1 style={{ color: '#fff', margin: 0 }}>lododo Robot</h1>
         </Space>
         
         <Space size="large">

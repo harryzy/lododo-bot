@@ -7,7 +7,7 @@ GREEN='\033[0;32m'
 NC='\033[0m'
 
 echo -e "${GREEN}======================================"
-echo -e "  LeKiwi Robot Web UI (Dev)"
+echo -e "  Lododo Robot Web UI (Dev)"
 echo -e "======================================${NC}"
 echo ""
 

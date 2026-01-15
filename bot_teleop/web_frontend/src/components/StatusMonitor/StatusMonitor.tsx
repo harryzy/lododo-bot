@@ -38,10 +38,14 @@ const StatusMonitor: React.FC = () => {
 
   useEffect(() => {
     let ws: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let isUnmounted = false;
 
     const connectWebSocket = async () => {
+      if (isUnmounted) return;
+
       try {
-        // 从配置服务获取WebSocket URL
+        // Get WebSocket URL from config service
         const wsUrl = await configService.getWebSocketUrl();
         ws = new WebSocket(wsUrl);
 
@@ -53,7 +57,7 @@ const StatusMonitor: React.FC = () => {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            // 监听robot_status类型的消息
+            // Listen for robot_status messages
             if (data.type === 'robot_status') {
               setStatus({
                 position: data.position || { x: 0, y: 0, yaw: 0 },
@@ -74,18 +78,36 @@ const StatusMonitor: React.FC = () => {
         };
 
         ws.onclose = () => {
-          console.log('[StatusMonitor] WebSocket disconnected');
+          console.log('[StatusMonitor] WebSocket disconnected, reconnecting in 3s...');
           setStatus(prev => ({ ...prev, connected: false }));
+          
+          // Auto-reconnect after 3 seconds
+          if (!isUnmounted) {
+            reconnectTimer = setTimeout(() => {
+              connectWebSocket();
+            }, 3000);
+          }
         };
       } catch (error) {
         console.error('[StatusMonitor] Failed to get WebSocket config:', error);
         setStatus(prev => ({ ...prev, connected: false }));
+        
+        // Retry connection after 3 seconds
+        if (!isUnmounted) {
+          reconnectTimer = setTimeout(() => {
+            connectWebSocket();
+          }, 3000);
+        }
       }
     };
 
     connectWebSocket();
 
     return () => {
+      isUnmounted = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
       if (ws) {
         ws.close();
       }

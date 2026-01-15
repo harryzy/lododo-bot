@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-系统状态检查 API
-检查ROS2节点状态、话题数据、网络延迟等
+System Status Check API
+Check ROS2 node status, topic data, network latency, etc.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -15,14 +15,14 @@ router = APIRouter()
 @router.get("/api/status", response_model=Dict[str, Any])
 async def get_system_status():
     """
-    获取系统状态
+    Get system status
     
     Returns:
-        系统状态信息，包括：
-        - nodes: 关键节点状态
-        - topics: 关键话题状态
-        - network: 网络延迟
-        - overall: 总体状态（healthy/degraded/error）
+        System status information, including:
+        - nodes: Key node status
+        - topics: Key topic status
+        - network: Network latency
+        - overall: Overall status (healthy/degraded/error)
     """
     try:
         # 检查关键节点
@@ -47,12 +47,12 @@ async def get_system_status():
 
 async def check_ros_nodes() -> List[Dict[str, Any]]:
     """
-    检查关键ROS2节点状态
+    Check key ROS2 node status
     
     Returns:
-        节点状态列表
+        Node status list
     """
-    # 关键节点列表（使用实际的节点名称）
+    # Key node list (use actual node names)
     critical_nodes = [
         "/mission_planner",
         "/rtabmap",
@@ -61,7 +61,7 @@ async def check_ros_nodes() -> List[Dict[str, Any]]:
     ]
     
     try:
-        # 执行 ros2 node list 命令
+        # Execute ros2 node list command
         result = subprocess.run(
             ["ros2", "node", "list"],
             capture_output=True,
@@ -76,10 +76,10 @@ async def check_ros_nodes() -> List[Dict[str, Any]]:
                 "message": "Failed to query nodes"
             } for node in critical_nodes]
         
-        # 解析运行中的节点（去除空行）
+        # Parse running nodes (remove empty lines)
         running_nodes = [n.strip() for n in result.stdout.strip().split('\n') if n.strip()]
         
-        # 检查每个关键节点
+        # Check each key node
         nodes_status = []
         for node in critical_nodes:
             is_running = node in running_nodes

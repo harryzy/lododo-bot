@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-键盘遥控节点 / Keyboard Teleop Node
-支持全向移动控制 / Support omnidirectional movement control
+Keyboard Teleop Node / Keyboard Teleop Node
+Support omnidirectional movement control / Support omnidirectional movement control
 """
 
 import rclpy
@@ -14,7 +14,7 @@ import tty
 
 
 HELP_MSG = """
-LeKiwi Robot Keyboard Control / LeKiwi机器人键盘控制
+Lododo Robot Keyboard Control / Lododo机器人键盘控制
 ---------------------------
 Movement Control / 移动控制:
    w/s: Forward/Backward / 前进/后退
@@ -42,23 +42,23 @@ Current Speed / 当前速度: Linear={:.2f} m/s, Angular={:.2f} rad/s
 
 
 class KeyboardTeleop(Node):
-    """键盘遥控节点"""
+    """Keyboard teleop node"""
 
     def __init__(self):
         super().__init__('keyboard_teleop')
         
-        # 速度参数
-        self.linear_speed = 0.1   # 线速度 (m/s)
-        self.angular_speed = 0.5  # 角速度 (rad/s)
-        self.speed_step = 0.05    # 速度增量
+        # Speed parameters
+        self.linear_speed = 0.1   # Linear speed (m/s)
+        self.angular_speed = 0.5  # Angular speed (rad/s)
+        self.speed_step = 0.05    # Speed increment
         
-        # 最大速度限制 / Maximum speed limits
+        # Maximum speed limits / Maximum speed limits
         self.max_linear_speed = 0.20  # m/s
         self.max_angular_speed = 1.5  # rad/s
         
         # ================================================================
-        # QoS 配置 / QoS Configuration
-        # 命令话题使用 RELIABLE 确保送达 / Command topics use RELIABLE
+        # QoS Configuration / QoS Configuration
+        # Command topics use RELIABLE to ensure delivery / Command topics use RELIABLE
         # ================================================================
         cmd_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.RELIABLE,
@@ -66,67 +66,67 @@ class KeyboardTeleop(Node):
             depth=10
         )
         
-        # 发布cmd_vel（使用RELIABLE确保命令送达）
+        # Publish cmd_vel (use RELIABLE to ensure command delivery)
         # Publish cmd_vel (use RELIABLE to ensure command delivery)
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', cmd_qos)
         
-        # 保存终端设置
+        # Save terminal settings
         self.settings = termios.tcgetattr(sys.stdin)
         
         self.get_logger().info('Keyboard teleop node started')
         self.print_help()
 
     def print_help(self):
-        """打印帮助信息"""
+        """Print help information"""
         print(HELP_MSG.format(self.linear_speed, self.angular_speed))
 
     def get_key(self):
-        """获取键盘输入"""
+        """Get keyboard input"""
         tty.setraw(sys.stdin.fileno())
         key = sys.stdin.read(1)
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
         return key
 
     def run(self):
-        """主循环"""
+        """Main loop"""
         try:
             while rclpy.ok():
                 key = self.get_key()
                 
                 twist = Twist()
                 
-                # 线速度控制
-                if key == 'w':  # 前进
+                # Linear velocity control
+                if key == 'w':  # Forward
                     twist.linear.x = self.linear_speed
-                elif key == 's':  # 后退
+                elif key == 's':  # Backward
                     twist.linear.x = -self.linear_speed
-                elif key == 'a':  # 左移
+                elif key == 'a':  # Left strafe
                     twist.linear.y = self.linear_speed
-                elif key == 'd':  # 右移
+                elif key == 'd':  # Right strafe
                     twist.linear.y = -self.linear_speed
                 
-                # 对角线移动
-                elif key == 'i':  # 前进+左移
+                # Diagonal movement
+                elif key == 'i':  # Forward+Left
                     twist.linear.x = self.linear_speed
                     twist.linear.y = self.linear_speed
-                elif key == 'o':  # 前进+右移
+                elif key == 'o':  # Forward+Right
                     twist.linear.x = self.linear_speed
                     twist.linear.y = -self.linear_speed
-                elif key == 'k':  # 后退+左移
+                elif key == 'k':  # Backward+Left
                     twist.linear.x = -self.linear_speed
                     twist.linear.y = self.linear_speed
-                elif key == 'l':  # 后退+右移
+                elif key == 'l':  # Backward+Right
                     twist.linear.x = -self.linear_speed
                     twist.linear.y = -self.linear_speed
                 
-                # 角速度控制
-                elif key == 'q':  # 左转
+                # Angular velocity control
+                elif key == 'q':  # Turn left
                     twist.angular.z = self.angular_speed
-                elif key == 'e':  # 右转
+                elif key == 'e':  # Turn right
                     twist.angular.z = -self.angular_speed
                 
-                # 速度调整
-                elif key == 'z':  # 增加线速度
+                # Speed adjustment
+                elif key == 'z':  # Increase linear speed
                     self.linear_speed = min(
                         self.linear_speed + self.speed_step,
                         self.max_linear_speed
@@ -170,9 +170,9 @@ class KeyboardTeleop(Node):
         except Exception as e:
             self.get_logger().error(f'Error: {e}')
         finally:
-            # 恢复终端设置
+            # Restore terminal settings
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
-            # 发送停止命令
+            # Send stop command
             self.cmd_vel_pub.publish(Twist())
 
 

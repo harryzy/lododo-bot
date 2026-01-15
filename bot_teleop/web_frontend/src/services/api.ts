@@ -295,6 +295,22 @@ const waypoints = {
 
 const settings = {
   // 获取所有设置
+  get: () =>
+    apiClient.get<any, any>('/settings'),
+
+  // 保存设置
+  save: (settings: any) =>
+    apiClient.post<any, any>('/settings/save', settings),
+
+  // 重置设置
+  reset: () =>
+    apiClient.post<any, any>('/settings/reset'),
+
+  // 获取系统信息
+  getSystemInfo: () =>
+    apiClient.get<any, any>('/settings/system_info'),
+
+  // 旧API（保留兼容性）
   getSettings: () =>
     apiClient.get<any, any>('/settings'),
 
@@ -310,13 +326,9 @@ const settings = {
   updateSettingsByCategory: (category: string, settings: any) =>
     apiClient.put<any, any>(`/settings/${category}`, settings),
 
-  // 重置设置
+  // 重置设置（旧API，保留兼容性）
   resetSettings: () =>
     apiClient.post<any, any>('/settings/reset'),
-
-  // 获取系统信息
-  getSystemInfo: () =>
-    apiClient.get<any, any>('/settings/system/info'),
 }
 
 // ============================================

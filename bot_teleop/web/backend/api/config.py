@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-配置管理 API
-提供前端访问配置文件的接口
+Configuration Management API
+Provides interface for frontend to access configuration files
 """
 
 from fastapi import APIRouter
@@ -11,12 +11,12 @@ from pathlib import Path
 
 router = APIRouter()
 
-# 缓存配置
+# Configuration cache
 _config_cache: Dict[str, Any] = {}
 
 
 def load_config() -> Dict[str, Any]:
-    """加载配置文件"""
+    """Load configuration file"""
     global _config_cache
     
     if _config_cache:
@@ -28,7 +28,7 @@ def load_config() -> Dict[str, Any]:
         with open(config_path, 'r', encoding='utf-8') as f:
             _config_cache = yaml.safe_load(f)
     else:
-        # 默认配置
+        # Default configuration
         _config_cache = {
             'server': {'host': '0.0.0.0', 'port': 8000},
             'websocket': {'ping_interval': 30, 'ping_timeout': 10},
@@ -42,14 +42,14 @@ def load_config() -> Dict[str, Any]:
 @router.get("/api/config", response_model=Dict[str, Any])
 async def get_config():
     """
-    获取前端配置
+    Get frontend configuration
     
     Returns:
-        配置字典（仅返回前端需要的配置项）
+        Configuration dictionary (only returns configuration items needed by frontend)
     """
     config = load_config()
     
-    # 只返回前端需要的配置
+    # Only return configuration needed by frontend
     return {
         'server': config.get('server', {}),
         'websocket': config.get('websocket', {}),

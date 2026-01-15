@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ROS Bridge - 用于桥接其他 ROS 话题到 WebSocket
-提供实时话题数据（如机器人位姿、地图数据等）
+ROS Bridge - Bridge other ROS topics to WebSocket
+Provides real-time topic data (such as robot pose, map data, etc.)
 """
 
 import rclpy
@@ -14,21 +14,21 @@ import json
 
 
 class ROSBridgeNode(Node):
-    """ROS 话题桥接节点"""
+    """ROS topic bridge node"""
     
     def __init__(self, data_callback: Optional[Callable] = None):
         """
-        初始化节点
+        Initialize node
         
         Args:
-            data_callback: 数据回调函数（用于推送到 WebSocket）
+            data_callback: Data callback function (for pushing to WebSocket)
         """
         super().__init__('ros_bridge_node')
         
         self.data_callback = data_callback
         self._shutdown_flag = False
         
-        # 订阅机器人位姿
+        # Subscribe to robot pose
         self.pose_subscriber = self.create_subscription(
             PoseStamped,
             '/rtabmap/localization_pose',
@@ -36,7 +36,7 @@ class ROSBridgeNode(Node):
             10
         )
         
-        # 订阅地图
+        # Subscribe to map
         self.map_subscriber = self.create_subscription(
             OccupancyGrid,
             '/map',
@@ -44,7 +44,7 @@ class ROSBridgeNode(Node):
             10
         )
         
-        # 订阅激光扫描（可选）
+        # Subscribe to laser scan (optional)
         self.scan_subscriber = self.create_subscription(
             LaserScan,
             '/scan',
@@ -52,17 +52,17 @@ class ROSBridgeNode(Node):
             10
         )
         
-        # 缓存最新数据
+        # Cache latest data
         self.latest_pose: Optional[PoseStamped] = None
         self.latest_map: Optional[OccupancyGrid] = None
         
-        self.get_logger().info('ROS Bridge Node 已初始化')
+        self.get_logger().info('ROS Bridge Node initialized')
     
     def _pose_callback(self, msg: PoseStamped):
-        """机器人位姿回调"""
+        """Robot pose callback"""
         self.latest_pose = msg
         
-        # 提取关键信息
+        # Extract key information
         pose_data = {
             "type": "robot_pose",
             "x": msg.pose.position.x,
@@ -78,12 +78,12 @@ class ROSBridgeNode(Node):
             "timestamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         }
         
-        # 推送到 WebSocket
+        # Push to WebSocket
         if self.data_callback:
             self.data_callback(pose_data)
     
     def _map_callback(self, msg: OccupancyGrid):
-        """地图数据回调"""
+        """Map data callback"""
         self.latest_map = msg
         
         # 地图数据较大，只发送元数据，实际栅格数据通过 REST API 获取
@@ -105,13 +105,13 @@ class ROSBridgeNode(Node):
             self.data_callback(map_info)
     
     def _scan_callback(self, msg: LaserScan):
-        """激光扫描回调（可选，数据量大）"""
-        # 可以选择性地推送激光扫描数据
-        # 这里暂时不推送，避免 WebSocket 数据过载
+        """Laser scan callback (optional, large data volume)"""
+        # Can selectively push laser scan data
+        # Not pushing here to avoid WebSocket data overload
         pass
     
     def get_latest_pose(self) -> Optional[Dict[str, Any]]:
-        """获取最新机器人位姿"""
+        """Get latest robot pose"""
         if self.latest_pose is None:
             return None
         
@@ -131,7 +131,7 @@ class ROSBridgeNode(Node):
         }
     
     def get_latest_map_info(self) -> Optional[Dict[str, Any]]:
-        """获取最新地图信息"""
+        """Get latest map information"""
         if self.latest_map is None:
             return None
         
@@ -147,7 +147,7 @@ class ROSBridgeNode(Node):
         }
     
     def spin(self):
-        """运行节点"""
+        """Run node"""
         while rclpy.ok() and not self._shutdown_flag:
             rclpy.spin_once(self, timeout_sec=0.1)
     

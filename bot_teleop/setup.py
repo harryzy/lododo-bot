@@ -14,13 +14,13 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
-        # Web 后端和前端独立运行，不需要安装到 ROS2 工作空间
+        # Web backend and frontend run independently, no need to install to ROS2 workspace
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='hurry',
     maintainer_email='jeladeer@msn.com',
-    description='LeKiwi robot teleoperation package',
+    description='Lododo robot teleoperation package',
     license='MIT',
     extras_require={
         'test': [

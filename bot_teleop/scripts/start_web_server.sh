@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}======================================"
-echo -e "  LeKiwi Robot Web Server"
+echo -e "  Lododo Robot Web Server"
 echo -e "======================================${NC}"
 echo ""
 

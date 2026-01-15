@@ -234,7 +234,7 @@ if [ ! -f "$FRONTEND_DIR/package.json" ]; then
     log_info "创建临时 package.json..."
     cat > "$FRONTEND_DIR/package.json" << 'EOF'
 {
-  "name": "lekiwi-web-ui",
+  "name": "lododo-web-ui",
   "private": true,
   "version": "1.0.0",
   "type": "module",

@@ -1,6 +1,6 @@
 """
-地图管理 API
-提供地图库的查询、加载、保存等功能
+Map Management API
+Provides map library query, loading, saving and other functionality
 """
 
 from fastapi import APIRouter, HTTPException
@@ -15,11 +15,11 @@ router = APIRouter()
 
 
 # ============================================
-# 数据模型
+# Data Models
 # ============================================
 
 class MapInfo(BaseModel):
-    """地图信息 - 支持多版本管理"""
+    """Map information - supports multi-version management"""
     name: str
     version: int  # 当前活动版本
     versions: List[int] = []  # 所有可用版本列表
@@ -36,33 +36,33 @@ class MapInfo(BaseModel):
 
 
 class MapListResponse(BaseModel):
-    """地图列表响应"""
+    """Map list response"""
     success: bool
     maps: List[MapInfo]
     total: int
 
 
 class MapLoadRequest(BaseModel):
-    """地图加载请求"""
+    """Map load request"""
     map_name: str
     version: Optional[int] = None
 
 
 class MapSaveRequest(BaseModel):
-    """地图保存请求"""
+    """Map save request"""
     map_name: str
     description: Optional[str] = None
     tags: Optional[List[str]] = None
 
 
 class DeleteMapResponse(BaseModel):
-    """删除地图响应"""
+    """Delete map response"""
     success: bool
     message: str
 
 
 class VersionInfo(BaseModel):
-    """版本信息"""
+    """Version information"""
     version: int
     is_current: bool
     size: str
@@ -93,7 +93,7 @@ class SwitchVersionResponse(BaseModel):
 
 
 class VersionInfo(BaseModel):
-    """版本信息"""
+    """Version information"""
     version: int
     is_current: bool
     size: str
@@ -124,12 +124,12 @@ class SwitchVersionResponse(BaseModel):
 
 
 class RenameMapRequest(BaseModel):
-    """重命名地图请求"""
+    """Rename map request"""
     new_name: str
 
 
 class RenameMapResponse(BaseModel):
-    """重命名地图响应"""
+    """Rename map response"""
     success: bool
     message: str
     old_name: str
@@ -137,24 +137,24 @@ class RenameMapResponse(BaseModel):
 
 
 class UpdateMetadataRequest(BaseModel):
-    """更新元数据请求"""
+    """Update metadata request"""
     description: Optional[str] = None
     tags: Optional[List[str]] = None
 
 
 class UpdateMetadataResponse(BaseModel):
-    """更新元数据响应"""
+    """Update metadata response"""
     success: bool
     message: str
 
 
 # ============================================
-# 工具函数
+# Utility Functions
 # ============================================
 
 def get_maps_directory() -> Path:
-    """获取地图目录 - 优先从配置文件读取"""
-    # 1. 优先从配置文件读取
+    """Get maps directory - prioritize reading from config file"""
+    # 1. Prioritize reading from config file
     try:
         from ..api.config import load_config
         config = load_config()
@@ -168,7 +168,7 @@ def get_maps_directory() -> Path:
     except Exception as e:
         print(f"[MapAPI] Failed to load config: {e}")
     
-    # 2. 使用环境变量作为fallback
+    # 2. Use environment variable as fallback
     maps_dir_str = os.environ.get('LODODO_MAPS_DIR', '')
     if maps_dir_str:
         maps_dir = Path(maps_dir_str).expanduser().resolve()
@@ -177,24 +177,24 @@ def get_maps_directory() -> Path:
             maps_dir.mkdir(parents=True, exist_ok=True)
         return maps_dir
     
-    # 3. 从当前文件向上查找工作空间根目录
+    # 3. Search upward from current file to find workspace root directory
     current_file = Path(__file__).resolve()
     
-    # 向上查找，直到找到包含 src/ 和 install/ 的目录（ROS2工作空间特征）
+    # Search upward until finding directory containing src/ and install/ (ROS2 workspace features)
     workspace_root = current_file
-    for _ in range(10):  # 最多向上10层
+    for _ in range(10):  # Search up to 10 levels
         workspace_root = workspace_root.parent
         if (workspace_root / 'src').exists() and (workspace_root / 'install').exists():
             print(f"[MapAPI] Found workspace root: {workspace_root}")
             break
-        if workspace_root == workspace_root.parent:  # 到达根目录
+        if workspace_root == workspace_root.parent:  # Reached root directory
             break
     else:
-        # 未找到，使用当前工作目录
+        # Not found, use current working directory
         workspace_root = Path.cwd()
         print(f"[MapAPI] Using current working directory: {workspace_root}")
     
-    # 地图目录在工作空间根目录下的 maps/
+    # Maps directory is under maps/ in workspace root
     maps_dir = workspace_root / "maps"
     
     if not maps_dir.exists():
@@ -237,7 +237,7 @@ def scan_map_library() -> List[MapInfo]:
             has_yaml = (map_dir / f"{map_name}_v{version}.yaml").exists() or (map_dir / "map.yaml").exists()
             print(f"[MapAPI]   - DB: {has_rtabmap_db}, PGM: {has_pgm}, YAML: {has_yaml}")
             
-            # 尝试从PGM文件读取实际尺寸
+            # Try to read actual size from PGM file
             width = metadata.get('width', 0)
             height = metadata.get('height', 0)
             
@@ -249,22 +249,22 @@ def scan_map_library() -> List[MapInfo]:
                     
                     if pgm_file.exists():
                         with open(pgm_file, 'rb') as f:
-                            # 读取PGM头
+                            # Read PGM header
                             header = f.readline().decode('ascii').strip()  # P5
                             if header == 'P5':
-                                # 跳过注释行
+                                # Skip comment lines
                                 line = f.readline().decode('ascii').strip()
                                 while line.startswith('#'):
                                     line = f.readline().decode('ascii').strip()
-                                # 读取宽高
+                                # Read width and height
                                 parts = line.split()
                                 if len(parts) >= 2:
                                     width = int(parts[0])
                                     height = int(parts[1])
                 except Exception as e:
-                    print(f"[MapAPI] 读取PGM尺寸失败 {map_name}: {e}")
+                    print(f"[MapAPI] Failed to read PGM size {map_name}: {e}")
             
-            # 获取所有可用版本列表
+            # Get list of all available versions
             versions = metadata.get('versions', [version])
             
             map_info = MapInfo(
@@ -284,23 +284,23 @@ def scan_map_library() -> List[MapInfo]:
             )
             
             map_list.append(map_info)
-            print(f"[MapAPI]   -> 已添加地图: {map_name}")
+            print(f"[MapAPI]   -> Added map: {map_name}")
         
-        print(f"[MapAPI] 最终返回 {len(map_list)} 个地图")
+        print(f"[MapAPI] Finally returning {len(map_list)} maps")
         return map_list
     
     except Exception as e:
-        print(f"[MapAPI] 扫描地图库失败: {e}")
+        print(f"[MapAPI] Failed to scan map library: {e}")
         return map_list
 
 
 # ============================================
-# API 端点
+# API Endpoints
 # ============================================
 
 @router.get("/maps", response_model=MapListResponse)
 async def list_maps():
-    """获取地图列表"""
+    """Get map list"""
     try:
         maps = scan_map_library()
         return MapListResponse(
@@ -314,7 +314,7 @@ async def list_maps():
 
 @router.get("/maps/{map_name}")
 async def get_map_info(map_name: str):
-    """获取指定地图的详细信息"""
+    """Get detailed information of specified map"""
     try:
         maps_dir = get_maps_directory()
         map_path = maps_dir / map_name
@@ -355,7 +355,7 @@ async def get_map_info(map_name: str):
 
 @router.post("/maps/load")
 async def load_map(req: MapLoadRequest):
-    """加载地图 - 返回launch命令（RTABMap需要重启节点才能切换地图）"""
+    """Load map - return launch command (RTABMap requires node restart to switch maps)"""
     try:
         maps_dir = get_maps_directory()
         map_path = maps_dir / req.map_name
@@ -363,7 +363,7 @@ async def load_map(req: MapLoadRequest):
         if not map_path.exists():
             raise HTTPException(status_code=404, detail=f"Map '{req.map_name}' not found")
         
-        # 检查必要的文件
+        # Check required files
         has_db = False
         for db_file in ["rtabmap.db", f"rtabmap_v{req.version or 1}.db", f"{req.map_name}_v{req.version or 1}.db"]:
             if (map_path / db_file).exists():
@@ -376,14 +376,14 @@ async def load_map(req: MapLoadRequest):
                 detail=f"Map '{req.map_name}' does not have RTABMap database file"
             )
         
-        # 生成launch命令（根据是否指定版本）
+        # Generate launch command (based on whether version is specified)
         version_param = f" version:={req.version}" if req.version else ""
         launch_cmd = (
             f"ros2 launch bot_bringup simulation_mission_planner_localization.launch.py "
             f"map_name:={req.map_name}{version_param}"
         )
         
-        # 生成硬件launch命令
+        # Generate hardware launch command
         hw_launch_cmd = (
             f"ros2 launch bot_bringup hardware_mission_planner_localization.launch.py "
             f"map_name:={req.map_name}{version_param}"
@@ -408,7 +408,7 @@ async def load_map(req: MapLoadRequest):
 
 @router.post("/maps/save")
 async def save_map(req: MapSaveRequest):
-    """保存当前地图"""
+    """Save current map"""
     try:
         maps_dir = get_maps_directory()
         map_path = maps_dir / req.map_name
@@ -439,7 +439,7 @@ async def save_map(req: MapSaveRequest):
 
 @router.delete("/maps/{map_name}", response_model=DeleteMapResponse)
 async def delete_map(map_name: str):
-    """删除地图"""
+    """Delete map"""
     try:
         maps_dir = get_maps_directory()
         map_path = maps_dir / map_name
@@ -474,7 +474,7 @@ async def delete_map(map_name: str):
 
 @router.patch("/maps/{map_name}/rename", response_model=RenameMapResponse)
 async def rename_map(map_name: str, req: RenameMapRequest):
-    """重命名地图"""
+    """Rename map"""
     try:
         maps_dir = get_maps_directory()
         old_map_path = maps_dir / map_name
@@ -486,7 +486,7 @@ async def rename_map(map_name: str, req: RenameMapRequest):
         if new_map_path.exists():
             raise HTTPException(status_code=400, detail=f"Map '{req.new_name}' already exists")
         
-        # 验证新名称（只允许字母、数字、下划线、连字符）
+        # Validate new name (only allow letters, numbers, underscores, hyphens)
         import re
         if not re.match(r'^[a-zA-Z0-9_-]+$', req.new_name):
             raise HTTPException(
@@ -494,10 +494,10 @@ async def rename_map(map_name: str, req: RenameMapRequest):
                 detail="Map name can only contain letters, numbers, underscores and hyphens"
             )
         
-        # 重命名目录
+        # Rename directory
         old_map_path.rename(new_map_path)
         
-        # 更新map_library.yaml
+        # Update map_library.yaml
         library_file = maps_dir / "map_library.yaml"
         if library_file.exists():
             with open(library_file, 'r', encoding='utf-8') as f:
@@ -505,20 +505,20 @@ async def rename_map(map_name: str, req: RenameMapRequest):
             
             maps_data = library_data.get('maps', {})
             if map_name in maps_data:
-                # 复制旧数据到新key
+                # Copy old data to new key
                 maps_data[req.new_name] = maps_data[map_name]
-                # 更新file_path中的地图名
+                # Update map name in file_path
                 if 'file_path' in maps_data[req.new_name]:
                     old_path = maps_data[req.new_name]['file_path']
                     maps_data[req.new_name]['file_path'] = old_path.replace(map_name, req.new_name)
-                # 删除旧key
+                # Delete old key
                 del maps_data[map_name]
                 library_data['maps'] = maps_data
                 
                 with open(library_file, 'w', encoding='utf-8') as f:
                     yaml.dump(library_data, f, default_flow_style=False, allow_unicode=True)
         
-        # 重命名目录内的文件（如果文件名包含地图名）
+        # Rename files within directory (if filename contains map name)
         import shutil
         for old_file in new_map_path.glob(f"{map_name}_v*"):
             new_file_name = old_file.name.replace(map_name, req.new_name)
@@ -539,7 +539,7 @@ async def rename_map(map_name: str, req: RenameMapRequest):
 
 @router.patch("/maps/{map_name}/metadata", response_model=UpdateMetadataResponse)
 async def update_map_metadata(map_name: str, req: UpdateMetadataRequest):
-    """更新地图元数据（描述和标签）"""
+    """Update map metadata (description and tags)"""
     try:
         maps_dir = get_maps_directory()
         library_file = maps_dir / "map_library.yaml"
@@ -554,13 +554,13 @@ async def update_map_metadata(map_name: str, req: UpdateMetadataRequest):
         if map_name not in maps_data:
             raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found")
         
-        # 更新元数据
+        # Update metadata
         if req.description is not None:
             maps_data[map_name]['description'] = req.description
         if req.tags is not None:
             maps_data[map_name]['tags'] = req.tags
         
-        # 保存更新
+        # Save update
         with open(library_file, 'w', encoding='utf-8') as f:
             yaml.dump(library_data, f, default_flow_style=False, allow_unicode=True)
         
@@ -734,11 +734,11 @@ async def delete_map_version(map_name: str, version: int):
                 file_path.unlink()
                 deleted_files.append(pattern)
         
-        # 从versions列表移除
+        # Remove from versions list
         versions.remove(version)
         metadata['versions'] = versions
         
-        # 如果是最后一个版本，删除整个地图
+        # If it's the last version, delete entire map
         if len(versions) == 0:
             del maps_data[map_name]
             import shutil
@@ -947,7 +947,7 @@ async def delete_map_version(map_name: str, version: int):
 
 @router.get("/maps/{map_name}/thumbnail")
 async def get_map_thumbnail(map_name: str):
-    """获取地图缩略图"""
+    """Get map thumbnail"""
     try:
         maps_dir = get_maps_directory()
         map_dir = maps_dir / map_name
@@ -955,22 +955,22 @@ async def get_map_thumbnail(map_name: str):
         if not map_dir.exists():
             raise HTTPException(status_code=404, detail="Map not found")
         
-        # 查找PNG文件（支持_preview.png和普通.png）
+        # Find PNG files (support _preview.png and regular .png)
         preview_files = list(map_dir.glob(f"{map_name}_v*_preview.png"))
         png_files = list(map_dir.glob(f"{map_name}_v*.png"))
         
-        # 优先使用preview文件
+        # Prioritize preview files
         all_png_files = preview_files if preview_files else png_files
         
         if not all_png_files:
-            # 尝试旧格式
+            # Try legacy format
             legacy_png = map_dir / f"{map_name}.png"
             if legacy_png.exists():
                 return FileResponse(legacy_png, media_type="image/png")
             
             raise HTTPException(status_code=404, detail="Thumbnail not found")
         
-        # 返回最新版本（按文件名排序）
+        # Return latest version (sorted by filename)
         latest_png = sorted(all_png_files, key=lambda p: p.name)[-1]
         return FileResponse(latest_png, media_type="image/png")
         

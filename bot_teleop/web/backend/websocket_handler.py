@@ -1,12 +1,12 @@
 """
-WebSocket 连接管理器
-负责管理所有活跃的 WebSocket 连接，广播任务状态更新
+WebSocket Connection Manager
+Responsible for managing all active WebSocket connections, broadcasting task status updates
 
-架构设计（重构后）：
-- 纯粹的连接管理和消息广播
-- 不主动查询任务状态（被动接收 TaskManager 的更新）
-- 完全异步，非阻塞
-- 移除所有轮询逻辑
+Architecture Design (after refactoring):
+- Pure connection management and message broadcasting
+- No active task status queries (passively receive updates from TaskManager)
+- Completely asynchronous, non-blocking
+- All polling logic removed
 """
 
 from fastapi import WebSocket
@@ -17,70 +17,70 @@ from datetime import datetime
 
 
 class WebSocketHandler:
-    """WebSocket 连接管理器 - 简化版（仅负责连接管理和广播）"""
+    """WebSocket Connection Manager - Simplified version (only responsible for connection management and broadcasting)"""
     
     def __init__(self, event_loop: Optional[asyncio.AbstractEventLoop] = None):
-        # 活跃连接列表
+        # Active connection list
         self.active_connections: List[WebSocket] = []
         
-        # 连接信息（用于调试）
+        # Connection information (for debugging)
         self.connection_info: Dict[WebSocket, Dict[str, Any]] = {}
         
-        # 事件循环引用（用于跨线程调度异步任务）
+        # Event loop reference (for scheduling async tasks across threads)
         self.event_loop = event_loop
         
-        print("[WebSocket] ✓ WebSocketHandler 初始化完成（被动模式）")
+        print("[WebSocket] ✓ WebSocketHandler initialization complete (passive mode)")
     
     async def connect(self, websocket: WebSocket):
-        """添加新连接"""
+        """Add new connection"""
         await websocket.accept()
         self.active_connections.append(websocket)
         
-        # 记录连接信息
+        # Record connection info
         self.connection_info[websocket] = {
             "client": websocket.client,
             "connected_at": datetime.now().isoformat()
         }
         
-        print(f"[WebSocket] ✓ 新连接: {websocket.client}, 当前连接数: {len(self.active_connections)}")
+        print(f"[WebSocket] ✓ New connection: {websocket.client}, total: {len(self.active_connections)}")
     
     def disconnect(self, websocket: WebSocket):
-        """移除连接"""
+        """Remove connection"""
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
         
         if websocket in self.connection_info:
             del self.connection_info[websocket]
         
-        print(f"[WebSocket] ✗ 断开连接, 当前连接数: {len(self.active_connections)}")
+        print(f"[WebSocket] ✗ Disconnected, total: {len(self.active_connections)}")
     
     async def broadcast(self, message: Dict[str, Any]):
-        """广播消息给所有连接的客户端"""
+        """Broadcast message to all connected clients"""
         if not self.active_connections:
             return
         
-        # 转换为 JSON 字符串
+        # Convert to JSON string
         message_str = json.dumps(message, ensure_ascii=False)
         
-        # 并发发送给所有客户端
+        # Send to all clients concurrently
         disconnected = []
         for connection in self.active_connections:
             try:
                 await connection.send_text(message_str)
             except Exception as e:
-                print(f"[WebSocket] 发送失败: {e}")
+                print(f"[WebSocket] Send failed: {e}")
                 disconnected.append(connection)
         
-        # 清理断开的连接
+        # Clean up disconnected connections
         for connection in disconnected:
             self.disconnect(connection)
     
     async def broadcast_task_update(self, task: Dict[str, Any]):
         """
-        广播任务状态更新（异步版本，用于async上下文）
+        Broadcast task status update (async version, for async context)
         
         Args:
-            task: Task.to_dict() 的结果
+            task: Result of Task.to_dict()
         """
         message = {
             "type": "task_update",
@@ -97,61 +97,61 @@ class WebSocketHandler:
         }
         
         await self.broadcast(message)
-        print(f"[WebSocket] ✓ 任务更新已广播: {task.get('request_id')} -> {task.get('status')}")
+        print(f"[WebSocket] ✓ Task update broadcast: {task.get('request_id')} -> {task.get('status')}")
     
     def broadcast_task_update_sync(self, task: Dict[str, Any]):
         """
-        广播任务状态更新（同步版本，用于ROS2回调）
+        Broadcast task status update (sync version, for ROS2 callback)
         
-        从ROS2线程调用，使用asyncio.run_coroutine_threadsafe调度到主线程
+        Called from ROS2 thread, use asyncio.run_coroutine_threadsafe to schedule to main thread
         
         Args:
-            task: Task.to_dict() 的结果
+            task: Result of Task.to_dict()
         """
         if self.event_loop is None:
-            print("[WebSocket] ✗ 事件循环未设置，无法广播")
+            print("[WebSocket] ✗ Event loop not set, cannot broadcast")
             return
         
-        # 在主线程的事件循环中调度异步任务
+        # Schedule async task in main thread's event loop
         asyncio.run_coroutine_threadsafe(
             self.broadcast_task_update(task),
             self.event_loop
         )
-        print(f"[WebSocket] → 任务更新已调度: {task.get('request_id')} -> {task.get('status')}")
+        print(f"[WebSocket] → Task update scheduled: {task.get('request_id')} -> {task.get('status')}")
     
     async def broadcast_status(self, status: Dict[str, Any]):
         """
-        广播机器人状态（异步版本）
+        Broadcast robot status (async version)
         
         Args:
-            status: 机器人状态字典（包含type, position, velocity等）
+            status: Robot status dictionary (including type, position, velocity, etc.)
         """
         await self.broadcast(status)
     
     def broadcast_status_sync(self, status: Dict[str, Any]):
         """
-        广播机器人状态（同步版本，用于ROS2回调）
+        Broadcast robot status (sync version, for ROS2 callback)
         
-        从ROS2线程调用，使用asyncio.run_coroutine_threadsafe调度到主线程
+        Called from ROS2 thread, use asyncio.run_coroutine_threadsafe to schedule to main thread
         
         Args:
-            status: 机器人状态字典（包含type, position, velocity等）
+            status: Robot status dictionary (including type, position, velocity, etc.)
         """
         if self.event_loop is None:
             return
         
-        # 在主线程的事件循环中调度异步任务
+        # Schedule async task in main thread's event loop
         asyncio.run_coroutine_threadsafe(
             self.broadcast_status(status),
             self.event_loop
         )
     
     def get_connection_count(self) -> int:
-        """获取当前连接数"""
+        """Get current connection count"""
         return len(self.active_connections)
     
     def get_connection_info(self) -> List[Dict[str, Any]]:
-        """获取所有连接信息"""
+        """Get all connection information"""
         return [
             {
                 "client": str(info.get("client")),

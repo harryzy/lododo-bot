@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-机器人状态监控节点
-订阅机器人位置、速度等状态信息，通过WebSocket广播给前端
+Robot Status Monitor Node
+Subscribe to robot position, velocity and other status information, broadcast to frontend via WebSocket
 
-订阅话题：
-- /rtabmap/localization_pose (geometry_msgs/PoseWithCovarianceStamped) - 机器人位置
-- /cmd_vel (geometry_msgs/Twist) - 速度命令
-- /odometry/filtered (nav_msgs/Odometry) - 里程计数据（备用）
+Subscribed topics:
+- /rtabmap/localization_pose (geometry_msgs/PoseWithCovarianceStamped) - Robot position
+- /cmd_vel (geometry_msgs/Twist) - Velocity commands
+- /odometry/filtered (nav_msgs/Odometry) - Odometry data (backup)
 """
 
 import rclpy
@@ -19,24 +19,24 @@ import asyncio
 
 
 class StatusMonitorNode(Node):
-    """机器人状态监控节点"""
+    """Robot status monitor node"""
     
     def __init__(self, websocket_handler=None):
         super().__init__('web_status_monitor')
         
-        # WebSocket处理器
+        # WebSocket handler
         self.websocket_handler = websocket_handler
         
-        # 机器人状态数据
+        # Robot status data
         self.position = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
         self.velocity = {'vx': 0.0, 'vy': 0.0, 'vyaw': 0.0}
-        self.battery = None  # 预留，暂无电池话题
+        self.battery = None  # Reserved, no battery topic yet
         
-        # 数据接收标志
+        # Data reception flags
         self.pose_received = False
         self.vel_received = False
         
-        # 订阅话题（使用PoseWithCovarianceStamped）
+        # Subscribe to topics (using PoseWithCovarianceStamped)
         self.pose_sub = self.create_subscription(
             PoseWithCovarianceStamped,
             '/localization_pose',
@@ -51,7 +51,7 @@ class StatusMonitorNode(Node):
             10
         )
         
-        # 定时广播状态（2 Hz）
+        # Broadcast status periodically (2 Hz)
         self.broadcast_timer = self.create_timer(0.5, self.broadcast_status)
         
         self.get_logger().info('Status monitor node initialized')
@@ -59,12 +59,12 @@ class StatusMonitorNode(Node):
         self.get_logger().info('Broadcasting robot status at 2 Hz')
     
     def pose_callback(self, msg: PoseWithCovarianceStamped):
-        """处理位置信息（PoseWithCovarianceStamped）"""
-        # 提取位置（从pose.pose中获取）
+        """Process position information (PoseWithCovarianceStamped)"""
+        # Extract position (from pose.pose)
         self.position['x'] = msg.pose.pose.position.x
         self.position['y'] = msg.pose.pose.position.y
         
-        # 从四元数计算yaw角
+        # Calculate yaw angle from quaternion
         orientation = msg.pose.pose.orientation
         yaw = self._quaternion_to_yaw(
             orientation.x,
@@ -76,18 +76,18 @@ class StatusMonitorNode(Node):
         self.pose_received = True
     
     def cmd_vel_callback(self, msg: Twist):
-        """处理速度信息"""
+        """Process velocity information"""
         self.velocity['vx'] = msg.linear.x
         self.velocity['vy'] = msg.linear.y
         self.velocity['vyaw'] = msg.angular.z
         self.vel_received = True
     
     def broadcast_status(self):
-        """广播机器人状态"""
+        """Broadcast robot status"""
         if self.websocket_handler is None:
             return
         
-        # 构造状态消息
+        # Build status message
         status_message = {
             'type': 'robot_status',
             'position': self.position.copy(),
@@ -98,11 +98,11 @@ class StatusMonitorNode(Node):
             }
         }
         
-        # 如果有电池数据，添加到消息中
+        # If battery data available, add to message
         if self.battery is not None:
             status_message['battery'] = self.battery
         
-        # 通过WebSocket广播（使用同步版本，因为在ROS2回调中）
+        # Broadcast via WebSocket (use sync version, as in ROS2 callback)
         try:
             self.websocket_handler.broadcast_status_sync(status_message)
         except Exception as e:
@@ -110,22 +110,22 @@ class StatusMonitorNode(Node):
     
     def _quaternion_to_yaw(self, x: float, y: float, z: float, w: float) -> float:
         """
-        将四元数转换为yaw角（弧度）
+        Convert quaternion to yaw angle (radians)
         
         Args:
-            x, y, z, w: 四元数分量
+            x, y, z, w: Quaternion components
             
         Returns:
-            yaw角（弧度，范围 -π 到 π）
+            Yaw angle (radians, range -π to π)
         """
-        # 使用标准的四元数到欧拉角转换公式
+        # Use standard quaternion to Euler angle conversion formula
         siny_cosp = 2 * (w * z + x * y)
         cosy_cosp = 1 - 2 * (y * y + z * z)
         yaw = math.atan2(siny_cosp, cosy_cosp)
         return yaw
     
     def spin(self):
-        """运行节点"""
+        """Run node"""
         try:
             rclpy.spin(self)
         except KeyboardInterrupt:
@@ -134,6 +134,6 @@ class StatusMonitorNode(Node):
             self.shutdown()
     
     def shutdown(self):
-        """关闭节点"""
+        """Shutdown node"""
         self.get_logger().info('Status monitor node shutting down')
         self.destroy_node()

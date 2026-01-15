@@ -1155,7 +1155,7 @@ from fastapi.middleware.cors import CORSMiddleware
 | 翻译范围 | 前端界面文本 | 后端数据保留原文 |
 | 顶部导航栏高度 | 60px | 标准高度 |
 | 右侧面板宽度 | 400px | 适中宽度 |
-| 品牌名称 | Robot | 不使用LeKiwi |
+| 品牌名称 | Robot | 不使用Lododo |
 | 虚拟环境 | 独立venv | 与ROS2环境隔离 |
 | WebSocket重连 | 自动重连，最多5次 | 分层提示策略 |
 | 错误提示 | Modal对话框 | 需用户确认 |

@@ -1,256 +1,216 @@
 """
-设置管理 API
-提供系统配置的读取和修改接口
+Settings API - System Settings Management
+Provides system configuration read, save, and reset functionality
 """
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional
 import yaml
+import os
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
+
+# psutil is optional dependency for system information
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+    print("Warning: psutil not available, system info features will be limited")
 
 router = APIRouter()
 
+# Configuration file path
+CONFIG_DIR = Path.home() / "lododo_bot" / "config"
+USER_PREFS_FILE = CONFIG_DIR / "user_preferences.yaml"
 
-# ============================================
-# 数据模型
-# ============================================
-
-class SettingsResponse(BaseModel):
-    """设置响应"""
-    success: bool
-    settings: Dict[str, Any]
+# Ensure config directory exists
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
-class SettingsUpdateRequest(BaseModel):
-    """设置更新请求"""
-    settings: Dict[str, Any]
+class SettingsData(BaseModel):
+    """Settings data model"""
+    basic: Dict[str, Any]
+    navigation: Dict[str, Any]
+    debug: Dict[str, Any]
+    performance: Dict[str, Any]
 
 
-# ============================================
-# 工具函数
-# ============================================
+class SystemInfo(BaseModel):
+    """System information data model"""
+    robot_name: str
+    ros_version: str
+    system_uptime: str
+    websocket_status: str
+    rosbridge_status: str
+    api_endpoint: str
+    disk_usage: Dict[str, str]
 
-def get_config_path() -> Path:
-    """获取配置文件路径"""
-    # __file__ = .../web/backend/api/settings.py
-    # parent: .../web/backend/api
-    # parent: .../web/backend
-    # parent: .../web
-    # parent: .../bot_teleop
-    return Path(__file__).parent.parent.parent.parent / "config" / "web_config.yaml"
+
+# Default configuration
+DEFAULT_SETTINGS = {
+    "basic": {
+        "language": "zh-CN",
+        "theme": "light",
+        "map_resolution": 0.05,
+        "update_rates": {
+            "map": 5,
+            "pose": 10,
+            "costmap": 2
+        }
+    },
+    "navigation": {
+        "max_linear_vel": 0.5,
+        "max_angular_vel": 1.0,
+        "obstacle_safety_dist": 0.3,
+        "docking_dist": 0.1,
+        "navigation_timeout": 300
+    },
+    "debug": {
+        "show_trajectory": False,
+        "show_costmap": True,
+        "show_planned_path": True,
+        "log_level": "INFO"
+    },
+    "performance": {
+        "canvas_fps_limit": 30,
+        "ws_queue_size": 100
+    }
+}
 
 
 def load_settings() -> Dict[str, Any]:
-    """加载设置"""
-    config_path = get_config_path()
-    
-    if not config_path.exists():
-        # 返回默认设置
-        return {
-            "server": {
-                "host": "0.0.0.0",
-                "port": 8000
-            },
-            "ros": {
-                "use_sim_time": False
-            },
-            "ui": {
-                "language": "zh-CN",
-                "theme": "light"
-            }
-        }
-    
+    """Load settings from configuration file"""
+    if USER_PREFS_FILE.exists():
+        try:
+            with open(USER_PREFS_FILE, 'r', encoding='utf-8') as f:
+                settings = yaml.safe_load(f)
+                return settings if settings else DEFAULT_SETTINGS
+        except Exception as e:
+            print(f"Error loading settings: {e}")
+            return DEFAULT_SETTINGS
+    return DEFAULT_SETTINGS
+
+
+def save_settings(settings: Dict[str, Any]) -> bool:
+    """Save settings to configuration file"""
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            settings = yaml.safe_load(f)
-            return settings or {}
+        with open(USER_PREFS_FILE, 'w', encoding='utf-8') as f:
+            yaml.dump(settings, f, default_flow_style=False, allow_unicode=True)
+        return True
     except Exception as e:
-        raise ValueError(f"Failed to load settings: {e}")
+        print(f"Error saving settings: {e}")
+        return False
 
 
-def save_settings(settings: Dict[str, Any]):
-    """保存设置"""
-    config_path = get_config_path()
-    
-    # 确保目录存在
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+def get_system_uptime() -> str:
+    """Get system uptime"""
+    if not HAS_PSUTIL:
+        return "N/A (psutil not installed)"
     
     try:
-        with open(config_path, 'w', encoding='utf-8') as f:
-            yaml.dump(settings, f, allow_unicode=True, sort_keys=False)
-    except Exception as e:
-        raise ValueError(f"Failed to save settings: {e}")
+        boot_time = psutil.boot_time()
+        uptime_seconds = time.time() - boot_time
+        uptime = timedelta(seconds=int(uptime_seconds))
+        
+        days = uptime.days
+        hours, remainder = divmod(uptime.seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        
+        if days > 0:
+            return f"{days} days {hours} hours {minutes} minutes"
+        elif hours > 0:
+            return f"{hours} hours {minutes} minutes"
+        else:
+            return f"{minutes} minutes {seconds} seconds"
+    except:
+        return "Unknown"
 
 
-# ============================================
-# API 端点
-# ============================================
-
-@router.get("/settings", response_model=SettingsResponse)
-async def get_settings():
-    """
-    获取所有设置
-    
-    返回当前系统配置
-    """
+def get_disk_usage(path: str) -> str:
+    """Get disk usage for specified path"""
     try:
-        settings = load_settings()
-        return SettingsResponse(
-            success=True,
-            settings=settings
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        if os.path.exists(path):
+            total_size = 0
+            for dirpath, dirnames, filenames in os.walk(path):
+                for filename in filenames:
+                    filepath = os.path.join(dirpath, filename)
+                    if os.path.exists(filepath):
+                        total_size += os.path.getsize(filepath)
+            
+            # Convert to readable format
+            for unit in ['B', 'KB', 'MB', 'GB']:
+                if total_size < 1024.0:
+                    return f"{total_size:.2f} {unit}"
+                total_size /= 1024.0
+            return f"{total_size:.2f} TB"
+        return "0 B"
+    except:
+        return "Unknown"
 
 
-@router.get("/settings/{category}")
-async def get_settings_by_category(category: str):
-    """
-    获取指定类别的设置
+@router.get("/settings")
+async def get_settings() -> Dict[str, Any]:
+    """Get current settings"""
+    settings = load_settings()
+    return {
+        "success": True,
+        "data": settings
+    }
+
+
+@router.post("/settings/save")
+async def save_user_settings(settings: SettingsData) -> Dict[str, Any]:
+    """Save user settings"""
+    settings_dict = settings.dict()
     
-    Args:
-        category: 设置类别（如 server, ros, ui）
-    """
-    try:
-        settings = load_settings()
-        
-        if category not in settings:
-            raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
-        
-        return {
-            "success": True,
-            "category": category,
-            "settings": settings[category]
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.put("/settings")
-async def update_settings(req: SettingsUpdateRequest):
-    """
-    更新设置
-    
-    修改系统配置（需要重启服务器生效）
-    """
-    try:
-        # 加载现有设置
-        current_settings = load_settings()
-        
-        # 合并新设置
-        for key, value in req.settings.items():
-            if isinstance(value, dict) and key in current_settings:
-                # 递归合并字典
-                current_settings[key].update(value)
-            else:
-                current_settings[key] = value
-        
-        # 保存设置
-        save_settings(current_settings)
-        
+    if save_settings(settings_dict):
         return {
             "success": True,
-            "message": "Settings updated successfully. Restart server to apply changes.",
-            "settings": current_settings
+            "message": "Settings saved successfully"
         }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.put("/settings/{category}")
-async def update_settings_by_category(category: str, settings: Dict[str, Any]):
-    """
-    更新指定类别的设置
-    
-    Args:
-        category: 设置类别
-        settings: 新的设置值
-    """
-    try:
-        # 加载现有设置
-        current_settings = load_settings()
-        
-        # 更新指定类别
-        current_settings[category] = settings
-        
-        # 保存设置
-        save_settings(current_settings)
-        
-        return {
-            "success": True,
-            "message": f"Settings for '{category}' updated successfully",
-            "category": category,
-            "settings": settings
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save settings")
 
 
 @router.post("/settings/reset")
-async def reset_settings():
-    """
-    重置设置为默认值
-    
-    恢复所有设置到初始状态
-    """
+async def reset_settings() -> Dict[str, Any]:
+    """Reset to default settings"""
+    if save_settings(DEFAULT_SETTINGS):
+        return {
+            "success": True,
+            "message": "Settings reset to default",
+            "data": DEFAULT_SETTINGS
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Failed to reset settings")
+
+
+@router.get("/settings/system_info")
+async def get_system_info() -> Dict[str, Any]:
+    """Get system information"""
     try:
-        default_settings = {
-            "server": {
-                "host": "0.0.0.0",
-                "port": 8000
-            },
-            "ros": {
-                "use_sim_time": False
-            },
-            "ui": {
-                "language": "zh-CN",
-                "theme": "light"
+        # Get map and waypoint directory paths
+        maps_dir = Path.home() / "lododo_bot" / "maps"
+        waypoints_dir = Path.home() / "lododo_bot" / "waypoints"
+        
+        system_info = {
+            "robot_name": "Lododo Robot",
+            "ros_version": "ROS2 Humble",
+            "system_uptime": get_system_uptime(),
+            "websocket_status": "online",  # Frontend will update in real-time
+            "rosbridge_status": "online",  # Frontend will update in real-time
+            "api_endpoint": "http://localhost:8000",
+            "disk_usage": {
+                "maps": get_disk_usage(str(maps_dir)),
+                "waypoints": get_disk_usage(str(waypoints_dir))
             }
         }
         
-        save_settings(default_settings)
-        
         return {
             "success": True,
-            "message": "Settings reset to default values",
-            "settings": default_settings
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/settings/system/info")
-async def get_system_info():
-    """
-    获取系统信息
-    
-    返回系统运行状态和环境信息
-    """
-    import platform
-    import psutil
-    
-    try:
-        return {
-            "success": True,
-            "system": {
-                "platform": platform.system(),
-                "platform_release": platform.release(),
-                "platform_version": platform.version(),
-                "architecture": platform.machine(),
-                "hostname": platform.node(),
-                "processor": platform.processor(),
-                "cpu_count": psutil.cpu_count(),
-                "memory_total": psutil.virtual_memory().total,
-                "memory_available": psutil.virtual_memory().available,
-                "disk_usage": psutil.disk_usage('/').percent
-            }
+            "data": system_info
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get system info: {str(e)}")

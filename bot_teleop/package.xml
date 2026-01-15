@@ -3,7 +3,7 @@
 <package format="3">
   <name>bot_teleop</name>
   <version>0.0.0</version>
-  <description>Teleoperation package for LeKiwi bot / LeKiwi机器人遥操作包</description>
+  <description>Teleoperation package for Lododo bot / Lododo机器人遥操作包</description>
   <maintainer email="jeladeer@msn.com">hurry</maintainer>
   <license>Apache-2.0</license>
 

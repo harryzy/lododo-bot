@@ -72,11 +72,6 @@
     "editError": "Failed to update metadata",
     "totalCount": "Total {{count}} maps"
   },
-  "connection": {
-    "connected": "Connected",
-    "disconnected": "Disconnected",
-    "connecting": "Connecting..."
-  },
   "tasks": {
     "navigation": "Navigation Task",
     "exploration": "Exploration",
@@ -196,12 +191,7 @@
     "center": "Center",
     "currentPosition": "Current Position"
   },
-  "settings": {
-    "title": "Settings",
-    "language": "Language",
-    "theme": "Theme",
-    "save": "Save Settings"
-  },  "waypoints": {
+  "waypoints": {
     "title": "Waypoint Management",
     "routeName": "Route Name",
     "description": "Description",
@@ -274,6 +264,7 @@
   "common": {
     "ok": "OK",
     "cancel": "Cancel",
+    "save": "Save",
     "confirm": "Confirm",
     "success": "Success",
     "error": "Error",
@@ -286,7 +277,8 @@
     "copy": "Copy",
     "copied": "Copied to clipboard",
     "understand": "I Understand",
-    "total": "Total"
+    "total": "Total",
+    "seconds": "seconds"
   },
   "language": {
     "select": "Select Language",
@@ -321,5 +313,77 @@
       "disconnected": "Disconnected from rosbridge, attempting to reconnect...",
       "rendererFailed": "Map renderer initialization failed"
     }
+  },
+  "settings": {
+    "title": "System Settings",
+    "saveSuccess": "Settings saved successfully",
+    "saveError": "Failed to save settings",
+    "resetSuccess": "Settings reset to default",
+    "resetToDefault": "Reset to Default",
+    "tabs": {
+      "basic": "Basic Settings",
+      "navigation": "Navigation Parameters",
+      "systemInfo": "System Information",
+      "advanced": "Advanced Settings"
+    },
+    "basic": {
+      "language": "Language",
+      "languageTooltip": "Select interface display language",
+      "theme": "Theme",
+      "themeTooltip": "Select interface theme (not available yet)",
+      "lightTheme": "Light",
+      "darkTheme": "Dark",
+      "mapResolution": "Map Resolution",
+      "mapResolutionTooltip": "Map display resolution in meters",
+      "updateRates": "Update Rates",
+      "mapUpdateRate": "Map Update Rate",
+      "poseUpdateRate": "Pose Update Rate",
+      "costmapUpdateRate": "Costmap Update Rate"
+    },
+    "navigation": {
+      "velocityLimits": "Velocity Limits",
+      "maxLinearVelocity": "Max Linear Velocity",
+      "maxLinearVelocityTooltip": "Maximum linear velocity for robot movement",
+      "maxAngularVelocity": "Max Angular Velocity",
+      "maxAngularVelocityTooltip": "Maximum angular velocity for robot rotation",
+      "safetyDistances": "Safety Distances",
+      "obstacleDistance": "Obstacle Safety Distance",
+      "obstacleDistanceTooltip": "Minimum safe distance from obstacles",
+      "chargingDistance": "Charging Dock Distance",
+      "chargingDistanceTooltip": "Docking distance for automatic charging",
+      "navigationTimeout": "Navigation Timeout",
+      "navigationTimeoutTooltip": "Maximum timeout for navigation tasks"
+    },
+    "systemInfo": {
+      "robotInfo": "Robot Information",
+      "robotName": "Robot Name",
+      "rosVersion": "ROS Version",
+      "systemUptime": "System Uptime",
+      "networkInfo": "Network Information",
+      "websocketStatus": "WebSocket Status",
+      "rosbridgeStatus": "Rosbridge Status",
+      "fastapiAddress": "FastAPI Address",
+      "diskUsage": "Disk Usage",
+      "mapsDiskUsage": "Maps Usage",
+      "waypointsDiskUsage": "Waypoints Usage"
+    },
+    "advanced": {
+      "debugOptions": "Debug Options",
+      "showTrajectory": "Show Robot Trajectory",
+      "showCostmap": "Show Costmap",
+      "showPath": "Show Planned Path",
+      "logLevel": "Log Level",
+      "logLevelTooltip": "System log verbosity level",
+      "performance": "Performance Options",
+      "canvasFpsLimit": "Canvas FPS Limit",
+      "canvasFpsLimitTooltip": "Maximum FPS for map canvas rendering",
+      "websocketQueueSize": "WebSocket Queue Size",
+      "websocketQueueSizeTooltip": "Maximum capacity of WebSocket message queue"
+    }
+  },
+  "connection": {
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "connecting": "Connecting..."
   }
 }

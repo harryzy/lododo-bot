@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Web服务器 Launch文件
-启动 rosbridge_server 和 Web Terminal Node
+Web Server Launch File
+Launch rosbridge_server and Web Terminal Node
 """
 
 from launch import LaunchDescription
@@ -13,34 +13,34 @@ from pathlib import Path
 
 def generate_launch_description():
     
-    # 声明参数
+    # Declare parameters
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     
-    # rosbridge_server 节点
+    # rosbridge_server node
     rosbridge_server = Node(
         package='rosbridge_server',
         executable='rosbridge_websocket',
         name='rosbridge_websocket',
         parameters=[{
             'use_sim_time': use_sim_time,
-            'port': 9090,  # ROSBridge WebSocket 端口
+            'port': 9090,  # ROSBridge WebSocket port
         }],
         output='screen'
     )
     
-    # web_video_server 节点（可选）
+    # web_video_server node (optional)
     web_video_server = Node(
         package='web_video_server',
         executable='web_video_server',
         name='web_video_server',
         parameters=[{
             'use_sim_time': use_sim_time,
-            'port': 8080,  # 视频流端口
+            'port': 8080,  # Video stream port
         }],
         output='screen'
     )
     
-    # 启动 FastAPI 服务器（使用 ExecuteProcess）
+    # Launch FastAPI server (using ExecuteProcess)
     teleop_dir = Path(__file__).parent.parent
     fastapi_server = ExecuteProcess(
         cmd=[

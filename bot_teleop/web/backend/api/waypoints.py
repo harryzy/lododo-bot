@@ -1,6 +1,6 @@
 """
-路点管理 API
-提供路点录制、保存、加载、编辑等功能
+Waypoint Management API
+Provides waypoint recording, saving, loading, and editing functionality
 """
 
 from fastapi import APIRouter, HTTPException
@@ -10,7 +10,7 @@ import yaml
 import os
 from pathlib import Path
 
-# ROS2 集成 - 用于路点录制
+# ROS2 Integration - for waypoint recording
 import rclpy
 from rclpy.node import Node
 from bot_navigation_msgs.srv import WaypointControl
@@ -18,32 +18,32 @@ import threading
 
 router = APIRouter()
 
-# 全局 ROS2 节点用于服务调用
+# Global ROS2 node for service calls
 _ros_node: Optional[Node] = None
 _ros_executor = None
 _ros_thread = None
 
 
 # ============================================
-# ROS2 初始化
+# ROS2 Initialization
 # ============================================
 
 def init_ros_node():
-    """初始化 ROS2 节点（用于服务调用）"""
+    """Initialize ROS2 node (for service calls)"""
     global _ros_node, _ros_executor, _ros_thread
     
     if _ros_node is not None:
-        return  # 已初始化
+        return  # Already initialized
     
     try:
-        # 检查 ROS2 是否已初始化
+        # Check if ROS2 is already initialized
         if not rclpy.ok():
             rclpy.init()
         
-        # 创建节点
+        # Create node
         _ros_node = Node('waypoint_web_api_node')
         
-        # 在单独线程中运行 executor
+        # Run executor in separate thread
         from rclpy.executors import SingleThreadedExecutor
         _ros_executor = SingleThreadedExecutor()
         _ros_executor.add_node(_ros_node)
@@ -58,7 +58,7 @@ def init_ros_node():
 
 
 def shutdown_ros_node():
-    """关闭 ROS2 节点"""
+    """Shutdown ROS2 node"""
     global _ros_node, _ros_executor, _ros_thread
     
     if _ros_executor is not None:
@@ -73,11 +73,11 @@ def shutdown_ros_node():
 
 
 # ============================================
-# 数据模型
+# Data Models
 # ============================================
 
 class Waypoint(BaseModel):
-    """路点"""
+    """Waypoint"""
     name: str
     x: float
     y: float
@@ -86,60 +86,60 @@ class Waypoint(BaseModel):
 
 
 class WaypointRoute(BaseModel):
-    """路点路线"""
+    """Waypoint route"""
     name: str
     waypoints: List[Waypoint]
     description: Optional[str] = None
 
 
 class WaypointListResponse(BaseModel):
-    """路点列表响应"""
+    """Waypoint list response"""
     success: bool
     routes: List[dict]
 
 
 class WaypointSaveRequest(BaseModel):
-    """路点保存请求"""
+    """Waypoint save request"""
     route_name: str
     waypoints: List[Waypoint]
     description: Optional[str] = None
 
 
 class RecordControlRequest(BaseModel):
-    """录制控制请求"""
+    """Recording control request"""
     command: str  # 'start', 'mark', 'stop', 'save'
     route_name: Optional[str] = None
     waypoint_name: Optional[str] = None
 
 
 # ============================================
-# 工具函数
+# Utility Functions
 # ============================================
 
 def get_waypoints_directory() -> Path:
-    """获取路点目录（从web_config.yaml读取）"""
+    """Get waypoints directory (read from web_config.yaml)"""
     try:
-        # 从web_config.yaml加载路径
+        # Load path from web_config.yaml
         from ..api.config import load_config
         config = load_config()
         waypoints_path = config.get('paths', {}).get('waypoints_dir', '')
         
         if waypoints_path:
-            # 展开用户目录符号 ~
+            # Expand user directory symbol ~
             waypoints_dir = Path(os.path.expanduser(waypoints_path))
             print(f"[WaypointAPI] Using waypoints_dir from config: {waypoints_dir}")
         else:
-            # 配置中未指定，使用默认路径
+            # Not specified in config, use default path
             waypoints_dir = Path.home() / "lododo_bot" / "waypoints"
             print(f"[WaypointAPI] Using default waypoints_dir: {waypoints_dir}")
         
-        # 确保目录存在
+        # Ensure directory exists
         if not waypoints_dir.exists():
             waypoints_dir.mkdir(parents=True, exist_ok=True)
             
         return waypoints_dir
     except Exception as e:
-        # 配置加载失败时使用默认路径
+        # Use default path when config loading fails
         print(f"[WaypointAPI] Failed to load config, using default path. Error: {e}")
         waypoints_dir = Path.home() / "lododo_bot" / "waypoints"
         if not waypoints_dir.exists():
@@ -149,7 +149,7 @@ def get_waypoints_directory() -> Path:
 
 
 def load_waypoint_file(filepath: Path) -> dict:
-    """加载路点文件"""
+    """Load waypoint file"""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
@@ -159,9 +159,9 @@ def load_waypoint_file(filepath: Path) -> dict:
 
 
 def save_waypoint_file(filepath: Path, route: WaypointRoute):
-    """保存路点文件"""
+    """Save waypoint file"""
     try:
-        # 构造 YAML 数据（保持与 waypoint_recorder 一致的格式）
+        # Build YAML data (maintain format consistent with waypoint_recorder)
         data = {
             "waypoints": [
                 {
@@ -186,15 +186,15 @@ def save_waypoint_file(filepath: Path, route: WaypointRoute):
 
 
 # ============================================
-# API 端点
+# API Endpoints
 # ============================================
 
 @router.get("/waypoints", response_model=WaypointListResponse)
 async def list_waypoint_routes():
     """
-    获取所有路点路线列表
+    Get list of all waypoint routes
     
-    扫描路点目录，返回所有可用路线
+    Scans waypoint directory and returns all available routes
     """
     try:
         waypoints_dir = get_waypoints_directory()
@@ -224,10 +224,10 @@ async def list_waypoint_routes():
 @router.get("/waypoints/{route_name}")
 async def get_waypoint_route(route_name: str):
     """
-    获取指定路点路线的详细信息
+    Get detailed information of specified waypoint route
     
     Args:
-        route_name: 路线名称
+        route_name: Route name
     """
     try:
         waypoints_dir = get_waypoints_directory()
@@ -255,15 +255,15 @@ async def get_waypoint_route(route_name: str):
 @router.post("/waypoints")
 async def save_waypoint_route(req: WaypointSaveRequest):
     """
-    保存路点路线
+    Save waypoint route
     
-    创建或更新路点路线文件
+    Create or update waypoint route file
     """
     try:
         waypoints_dir = get_waypoints_directory()
         file_path = waypoints_dir / f"{req.route_name}.yaml"
         
-        # 构造路线对象
+        # Build route object
         route = WaypointRoute(
             name=req.route_name,
             waypoints=req.waypoints,
@@ -287,9 +287,9 @@ async def save_waypoint_route(req: WaypointSaveRequest):
 @router.put("/waypoints/{route_name}")
 async def update_waypoint_route(route_name: str, req: WaypointSaveRequest):
     """
-    更新路点路线
+    Update waypoint route
     
-    修改已存在的路点路线
+    Modify existing waypoint route
     """
     try:
         waypoints_dir = get_waypoints_directory()
@@ -298,14 +298,14 @@ async def update_waypoint_route(route_name: str, req: WaypointSaveRequest):
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"Route '{route_name}' not found")
         
-        # 构造路线对象
+        # Build route object
         route = WaypointRoute(
             name=route_name,
             waypoints=req.waypoints,
             description=req.description
         )
         
-        # 保存到文件
+        # Save to file
         save_waypoint_file(file_path, route)
         
         return {
@@ -323,9 +323,9 @@ async def update_waypoint_route(route_name: str, req: WaypointSaveRequest):
 @router.delete("/waypoints/{route_name}")
 async def delete_waypoint_route(route_name: str):
     """
-    删除路点路线
+    Delete waypoint route
     
-    从路点目录删除指定路线文件
+    Remove specified route file from waypoint directory
     """
     try:
         waypoints_dir = get_waypoints_directory()
@@ -334,7 +334,7 @@ async def delete_waypoint_route(route_name: str):
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"Route '{route_name}' not found")
         
-        # 删除文件
+        # Delete file
         file_path.unlink()
         
         return {
@@ -351,9 +351,9 @@ async def delete_waypoint_route(route_name: str):
 @router.post("/waypoints/{route_name}/add")
 async def add_waypoint_to_route(route_name: str, waypoint: Waypoint):
     """
-    向路线添加路点
+    Add waypoint to route
     
-    在现有路线末尾添加新路点
+    Append new waypoint to end of existing route
     """
     try:
         waypoints_dir = get_waypoints_directory()
@@ -362,11 +362,11 @@ async def add_waypoint_to_route(route_name: str, waypoint: Waypoint):
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"Route '{route_name}' not found")
         
-        # 加载现有路线
+        # Load existing route
         data = load_waypoint_file(file_path)
         waypoints = data.get("waypoints", [])
         
-        # 添加新路点
+        # Add new waypoint
         waypoints.append({
             "name": waypoint.name,
             "x": waypoint.x,
@@ -377,7 +377,7 @@ async def add_waypoint_to_route(route_name: str, waypoint: Waypoint):
         
         data["waypoints"] = waypoints
         
-        # 保存回文件
+        # Save back to file
         with open(file_path, 'w', encoding='utf-8') as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
         
@@ -393,18 +393,18 @@ async def add_waypoint_to_route(route_name: str, waypoint: Waypoint):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 路点录制 API
+# Waypoint Recording API
 # ============================================
 
 @router.post("/waypoints/record/start")
 async def start_recording():
     """
-    开始路点录制
-    调用 waypoint_recorder 节点的 start 命令
+    Start waypoint recording
+    Call waypoint_recorder node's start command
     """
     global _ros_node
     
-    # 确保 ROS2 节点已初始化
+    # Ensure ROS2 node is initialized
     if _ros_node is None:
         init_ros_node()
     
@@ -412,25 +412,25 @@ async def start_recording():
         raise HTTPException(status_code=503, detail="ROS2 node not available")
     
     try:
-        # 创建服务客户端
+        # Create service client
         client = _ros_node.create_client(WaypointControl, '/waypoint_recorder/control')
         
-        # 等待服务可用（最多3秒）
+        # Wait for service availability (max 3 seconds)
         if not client.wait_for_service(timeout_sec=3.0):
             raise HTTPException(
                 status_code=503,
                 detail="Waypoint recorder service not available. Is the waypoint_recorder node running?"
             )
         
-        # 创建请求
+        # Create request
         request = WaypointControl.Request()
         request.command = 'start'
         
-        # 同步调用服务
+        # Call service synchronously
         from rclpy.task import Future
         future = client.call_async(request)
         
-        # 等待响应（最多5秒）
+        # Wait for response (max 5 seconds)
         import time
         timeout = 5.0
         start_time = time.time()
@@ -459,10 +459,10 @@ async def start_recording():
 @router.post("/waypoints/record/mark")
 async def mark_waypoint(waypoint_name: Optional[str] = None):
     """
-    标记当前位置为路点
+    Mark current position as waypoint
     
     Args:
-        waypoint_name: 路点名称（可选，由后端自动生成）
+        waypoint_name: Waypoint name (optional, auto-generated by backend)
     """
     global _ros_node
     
@@ -473,19 +473,19 @@ async def mark_waypoint(waypoint_name: Optional[str] = None):
         raise HTTPException(status_code=503, detail="ROS2 node not available")
     
     try:
-        # 创建服务客户端
+        # Create service client
         client = _ros_node.create_client(WaypointControl, '/waypoint_recorder/control')
         
         if not client.wait_for_service(timeout_sec=3.0):
             raise HTTPException(status_code=503, detail="Waypoint recorder service not available")
         
-        # 创建请求
+        # Create request
         request = WaypointControl.Request()
         request.command = 'mark'
         if waypoint_name:
-            request.filename = waypoint_name  # 使用 filename 字段传递路点名称
+            request.filename = waypoint_name  # Use filename field to pass waypoint name
         
-        # 调用服务
+        # Call service
         future = client.call_async(request)
         
         import time
@@ -516,7 +516,7 @@ async def mark_waypoint(waypoint_name: Optional[str] = None):
 @router.post("/waypoints/record/stop")
 async def stop_recording():
     """
-    停止录制（不保存）
+    Stop recording (without saving)
     """
     global _ros_node
     
@@ -562,11 +562,11 @@ async def stop_recording():
 @router.post("/waypoints/record/save")
 async def save_recording(route_name: str, description: Optional[str] = None):
     """
-    保存录制的路点
+    Save recorded waypoints
     
     Args:
-        route_name: 路线名称
-        description: 路线描述（可选）
+        route_name: Route name
+        description: Route description (optional)
     """
     global _ros_node
     
@@ -596,7 +596,7 @@ async def save_recording(route_name: str, description: Optional[str] = None):
         response = future.result()
         
         if response.success:
-            # 如果提供了描述，更新文件元数据
+            # If description provided, update file metadata
             if description:
                 try:
                     waypoints_dir = get_waypoints_directory()
@@ -629,7 +629,7 @@ async def save_recording(route_name: str, description: Optional[str] = None):
 @router.get("/waypoints/record/status")
 async def get_recording_status():
     """
-    获取录制状态
+    Get recording status
     """
     global _ros_node
     

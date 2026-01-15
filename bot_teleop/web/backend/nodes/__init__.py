@@ -1,3 +1,3 @@
 """
-ROS2 节点模块
+ROS2 nodes module
 """

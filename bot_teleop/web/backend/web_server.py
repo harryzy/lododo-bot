@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Web控制界面 - FastAPI 主应用
-提供 REST API 和 WebSocket 服务
+Web Control Interface - FastAPI Main Application
+Provides REST API and WebSocket services
 
-架构重构后：
-- 使用 TaskManager 管理任务状态（单例模式）
-- WebTerminalNode 被动监听 /cmd/response（常驻监听）
-- WebSocketHandler 仅负责广播（移除轮询）
+After architecture refactoring:
+- Use TaskManager to manage task states (singleton pattern)
+- WebTerminalNode passively listens to /cmd/response (persistent listener)
+- WebSocketHandler only responsible for broadcasting (polling removed)
 """
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
@@ -27,7 +27,7 @@ from .websocket_handler import WebSocketHandler
 from .managers.task_manager import TaskManager
 from .api import tasks, maps, waypoints, settings, status, config
 
-# 全局变量
+# Global variables
 web_terminal_node: Optional[WebTerminalNode] = None
 status_monitor_node: Optional[StatusMonitorNode] = None
 websocket_handler: Optional[WebSocketHandler] = None
@@ -38,75 +38,74 @@ status_executor: Optional[asyncio.Future] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期管理"""
+    """Application lifecycle management"""
     global web_terminal_node, status_monitor_node, websocket_handler, task_manager, ros_executor, status_executor
     
-    print("[WebServer] 🚀 启动中...")
+    print("[WebServer] 🚀 Starting...")
     
-    # 加载配置
+    # Load configuration
     config_path = Path(__file__).parent.parent.parent / "config" / "web_config.yaml"
     if config_path.exists():
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
-            print(f"[WebServer] ✓ 配置已加载: {config_path}")
+            print(f"[WebServer] ✓ Configuration loaded: {config_path}")
     else:
         config = {}
-        print(f"[WebServer] ⚠ 配置文件不存在，使用默认配置: {config_path}")
+        print(f"[WebServer] ⚠ Configuration file not found, using defaults: {config_path}")
     
-    # 获取当前事件循环
+    # Get current event loop
     loop = asyncio.get_event_loop()
     
-    # 创建 TaskManager（单例模式）
+    # Create TaskManager (singleton pattern)
     task_manager = TaskManager()
-    print("[WebServer] ✓ TaskManager 已创建")
+    print("[WebServer] ✓ TaskManager created")
     
-    # 创建 WebSocket 处理器（传入事件循环）
+    # Create WebSocket handler (inject event loop)
     websocket_handler = WebSocketHandler(event_loop=loop)
-    print("[WebServer] ✓ WebSocketHandler 已创建")
+    print("[WebServer] ✓ WebSocketHandler created")
     
-    # 初始化 ROS2
+    # Initialize ROS2
     try:
         rclpy.init()
-        print("[WebServer] ✓ ROS2 已初始化")
+        print("[WebServer] ✓ ROS2 initialized")
     except Exception as e:
-        print(f"[WebServer] ✗ ROS2 初始化失败: {e}")
+        print(f"[WebServer] ✗ ROS2 initialization failed: {e}")
     
-    # 创建 ROS2 节点
+    # Create ROS2 nodes
     try:
-        # 创建 WebTerminalNode（注入 TaskManager 和 WebSocketHandler）
+        # Create WebTerminalNode (inject TaskManager and WebSocketHandler)
         web_terminal_node = WebTerminalNode(
             task_manager=task_manager,
             websocket_handler=websocket_handler
         )
-        print("[WebServer] ✓ WebTerminalNode 已创建")
-        print("[WebServer] ✓ CMD 响应监听服务已启动（常驻监听 /cmd/response）")
+        print("[WebServer] ✓ WebTerminalNode created")
+        print("[WebServer] ✓ CMD response listener started (persistent listener on /cmd/response)")
         
-        # 在后台线程运行 ROS2 spin
-        loop = asyncio.get_event_loop()
+        # Run ROS2 spin in background thread (reuse same loop)
         ros_executor = loop.run_in_executor(None, web_terminal_node.spin)
-        print("[WebServer] ✓ ROS2 节点已启动")
+        print("[WebServer] ✓ ROS2 node started")
         
-        # 创建 StatusMonitorNode（监控机器人状态）
+        # Create StatusMonitorNode (monitor robot status)
         status_monitor_node = StatusMonitorNode(
             websocket_handler=websocket_handler
         )
-        print("[WebServer] ✓ StatusMonitorNode 已创建")
+        print("[WebServer] ✓ StatusMonitorNode created")
         
-        # 在后台线程运行 StatusMonitorNode
+        # Run StatusMonitorNode in background thread
         status_executor = loop.run_in_executor(None, status_monitor_node.spin)
-        print("[WebServer] ✓ 状态监控节点已启动（2 Hz）")
+        print("[WebServer] ✓ Status monitor node started (2 Hz)")
         
     except Exception as e:
-        print(f"[WebServer] ✗ 初始化 ROS2 节点失败: {e}")
+        print(f"[WebServer] ✗ ROS2 node initialization failed: {e}")
         web_terminal_node = None
     
-    print("[WebServer] ✅ 启动完成")
-    print("[WebServer] 📌 架构模式: 被动监听 /cmd/response（非轮询）")
+    print("[WebServer] ✅ Startup complete")
+    print("[WebServer] 📌 Architecture mode: Passive listener on /cmd/response (non-polling)")
     
     yield
     
-    # 清理资源
-    print("[WebServer] 🛑 关闭中...")
+    # Cleanup resources
+    print("[WebServer] 🛑 Shutting down...")
     
     if status_monitor_node:
         status_monitor_node.shutdown()
@@ -132,15 +131,15 @@ async def lifespan(app: FastAPI):
     print("[WebServer] ✅ 关闭完成")
 
 
-# 创建 FastAPI 应用
+# Create FastAPI application
 app = FastAPI(
-    title="LeKiwi Robot Web API",
-    description="机器人 Web 控制界面 REST API",
+    title="Lododo Robot Web API",
+    description="Robot Web Control Interface REST API",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# 配置 CORS
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 生产环境应限制具体域名
@@ -155,35 +154,35 @@ app.add_middleware(
 # ============================================
 
 def get_web_terminal_node() -> WebTerminalNode:
-    """获取 WebTerminalNode 实例"""
+    """Get WebTerminalNode instance"""
     if web_terminal_node is None:
         raise HTTPException(status_code=503, detail="ROS node not initialized")
     return web_terminal_node
 
 
 def get_websocket_handler() -> WebSocketHandler:
-    """获取 WebSocketHandler 实例"""
+    """Get WebSocketHandler instance"""
     if websocket_handler is None:
         raise HTTPException(status_code=503, detail="WebSocket handler not initialized")
     return websocket_handler
 
 
 def get_task_manager():
-    """获取 TaskManager 实例（依赖注入）"""
+    """Get TaskManager instance (dependency injection)"""
     if task_manager is None:
         raise HTTPException(status_code=503, detail="TaskManager not available")
     return task_manager
 
 
 # ============================================
-# API 路由
+# API Routes
 # ============================================
 
 @app.get("/api")
 async def api_root():
-    """API 根路径"""
+    """API root path"""
     return {
-        "name": "LeKiwi Robot Web API",
+        "name": "Lododo Robot Web API",
         "version": "1.0.0",
         "status": "running",
         "ros_node": web_terminal_node is not None,
@@ -193,7 +192,7 @@ async def api_root():
 
 @app.get("/api/health")
 async def health_check():
-    """健康检查"""
+    """Health check"""
     active_tasks = task_manager.get_active_tasks() if task_manager else []
     
     return {
@@ -206,7 +205,7 @@ async def health_check():
 
 
 # ============================================
-# WebSocket 端点
+# WebSocket Endpoints
 # ============================================
 
 @app.websocket("/ws")
@@ -214,28 +213,28 @@ async def websocket_endpoint(
     websocket: WebSocket,
     handler: WebSocketHandler = Depends(get_websocket_handler)
 ):
-    """WebSocket 连接端点"""
+    """WebSocket connection endpoint"""
     await handler.connect(websocket)
     
     try:
         while True:
-            # 接收客户端消息
+            # Receive client messages
             data = await websocket.receive_text()
             
-            # 这里可以处理客户端发送的命令
-            # 目前主要用于接收响应，实际命令通过 REST API 发送
-            print(f"[WebSocket] 收到客户端消息: {data[:100]}")
+            # Can process client commands here
+            # Currently mainly used for receiving responses, actual commands sent via REST API
+            print(f"[WebSocket] Received client message: {data[:100]}")
             
     except WebSocketDisconnect:
         handler.disconnect(websocket)
-        print(f"[WebSocket] 客户端断开连接")
+        print(f"[WebSocket] Client disconnected")
     except Exception as e:
-        print(f"[WebSocket] 错误: {e}")
+        print(f"[WebSocket] Error: {e}")
         handler.disconnect(websocket)
 
 
 # ============================================
-# 挂载子路由
+# Mount Sub-routers
 # ============================================
 
 app.include_router(tasks.router, prefix="/api", tags=["tasks"])
@@ -247,32 +246,32 @@ app.include_router(config.router, tags=["config"])
 
 
 # ============================================
-# 挂载静态文件（前端）
+# Mount Static Files (Frontend)
 # ============================================
 
-# 获取前端构建目录
+# Get frontend build directory
 frontend_dist = Path(__file__).parent.parent.parent / "web_frontend" / "dist"
 
 if frontend_dist.exists():
-    # 挂载静态资源（CSS、JS等）
+    # Mount static assets (CSS, JS, etc.)
     app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
     
-    # 挂载根路径（index.html）
+    # Mount root path (index.html)
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
-    print(f"[WebServer] 静态文件服务已启用: {frontend_dist}")
+    print(f"[WebServer] Static file serving enabled: {frontend_dist}")
 else:
-    print(f"[WebServer] 警告: 前端构建目录不存在: {frontend_dist}")
-    print("[WebServer] 请运行: cd web_frontend && npm run build")
+    print(f"[WebServer] Warning: Frontend build directory not found: {frontend_dist}")
+    print("[WebServer] Please run: cd web_frontend && npm run build")
 
 
 # ============================================
-# 错误处理
+# Error Handling
 # ============================================
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """全局异常处理"""
-    print(f"[WebServer] 未处理的异常: {exc}")
+    """Global exception handler"""
+    print(f"[WebServer] Unhandled exception: {exc}")
     return JSONResponse(
         status_code=500,
         content={
@@ -285,11 +284,11 @@ async def global_exception_handler(request, exc):
 if __name__ == "__main__":
     import uvicorn
     
-    # 开发模式启动
+    # Development mode startup
     uvicorn.run(
         "web_server:app",
         host="0.0.0.0",
         port=8000,
-        reload=False,  # 生产环境设为 False
+        reload=False,  # Set to False in production
         log_level="info"
     )

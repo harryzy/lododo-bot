@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Task Manager - 任务管理核心组件
-负责任务的创建、更新、持久化和查询
+Task Manager - Core task management component
+Responsible for task creation, updating, persistence, and querying
 
-Architecture: 被动接收 CMD 响应，不主动轮询
-- 通过 WebTerminalNode 的 _response_callback 接收所有 /cmd/response 消息
-- 智能匹配 task_id 或 request_id，更新缓存中的任务
-- 忽略不相关的响应（not in cache）
-- JSON 文件持久化任务历史
+Architecture: Passively receive CMD responses, no active polling
+- Receive all /cmd/response messages through WebTerminalNode's _response_callback
+- Intelligently match task_id or request_id, update cached tasks
+- Ignore unrelated responses (not in cache)
+- JSON file persistence for task history
 """
 
 import json
@@ -24,17 +24,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Task:
-    """任务数据模型"""
-    task_id: Optional[str] = None  # MissionPlanner 返回的任务 ID（字符串如nav_xxx）
-    request_id: str = ""  # CMD 请求 ID
-    action: str = ""  # 任务类型 (navigate_to_pose, start_exploration, etc.)
-    params: Dict = None  # 任务参数
+    """Task data model"""
+    task_id: Optional[str] = None  # Task ID returned by MissionPlanner (string like nav_xxx)
+    request_id: str = ""  # CMD request ID
+    action: str = ""  # Task type (navigate_to_pose, start_exploration, etc.)
+    params: Dict = None  # Task parameters
     status: str = "queued"  # queued, executing, paused, completed, failed, cancelled
-    progress: float = 0.0  # 进度 0-100
-    message: str = ""  # 状态消息
-    created_at: str = ""  # 创建时间
-    updated_at: str = ""  # 更新时间
-    completed_at: Optional[str] = None  # 完成时间
+    progress: float = 0.0  # Progress 0-100
+    message: str = ""  # Status message
+    created_at: str = ""  # Creation time
+    updated_at: str = ""  # Update time
+    completed_at: Optional[str] = None  # Completion time
 
     def __post_init__(self):
         if self.params is None:
@@ -45,24 +45,24 @@ class Task:
             self.updated_at = self.created_at
 
     def to_dict(self) -> Dict:
-        """转换为字典"""
+        """Convert to dictionary"""
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'Task':
-        """从字典创建任务"""
+        """Create task from dictionary"""
         return cls(**data)
 
 
 class TaskManager:
     """
-    任务管理器 - 单例模式
+    Task Manager - Singleton pattern
     
-    核心职责：
-    1. 创建任务（用户发起操作时）
-    2. 更新任务（接收 CMD 响应时）
-    3. 查询任务（用户请求状态时）
-    4. 持久化任务历史
+    Core responsibilities:
+    1. Create tasks (when user initiates operation)
+    2. Update tasks (when receiving CMD responses)
+    3. Query tasks (when user requests status)
+    4. Persist task history
     """
 
     _instance = None
@@ -83,22 +83,22 @@ class TaskManager:
         self.history_file = Path.home() / "lododo_bot" / "data" / "task_history.json"
         self.history_file.parent.mkdir(parents=True, exist_ok=True)
         
-        # 加载历史任务（仅用于展示，不参与逻辑）
+        # Load task history (for display only, not part of logic)
         self.task_history: List[Task] = self._load_history()
         
         logger.info(f"✓ TaskManager initialized. History file: {self.history_file}")
 
     def create_task(self, request_id: str, action: str, params: Dict) -> Task:
         """
-        创建新任务（用户发起操作时调用）
+        Create new task (called when user initiates operation)
         
         Args:
-            request_id: CMD 请求 ID（唯一标识）
-            action: 任务类型
-            params: 任务参数
+            request_id: CMD request ID (unique identifier)
+            action: Task type
+            params: Task parameters
         
         Returns:
-            Task: 创建的任务对象
+            Task: Created task object
         """
         task = Task(
             request_id=request_id,
@@ -114,25 +114,25 @@ class TaskManager:
 
     def update_task(self, response: Dict) -> Optional[Task]:
         """
-        更新任务（接收 CMD 响应时调用）
+        Update task (called when receiving CMD response)
         
-        智能匹配逻辑：
-        1. 尝试用 response.data.task_id 匹配（导航任务返回的 task_id）
-        2. 尝试用 response.request_id 匹配（请求 ID）
-        3. 如果都不在缓存中，忽略（not our task）
+        Intelligent matching logic:
+        1. Try to match using response.data.task_id (task_id returned by navigation task)
+        2. Try to match using response.request_id (request ID)
+        3. Ignore if not in cache (not our task)
         
         Args:
-            response: CommandResponse 的字典表示
+            response: Dictionary representation of CommandResponse
         
         Returns:
-            Optional[Task]: 更新的任务，如果不相关则返回 None
+            Optional[Task]: Updated task, or None if not related
         """
         request_id = response.get('header', {}).get('request_id')
         data = response.get('body', {}).get('data', {})
         status_code = response.get('body', {}).get('status', '')
         message = response.get('body', {}).get('message', '')
         
-        # 尝试匹配 task_id（MissionPlanner 返回的）
+        # Try to match task_id (returned by MissionPlanner)
         task_id = data.get('task_id')
         matched_request_id = None
         
@@ -141,13 +141,13 @@ class TaskManager:
         elif request_id and request_id in self.active_tasks:
             matched_request_id = request_id
         else:
-            # 不在缓存中，忽略
+            # Not in cache, ignore
             logger.debug(f"Ignoring response (not in cache): request_id={request_id}, task_id={task_id}")
             return None
         
         task = self.active_tasks[matched_request_id]
         
-        # 更新任务状态
+        # Update task status
         task.updated_at = datetime.now().isoformat()
         
         # 映射 CMD 状态到任务状态
@@ -195,31 +195,31 @@ class TaskManager:
 
     def get_active_tasks(self) -> List[Dict]:
         """
-        获取所有活跃任务
+        Get all active tasks
         
         Returns:
-            List[Dict]: 任务列表（字典格式）
+            List[Dict]: Task list (dictionary format)
         """
         return [task.to_dict() for task in self.active_tasks.values()]
 
     def get_task_history(self, limit: int = 50) -> List[Dict]:
         """
-        获取任务历史记录
+        Get task history
         
         Args:
-            limit: 返回数量限制
+            limit: Maximum number to return
         
         Returns:
-            List[Dict]: 历史任务列表
+            List[Dict]: Historical task list
         """
         return [task.to_dict() for task in self.task_history[-limit:]]
 
     def get_task_by_request_id(self, request_id: str) -> Optional[Task]:
-        """根据请求 ID 获取任务"""
+        """Get task by request ID"""
         return self.active_tasks.get(request_id)
 
     def get_task_by_task_id(self, task_id: str) -> Optional[Task]:
-        """根据任务 ID 获取任务（task_id为字符串如nav_xxx）"""
+        """Get task by task ID (task_id is string like nav_xxx)"""
         # 遍历active_tasks，匹配task.task_id
         for task in self.active_tasks.values():
             if task.task_id == task_id:
@@ -244,22 +244,22 @@ class TaskManager:
         
         task = self.active_tasks.pop(request_id)
         
-        # 从 task_id_map 中移除
+        # Remove from task_id_map
         if task.task_id and task.task_id in self.task_id_map:
             del self.task_id_map[task.task_id]
         
-        # 添加到历史记录
+        # Add to history
         self.task_history.append(task)
         
-        # 持久化（异步写入，避免阻塞）
+        # Persist (async write to avoid blocking)
         self._save_history_async()
         
         logger.info(f"✓ Task archived: {request_id} ({task.action}) -> {task.status}")
 
     def _save_history_async(self):
-        """异步保存历史记录到文件"""
+        """Asynchronously save task history to file"""
         try:
-            # 只保留最近 100 条记录
+            # Only keep latest 100 records
             history_to_save = self.task_history[-100:]
             
             with open(self.history_file, 'w', encoding='utf-8') as f:
@@ -276,7 +276,7 @@ class TaskManager:
             logger.error(f"Failed to save task history: {e}")
 
     def _load_history(self) -> List[Task]:
-        """从文件加载历史记录"""
+        """Load task history from file"""
         if not self.history_file.exists():
             return []
         
@@ -290,5 +290,5 @@ class TaskManager:
             return []
 
 
-# 全局实例
+# Global instance
 task_manager = TaskManager()

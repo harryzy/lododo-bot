@@ -61,11 +61,7 @@
     "addTag": "添加标签",
     "editSuccess": "元数据更新成功",
     "editError": "更新元数据失败"
-  },  "connection": {
-    "connected": "已连接",
-    "disconnected": "未连接",
-    "connecting": "连接中..."
-  },
+  }, 
   "tasks": {
     "navigation": "导航任务",
     "exploration": "探索建图",
@@ -190,12 +186,6 @@
     "center": "居中",
     "currentPosition": "当前位置"
   },
-  "settings": {
-    "title": "系统设置",
-    "language": "语言",
-    "theme": "主题",
-    "save": "保存设置"
-  },
   "waypoints": {
     "title": "路点管理",
     "routeName": "路线名称",
@@ -269,6 +259,7 @@
   "common": {
     "ok": "确定",
     "cancel": "取消",
+    "save": "保存",
     "confirm": "确认",
     "success": "成功",
     "error": "错误",
@@ -281,7 +272,8 @@
     "copied": "已复制到剪贴板",
     "understand": "我知道了",
     "delete": "删除",
-    "total": "共"
+    "total": "共",
+    "seconds": "秒"
   },
   "language": {
     "select": "选择语言",
@@ -316,5 +308,77 @@
       "disconnected": "与 rosbridge 断开连接，尝试重新连接...",
       "rendererFailed": "地图渲染器初始化失败"
     }
+  },
+  "settings": {
+    "title": "系统设置",
+    "saveSuccess": "设置保存成功",
+    "saveError": "设置保存失败",
+    "resetSuccess": "已恢复默认设置",
+    "resetToDefault": "恢复默认",
+    "tabs": {
+      "basic": "基础设置",
+      "navigation": "导航参数",
+      "systemInfo": "系统信息",
+      "advanced": "高级设置"
+    },
+    "basic": {
+      "language": "语言",
+      "languageTooltip": "选择界面显示语言",
+      "theme": "主题",
+      "themeTooltip": "选择界面主题（暂不可用）",
+      "lightTheme": "亮色",
+      "darkTheme": "暗色",
+      "mapResolution": "地图分辨率",
+      "mapResolutionTooltip": "地图显示的分辨率，单位：米",
+      "updateRates": "更新频率",
+      "mapUpdateRate": "地图更新频率",
+      "poseUpdateRate": "位姿更新频率",
+      "costmapUpdateRate": "代价地图更新频率"
+    },
+    "navigation": {
+      "velocityLimits": "速度限制",
+      "maxLinearVelocity": "最大线速度",
+      "maxLinearVelocityTooltip": "机器人移动的最大线速度",
+      "maxAngularVelocity": "最大角速度",
+      "maxAngularVelocityTooltip": "机器人旋转的最大角速度",
+      "safetyDistances": "安全距离",
+      "obstacleDistance": "障碍物安全距离",
+      "obstacleDistanceTooltip": "机器人与障碍物的最小安全距离",
+      "chargingDistance": "充电桩对接距离",
+      "chargingDistanceTooltip": "自动充电时的对接距离",
+      "navigationTimeout": "导航超时",
+      "navigationTimeoutTooltip": "导航任务的最大超时时间"
+    },
+    "systemInfo": {
+      "robotInfo": "机器人信息",
+      "robotName": "机器人名称",
+      "rosVersion": "ROS版本",
+      "systemUptime": "系统运行时间",
+      "networkInfo": "网络信息",
+      "websocketStatus": "WebSocket状态",
+      "rosbridgeStatus": "Rosbridge状态",
+      "fastapiAddress": "FastAPI地址",
+      "diskUsage": "磁盘使用情况",
+      "mapsDiskUsage": "地图文件占用",
+      "waypointsDiskUsage": "路点文件占用"
+    },
+    "advanced": {
+      "debugOptions": "调试选项",
+      "showTrajectory": "显示机器人轨迹",
+      "showCostmap": "显示代价地图",
+      "showPath": "显示规划路径",
+      "logLevel": "日志级别",
+      "logLevelTooltip": "系统日志的详细程度",
+      "performance": "性能选项",
+      "canvasFpsLimit": "Canvas帧率限制",
+      "canvasFpsLimitTooltip": "地图Canvas渲染的最大帧率",
+      "websocketQueueSize": "WebSocket队列大小",
+      "websocketQueueSizeTooltip": "WebSocket消息队列的最大容量"
+    }
+  },
+  "connection": {
+    "connected": "已连接",
+    "disconnected": "未连接",
+    "connecting": "连接中..."
   }
 }
