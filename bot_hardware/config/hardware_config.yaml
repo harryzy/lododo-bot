@@ -1,0 +1,269 @@
+# lododo机器人硬件配置文件 / Hardware Configuration File
+# 所有硬件相关的参数统一在此文件管理，禁止硬编码 / All hardware parameters managed here, no hard-coding allowed
+# 创建日期 / Created: 2026-01-15
+
+---
+
+# ============================================================================
+# 串口设备配置 / Serial Device Configuration
+# ============================================================================
+serial:
+  # ST3215舵机串口 / ST3215 Servo Serial Port
+  servo_port: '/dev/ttyACM0'
+  servo_baudrate: 1000000  # 1Mbps，备选115200 / 1Mbps, fallback to 115200
+  servo_timeout: 0.01      # 10ms读取超时 / 10ms read timeout
+  servo_retry_times: 3     # 失败重试次数 / Retry times on failure
+  
+  # 亚博6轴IMU串口 / Yabo 6-axis IMU Serial Port
+  imu_port: '/dev/ttyUSB0'
+  imu_baudrate: 115200     # 待确认，常见115200或230400 / TBD, common 115200 or 230400
+  imu_timeout: 0.02        # 20ms读取超时 / 20ms read timeout
+  imu_retry_times: 3       # 失败重试次数 / Retry times on failure
+
+# ============================================================================
+# ST3215舵机配置 / ST3215 Servo Configuration
+# ============================================================================
+servo:
+  # 舵机ID映射 / Servo ID Mapping
+  wheel_1_id: 1  # 轮子1对应舵机ID / Wheel 1 servo ID
+  wheel_2_id: 2  # 轮子2对应舵机ID / Wheel 2 servo ID
+  wheel_3_id: 3  # 轮子3对应舵机ID / Wheel 3 servo ID
+  
+  # 舵机物理参数 / Servo Physical Parameters
+  encoder_resolution: 4096  # 编码器分辨率（12位） / Encoder resolution (12-bit)
+  max_rpm: 45              # 最大转速 / Maximum RPM
+  max_load_percentage: 80  # 最大负载百分比（超过告警） / Max load % (warning threshold)
+  
+  # 速度限制 / Velocity Limits
+  max_wheel_velocity: 4.71  # rad/s (45 RPM = 4.71 rad/s)
+  max_acceleration: 2.5     # rad/s² (与Nav2配置一致) / Consistent with Nav2 config
+  
+  # 舵机在线检测 / Servo Online Detection
+  online_check_interval: 1.0  # 秒，超时判定为离线 / Seconds, timeout means offline
+  startup_scan_enabled: true  # 启动时扫描所有舵机 / Scan all servos on startup
+
+# ============================================================================
+# 亚博6轴IMU配置 / Yabo 6-axis IMU Configuration
+# ============================================================================
+imu:
+  # IMU型号标识 / IMU Model Identifier
+  model: 'yabo_6axis'
+  
+  # 发布频率 / Publishing Frequency
+  publish_rate: 50  # Hz，与轮式里程计同步 / Hz, sync with wheel odometry
+  
+  # 坐标系配置 / Coordinate Frame Configuration
+  frame_id: 'imu_link'
+  
+  # 静态零偏标定参数 / Static Bias Calibration Parameters
+  calibration:
+    enabled: true
+    calibration_duration: 600  # 秒（10分钟静止标定） / Seconds (10 min stationary)
+    gyro_bias_x: 0.0          # rad/s，标定后填写 / rad/s, fill after calibration
+    gyro_bias_y: 0.0          # rad/s
+    gyro_bias_z: 0.0          # rad/s
+    accel_bias_x: 0.0         # m/s²
+    accel_bias_y: 0.0         # m/s²
+    accel_bias_z: 0.0         # m/s²
+  
+  # 数据协方差（需实测调整） / Data Covariance (adjust after testing)
+  angular_velocity_covariance: 0.01   # rad²/s²
+  linear_acceleration_covariance: 0.01  # m²/s⁴
+  orientation_covariance: 0.01         # rad²
+
+# ============================================================================
+# Astra Pro相机配置 / Astra Pro Camera Configuration
+# ============================================================================
+camera:
+  # 设备路径 / Device Path
+  device_uri: ''  # 空字符串使用默认设备 / Empty for default device
+  
+  # RGB相机参数 / RGB Camera Parameters
+  rgb:
+    width: 640
+    height: 480
+    fps: 30
+  
+  # 深度相机参数 / Depth Camera Parameters
+  depth:
+    width: 640
+    height: 480
+    fps: 30
+    min_range: 0.6  # 米 / Meters
+    max_range: 8.0  # 米 / Meters
+  
+  # RGB-D对齐 / RGB-D Alignment
+  enable_alignment: true  # 启用硬件对齐 / Enable hardware alignment
+  
+  # 话题名称 / Topic Names
+  topics:
+    rgb_image: '/camera/color/image_raw'
+    depth_image: '/camera/depth/image_raw'
+    rgb_camera_info: '/camera/color/camera_info'
+    depth_camera_info: '/camera/depth/camera_info'
+
+# ============================================================================
+# 机器人运动学参数 / Robot Kinematics Parameters
+# ============================================================================
+kinematics:
+  # 轮子半径 / Wheel Radius
+  wheel_radius: 0.05  # 米 / Meters
+  
+  # 轮子与机器人中心距离 / Wheel to Robot Center Distance
+  wheel_base_distances:
+    L1: 0.126377  # 轮子1到中心的距离 / Wheel 1 to center
+    L2: 0.125897  # 轮子2到中心的距离 / Wheel 2 to center
+    L3: 0.125897  # 轮子3到中心的距离 / Wheel 3 to center
+  
+  # 轮子位置角度（度） / Wheel Position Angles (degrees)
+  wheel_angles:
+    wheel_1: 90.0   # 度 / Degrees
+    wheel_2: 210.0  # 度 / Degrees
+    wheel_3: 330.0  # 度 / Degrees
+  
+  # 速度限制 / Velocity Limits
+  max_linear_velocity_x: 0.5   # m/s
+  max_linear_velocity_y: 0.5   # m/s
+  max_angular_velocity: 0.8    # rad/s
+  
+  # 加速度限制 / Acceleration Limits
+  max_linear_acceleration: 2.5  # m/s²
+  max_angular_acceleration: 2.0  # rad/s²
+
+# ============================================================================
+# ros2_control配置 / ros2_control Configuration
+# ============================================================================
+ros2_control:
+  # 控制循环频率 / Control Loop Frequency
+  update_rate: 50  # Hz
+  
+  # 硬件接口类型 / Hardware Interface Type
+  hardware_interface: 'bot_hardware/OmniHardwareInterface'
+  
+  # 状态接口 / State Interfaces
+  state_interfaces:
+    - 'position'
+    - 'velocity'
+  
+  # 命令接口 / Command Interfaces
+  command_interfaces:
+    - 'velocity'
+  
+  # 超时设置 / Timeout Settings
+  read_timeout: 0.02   # 秒 / Seconds
+  write_timeout: 0.02  # 秒 / Seconds
+
+# ============================================================================
+# 里程计配置 / Odometry Configuration
+# ============================================================================
+odometry:
+  # 话题名称 / Topic Name
+  topic: '/wheel/odom'
+  
+  # 坐标系 / Frames
+  frame_id: 'odom'
+  child_frame_id: 'base_link'
+  
+  # 发布频率 / Publishing Frequency
+  publish_rate: 50  # Hz
+  
+  # 协方差矩阵（真机需增大） / Covariance Matrix (increase for real robot)
+  pose_covariance:
+    xx: 0.1  # m²（仿真为0.001） / m² (0.001 in simulation)
+    yy: 0.1  # m²
+    tt: 0.2  # rad²（旋转不确定度更大） / rad² (rotation uncertainty higher)
+  
+  twist_covariance:
+    xx: 0.05  # (m/s)²
+    yy: 0.05  # (m/s)²
+    tt: 0.1   # (rad/s)²
+
+# ============================================================================
+# 启动配置 / Launch Configuration
+# ============================================================================
+launch:
+  # 仿真标志 / Simulation Flag
+  use_sim_time: false  # 真机必须为false / Must be false for real robot
+  
+  # 节点启动延迟（秒） / Node Startup Delays (seconds)
+  delays:
+    after_hardware_init: 2.0      # 硬件初始化后等待 / Wait after hardware init
+    after_controller_manager: 1.0  # controller_manager启动后等待 / Wait after controller_manager
+    after_controller_load: 0.5    # 控制器加载后等待 / Wait after controller load
+  
+  # 日志级别 / Log Level
+  log_level: 'info'  # debug, info, warn, error
+  
+  # 诊断发布 / Diagnostics Publishing
+  enable_diagnostics: true
+  diagnostics_rate: 1.0  # Hz
+
+# ============================================================================
+# 调试与测试配置 / Debug and Test Configuration
+# ============================================================================
+debug:
+  # 启用调试日志 / Enable Debug Logging
+  verbose_logging: false
+  
+  # 模拟模式（用于无硬件测试） / Simulation Mode (for testing without hardware)
+  mock_hardware: false
+  
+  # 性能监控 / Performance Monitoring
+  enable_performance_monitor: true
+  performance_log_interval: 10.0  # 秒 / Seconds
+
+# ============================================================================
+# 安全配置 / Safety Configuration
+# ============================================================================
+safety:
+  # 紧急停止使能 / Emergency Stop Enable
+  emergency_stop_enabled: true
+  
+  # 舵机过载保护 / Servo Overload Protection
+  servo_overload_threshold: 80  # 百分比 / Percentage
+  
+  # 看门狗超时 / Watchdog Timeout
+  watchdog_timeout: 2.0  # 秒，超时则紧急停止 / Seconds, emergency stop on timeout
+  
+  # 电池电压监控 / Battery Voltage Monitoring
+  battery_voltage_min: 10.5  # V，低于此值告警 / V, warning below this
+  battery_voltage_critical: 10.0  # V，低于此值停止运动 / V, stop motion below this
+
+# ============================================================================
+# 文件路径配置 / File Path Configuration
+# ⚠️ 所有路径必须使用相对路径（从工作空间根目录开始），禁止使用绝对路径或~
+# ⚠️ All paths must be relative (from workspace root), absolute paths or ~ are forbidden
+# ============================================================================
+paths:
+  # 地图保存路径 / Map Save Path
+  # 相对路径: maps → 实际路径: <workspace_root>/maps
+  maps_directory: 'maps'
+  
+  # 路点保存路径 / Waypoint Save Path
+  # 相对路径: waypoints → 实际路径: <workspace_root>/waypoints
+  waypoints_directory: 'waypoints'
+  
+  # 日志保存路径 / Log Save Path
+  # 相对路径: log → 实际路径: <workspace_root>/log
+  logs_directory: 'log'
+  
+  # 校准数据路径 / Calibration Data Path
+  # 相对路径: calibration → 实际路径: <workspace_root>/calibration
+  calibration_directory: 'calibration'
+  
+  # 标定数据文件 / Calibration Data Files
+  imu_calibration_file: 'calibration/imu_bias.yaml'
+  camera_calibration_file: 'calibration/camera_info.yaml'
+  servo_calibration_file: 'calibration/servo_params.yaml'
+
+# ============================================================================
+# 备注 / Notes
+# ============================================================================
+# 1. ⚠️ 所有路径必须使用相对路径（从工作空间根目录开始） / All paths must be relative from workspace root
+#    示例 / Example: 'maps' 而非 / not '~/lododo_bot/maps' 或 / or '/home/user/lododo_bot/maps'
+# 2. 串口设备路径在系统重启后可能变化，建议使用udev规则固定设备名 /
+#    Serial device paths may change after reboot, recommend using udev rules
+# 3. 标定参数需在真机首次运行后填写 / Calibration parameters should be filled after first run
+# 4. 协方差矩阵需根据实测调整 / Covariance matrices should be tuned based on actual testing
+# 5. 修改此文件后需重新启动节点 / Nodes need restart after modifying this file
+# 6. 配置文件路径验证在节点启动时自动执行 / Path validation runs automatically on node startup

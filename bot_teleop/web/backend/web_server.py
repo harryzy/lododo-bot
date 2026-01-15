@@ -109,11 +109,11 @@ async def lifespan(app: FastAPI):
     
     if status_monitor_node:
         status_monitor_node.shutdown()
-        print("[WebServer] ✓ 状态监控节点已关闭")
+        print("[WebServer] ✓ Status monitor node closed")
     
     if web_terminal_node:
         web_terminal_node.shutdown()
-        print("[WebServer] ✓ ROS2 节点已关闭")
+        print("[WebServer] ✓ ROS2 node closed")
     
     if status_executor:
         status_executor.cancel()
@@ -121,14 +121,14 @@ async def lifespan(app: FastAPI):
     if ros_executor:
         ros_executor.cancel()
     
-    # 关闭 ROS2
+    # Shutdown ROS2
     try:
         rclpy.shutdown()
-        print("[WebServer] ✓ ROS2 已关闭")
+        print("[WebServer] ✓ ROS2 shutdown complete")
     except Exception as e:
-        print(f"[WebServer] ✗ ROS2 关闭失败: {e}")
+        print(f"[WebServer] ✗ ROS2 shutdown failed: {e}")
     
-    print("[WebServer] ✅ 关闭完成")
+    print("[WebServer] ✅ Shutdown complete")
 
 
 # Create FastAPI application
