@@ -153,16 +153,31 @@ class UpdateMetadataResponse(BaseModel):
 # ============================================
 
 def get_maps_directory() -> Path:
-    """获取地图目录 - 使用工作空间相对路径"""
-    # 优先使用环境变量
+    """获取地图目录 - 优先从配置文件读取"""
+    # 1. 优先从配置文件读取
+    try:
+        from ..api.config import load_config
+        config = load_config()
+        maps_dir_str = config.get('paths', {}).get('maps_dir', '')
+        if maps_dir_str:
+            maps_dir = Path(maps_dir_str).expanduser().resolve()
+            print(f"[MapAPI] Using maps_dir from config: {maps_dir}")
+            if not maps_dir.exists():
+                maps_dir.mkdir(parents=True, exist_ok=True)
+            return maps_dir
+    except Exception as e:
+        print(f"[MapAPI] Failed to load config: {e}")
+    
+    # 2. 使用环境变量作为fallback
     maps_dir_str = os.environ.get('LODODO_MAPS_DIR', '')
     if maps_dir_str:
         maps_dir = Path(maps_dir_str).expanduser().resolve()
         print(f"[MapAPI] Using LODODO_MAPS_DIR: {maps_dir}")
+        if not maps_dir.exists():
+            maps_dir.mkdir(parents=True, exist_ok=True)
         return maps_dir
     
-    # 从当前文件向上查找工作空间根目录
-    # 当前文件在: workspace/src/bot_teleop/web/backend/api/maps.py
+    # 3. 从当前文件向上查找工作空间根目录
     current_file = Path(__file__).resolve()
     
     # 向上查找，直到找到包含 src/ 和 install/ 的目录（ROS2工作空间特征）

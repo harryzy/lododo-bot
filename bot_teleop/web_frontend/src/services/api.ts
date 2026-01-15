@@ -261,6 +261,32 @@ const waypoints = {
   // 添加路点到路线
   addWaypoint: (route_name: string, waypoint: Waypoint) =>
     apiClient.post<any, any>(`/waypoints/${route_name}/add`, waypoint),
+
+  // ========== 路点录制 API ==========
+  
+  // 开始录制
+  startRecording: () =>
+    apiClient.post<any, any>('/waypoints/record/start'),
+  
+  // 标记路点
+  markWaypoint: (waypoint_name?: string) =>
+    apiClient.post<any, any>('/waypoints/record/mark', null, { 
+      params: { waypoint_name } 
+    }),
+  
+  // 停止录制
+  stopRecording: () =>
+    apiClient.post<any, any>('/waypoints/record/stop'),
+  
+  // 保存录制
+  saveRecording: (route_name: string, description?: string) =>
+    apiClient.post<any, any>('/waypoints/record/save', null, { 
+      params: { route_name, description } 
+    }),
+  
+  // 获取录制状态
+  getRecordingStatus: () =>
+    apiClient.get<any, any>('/waypoints/record/status'),
 }
 
 // ============================================
@@ -293,12 +319,45 @@ const settings = {
     apiClient.get<any, any>('/settings/system/info'),
 }
 
+// ============================================
+// 系统状态 API
+// ============================================
+
+interface NodeStatus {
+  name: string
+  status: 'healthy' | 'warning' | 'error' | 'unknown'
+  message: string
+}
+
+interface TopicStatus {
+  name: string
+  status: 'healthy' | 'warning' | 'error' | 'unknown'
+  message: string
+}
+
+interface SystemStatusResponse {
+  nodes: NodeStatus[]
+  topics: TopicStatus[]
+  overall: 'healthy' | 'degraded' | 'error' | 'unknown'
+  timestamp: number
+}
+
+const systemStatus = {
+  /**
+   * 获取系统状态
+   */
+  async getStatus(): Promise<SystemStatusResponse> {
+    return apiClient.get('/status')
+  },
+}
+
 // 导出 API 服务
 export const apiService = {
   tasks,
   maps,
   waypoints,
   settings,
+  getSystemStatus: systemStatus.getStatus,
 }
 
 // 默认导出

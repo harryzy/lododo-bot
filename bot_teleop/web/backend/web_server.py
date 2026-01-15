@@ -22,21 +22,24 @@ from pathlib import Path
 from typing import Optional
 
 from .nodes.web_terminal_node import WebTerminalNode
+from .nodes.status_monitor_node import StatusMonitorNode
 from .websocket_handler import WebSocketHandler
 from .managers.task_manager import TaskManager
-from .api import tasks, maps, waypoints, settings
+from .api import tasks, maps, waypoints, settings, status, config
 
 # 全局变量
 web_terminal_node: Optional[WebTerminalNode] = None
+status_monitor_node: Optional[StatusMonitorNode] = None
 websocket_handler: Optional[WebSocketHandler] = None
 task_manager: Optional[TaskManager] = None
 ros_executor: Optional[asyncio.Future] = None
+status_executor: Optional[asyncio.Future] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    global web_terminal_node, websocket_handler, task_manager, ros_executor
+    global web_terminal_node, status_monitor_node, websocket_handler, task_manager, ros_executor, status_executor
     
     print("[WebServer] 🚀 启动中...")
     
@@ -83,6 +86,16 @@ async def lifespan(app: FastAPI):
         ros_executor = loop.run_in_executor(None, web_terminal_node.spin)
         print("[WebServer] ✓ ROS2 节点已启动")
         
+        # 创建 StatusMonitorNode（监控机器人状态）
+        status_monitor_node = StatusMonitorNode(
+            websocket_handler=websocket_handler
+        )
+        print("[WebServer] ✓ StatusMonitorNode 已创建")
+        
+        # 在后台线程运行 StatusMonitorNode
+        status_executor = loop.run_in_executor(None, status_monitor_node.spin)
+        print("[WebServer] ✓ 状态监控节点已启动（2 Hz）")
+        
     except Exception as e:
         print(f"[WebServer] ✗ 初始化 ROS2 节点失败: {e}")
         web_terminal_node = None
@@ -95,9 +108,16 @@ async def lifespan(app: FastAPI):
     # 清理资源
     print("[WebServer] 🛑 关闭中...")
     
+    if status_monitor_node:
+        status_monitor_node.shutdown()
+        print("[WebServer] ✓ 状态监控节点已关闭")
+    
     if web_terminal_node:
         web_terminal_node.shutdown()
         print("[WebServer] ✓ ROS2 节点已关闭")
+    
+    if status_executor:
+        status_executor.cancel()
     
     if ros_executor:
         ros_executor.cancel()
@@ -222,6 +242,8 @@ app.include_router(tasks.router, prefix="/api", tags=["tasks"])
 app.include_router(maps.router, prefix="/api", tags=["maps"])
 app.include_router(waypoints.router, prefix="/api", tags=["waypoints"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
+app.include_router(status.router, tags=["status"])
+app.include_router(config.router, tags=["config"])
 
 
 # ============================================

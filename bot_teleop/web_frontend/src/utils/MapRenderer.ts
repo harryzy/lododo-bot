@@ -60,6 +60,15 @@ interface Transform {
   offsetY: number    // Y偏移（屏幕坐标）
 }
 
+// 路点类型定义
+export interface Waypoint {
+  name: string
+  x: number
+  y: number
+  yaw: number
+  dwell_time: number
+}
+
 export class MapRenderer {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
@@ -74,6 +83,10 @@ export class MapRenderer {
   
   // 导航目标
   private navGoal: { x: number; y: number; yaw: number } | null = null
+  
+  // 路点数据
+  private waypoints: Waypoint[] = []
+  private showWaypoints = false
   
   // Costmap 数据缓存
   private localCostmap: OccupancyGridMsg | null = null
@@ -146,6 +159,32 @@ export class MapRenderer {
    */
   clearNavGoal() {
     this.navGoal = null
+    this.render()
+  }
+  
+  /**
+   * 设置路点数据
+   */
+  setWaypoints(waypoints: Waypoint[]) {
+    this.waypoints = waypoints
+    console.log('[MapRenderer] 设置路点:', waypoints.length, '个')
+    this.render()
+  }
+  
+  /**
+   * 清除路点
+   */
+  clearWaypoints() {
+    this.waypoints = []
+    this.render()
+  }
+  
+  /**
+   * 显示/隐藏路点
+   */
+  toggleWaypoints(show: boolean) {
+    this.showWaypoints = show
+    console.log('[MapRenderer] 路点显示:', show)
     this.render()
   }
   
@@ -426,6 +465,11 @@ export class MapRenderer {
     // 渲染导航目标
     if (this.navGoal && this.mapData) {
       this.renderNavGoal()
+    }
+    
+    // 渲染路点
+    if (this.showWaypoints && this.waypoints.length > 0 && this.mapData) {
+      this.renderWaypoints()
     }
   }
   
@@ -715,6 +759,100 @@ export class MapRenderer {
     this.ctx.fill()
     
     this.ctx.restore()
+  }
+  
+  /**
+   * 渲染路点（紫色圆点和连线）
+   */
+  private renderWaypoints() {
+    if (!this.waypoints || this.waypoints.length === 0) return
+    
+    // 绘制路点间的连线
+    if (this.waypoints.length > 1) {
+      this.ctx.save()
+      this.ctx.strokeStyle = '#722ed1'  // 紫色
+      this.ctx.lineWidth = 2
+      this.ctx.setLineDash([5, 5])  // 虚线
+      this.ctx.globalAlpha = 0.6
+      
+      this.ctx.beginPath()
+      const firstPos = this.rosToScreen(this.waypoints[0].x, this.waypoints[0].y)
+      this.ctx.moveTo(firstPos.x, firstPos.y)
+      
+      for (let i = 1; i < this.waypoints.length; i++) {
+        const pos = this.rosToScreen(this.waypoints[i].x, this.waypoints[i].y)
+        this.ctx.lineTo(pos.x, pos.y)
+      }
+      
+      this.ctx.stroke()
+      this.ctx.restore()
+    }
+    
+    // 绘制每个路点
+    this.waypoints.forEach((waypoint, index) => {
+      const screenPos = this.rosToScreen(waypoint.x, waypoint.y)
+      
+      this.ctx.save()
+      this.ctx.translate(screenPos.x, screenPos.y)
+      this.ctx.rotate(-waypoint.yaw)  // 旋转到路点朝向
+      
+      // 绘制圆形标记
+      const radius = 6 * this.transform.scale
+      
+      // 外边框（黑色）
+      this.ctx.strokeStyle = '#000'
+      this.ctx.lineWidth = 2
+      this.ctx.beginPath()
+      this.ctx.arc(0, 0, radius, 0, Math.PI * 2)
+      this.ctx.stroke()
+      
+      // 填充（紫色）
+      this.ctx.fillStyle = '#722ed1'  // Ant Design 紫色
+      this.ctx.fill()
+      
+      // 绘制朝向指示箭头（小箭头）
+      const arrowLength = 4 * this.transform.scale
+      const arrowWidth = 2 * this.transform.scale
+      
+      this.ctx.fillStyle = '#fff'  // 白色箭头
+      this.ctx.beginPath()
+      this.ctx.moveTo(arrowLength, 0)
+      this.ctx.lineTo(-arrowLength / 2, arrowWidth / 2)
+      this.ctx.lineTo(-arrowLength / 2, -arrowWidth / 2)
+      this.ctx.closePath()
+      this.ctx.fill()
+      
+      this.ctx.restore()
+      
+      // 绘制路点编号（文本标签）
+      this.ctx.save()
+      this.ctx.font = `bold ${12 * this.transform.scale}px sans-serif`
+      this.ctx.textAlign = 'center'
+      this.ctx.textBaseline = 'middle'
+      
+      // 文本背景
+      const text = (index + 1).toString()
+      const textWidth = this.ctx.measureText(text).width
+      const padding = 2 * this.transform.scale
+      
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
+      this.ctx.fillRect(
+        screenPos.x - textWidth / 2 - padding,
+        screenPos.y + radius + 2 * this.transform.scale,
+        textWidth + padding * 2,
+        14 * this.transform.scale
+      )
+      
+      // 文本
+      this.ctx.fillStyle = '#722ed1'
+      this.ctx.fillText(
+        text,
+        screenPos.x,
+        screenPos.y + radius + 9 * this.transform.scale
+      )
+      
+      this.ctx.restore()
+    })
   }
   
   /**

@@ -1,0 +1,31 @@
+.system-status {
+  padding: 8px;
+}
+
+.system-status .ant-card {
+  border-radius: 4px;
+}
+
+.system-status .ant-card-head {
+  padding: 8px 12px;
+  min-height: 36px;
+}
+
+.system-status .ant-card-body {
+  padding: 12px;
+}
+
+.system-status .node-name,
+.system-status .topic-name {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.system-status .status-message {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.system-status .ant-list-item {
+  padding: 4px 0;
+}

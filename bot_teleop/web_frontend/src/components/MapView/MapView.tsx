@@ -3,13 +3,16 @@
  * 使用原生Canvas + ROSLIB.js手动渲染地图
  */
 
-import { Card, Spin, Alert, message } from 'antd'
+import { Card, Spin, Alert, message, Select, Space, Switch, Typography } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as ROSLIB from 'roslib'
 import rosConnection from '../../services/rosConnection'
 import { MapRenderer } from '../../utils/MapRenderer'
 import MapToolbar, { ToolMode } from './MapToolbar'
+import { apiService } from '../../services/api'
+
+const { Text } = Typography
 
 function MapView() {
   const { t } = useTranslation()
@@ -22,6 +25,84 @@ function MapView() {
   const [toolMode, setToolMode] = useState<ToolMode>('none')
   const [costmapVisible, setCostmapVisible] = useState(false)
   const [navGoalStart, setNavGoalStart] = useState<{x: number, y: number} | null>(null)
+  
+  // 路点相关状态
+  const [waypointRoutes, setWaypointRoutes] = useState<Array<{name: string, waypoint_count: number}>>([])
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(null)
+  const [showWaypoints, setShowWaypoints] = useState(false)
+
+  useEffect(() => {
+    loadRoutes();
+  }, []);
+
+  useEffect(() => {
+    console.log('[MapView] 初始化 ROS 连接...')
+    
+    // 连接 rosbridge
+    rosConnection.connect('ws://localhost:9090')
+    
+    // 监听连接状态
+    const handleConnectionChange = (connected: boolean) => {
+      setRosConnected(connected)
+      if (connected) {
+        setError('')
+        console.log('[MapView] ✓ ROS 连接成功')
+      } else {
+        setError('与 rosbridge 断开连接，尝试重新连接...')
+      }
+    }
+    
+    rosConnection.onConnectionChange(handleConnectionChange)
+    
+    return () => {
+      rosConnection.offConnectionChange(handleConnectionChange)
+    }
+  }, [])
+  
+  // 加载路点路线列表
+  const loadRoutes = async () => {
+    try {
+      const routes = await apiService.waypoints.list()
+      setWaypointRoutes(routes)
+    } catch (error) {
+      console.error('Load waypoint routes error:', error)
+    }
+  }
+  
+  // 加载选中路线的路点数据
+  const loadWaypoints = async (routeName: string) => {
+    try {
+      const response = await apiService.waypoints.getRoute(routeName)
+      if (response?.waypoints && mapRendererRef.current) {
+        mapRendererRef.current.setWaypoints(response.waypoints)
+        message.success(t('waypoints.loadSuccess'))
+      }
+    } catch (error) {
+      message.error(t('waypoints.loadError'))
+      console.error('Load waypoints error:', error)
+    }
+  }
+  
+  // 处理路线选择变化
+  const handleRouteChange = (routeName: string | null) => {
+    setSelectedRoute(routeName)
+    if (routeName && mapRendererRef.current) {
+      loadWaypoints(routeName)
+      setShowWaypoints(true)
+      mapRendererRef.current.toggleWaypoints(true)
+    } else if (mapRendererRef.current) {
+      mapRendererRef.current.clearWaypoints()
+      setShowWaypoints(false)
+    }
+  }
+  
+  // 处理路点显示开关
+  const handleWaypointsToggle = (checked: boolean) => {
+    setShowWaypoints(checked)
+    if (mapRendererRef.current) {
+      mapRendererRef.current.toggleWaypoints(checked)
+    }
+  }
 
   // 初始化 ROS 连接
   useEffect(() => {
@@ -378,6 +459,33 @@ function MapView() {
         hasMap={mapReceived}
         costmapVisible={costmapVisible}
       />
+      
+      {/* 路点显示控制 */}
+      <Space style={{ marginBottom: 12 }}>
+        <Text>显示路点:</Text>
+        <Select
+          style={{ width: 200 }}
+          placeholder="选择路点路线"
+          value={selectedRoute}
+          onChange={handleRouteChange}
+          allowClear
+          disabled={!mapReceived}
+        >
+          {waypointRoutes.map(route => (
+            <Select.Option key={route.name} value={route.name}>
+              {route.name} ({route.waypoint_count}个路点)
+            </Select.Option>
+          ))}
+        </Select>
+        {selectedRoute && (
+          <Switch
+            checked={showWaypoints}
+            onChange={handleWaypointsToggle}
+            checkedChildren="显示"
+            unCheckedChildren="隐藏"
+          />
+        )}
+      </Space>
       
       {error && (
         <Alert 

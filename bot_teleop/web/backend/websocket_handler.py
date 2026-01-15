@@ -119,6 +119,33 @@ class WebSocketHandler:
         )
         print(f"[WebSocket] → 任务更新已调度: {task.get('request_id')} -> {task.get('status')}")
     
+    async def broadcast_status(self, status: Dict[str, Any]):
+        """
+        广播机器人状态（异步版本）
+        
+        Args:
+            status: 机器人状态字典（包含type, position, velocity等）
+        """
+        await self.broadcast(status)
+    
+    def broadcast_status_sync(self, status: Dict[str, Any]):
+        """
+        广播机器人状态（同步版本，用于ROS2回调）
+        
+        从ROS2线程调用，使用asyncio.run_coroutine_threadsafe调度到主线程
+        
+        Args:
+            status: 机器人状态字典（包含type, position, velocity等）
+        """
+        if self.event_loop is None:
+            return
+        
+        # 在主线程的事件循环中调度异步任务
+        asyncio.run_coroutine_threadsafe(
+            self.broadcast_status(status),
+            self.event_loop
+        )
+    
     def get_connection_count(self) -> int:
         """获取当前连接数"""
         return len(self.active_connections)

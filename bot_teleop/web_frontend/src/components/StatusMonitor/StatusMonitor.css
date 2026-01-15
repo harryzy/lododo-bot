@@ -1,0 +1,31 @@
+.status-monitor {
+  padding: 8px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.status-monitor .ant-card {
+  border-radius: 4px;
+}
+
+.status-monitor .ant-card-head {
+  padding: 8px 12px;
+  min-height: 36px;
+}
+
+.status-monitor .ant-card-body {
+  padding: 12px;
+}
+
+.status-monitor .ant-statistic-title {
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.status-monitor .ant-statistic-content {
+  font-size: 18px;
+}
+
+.status-monitor .ant-badge-status-text {
+  font-size: 14px;
+}

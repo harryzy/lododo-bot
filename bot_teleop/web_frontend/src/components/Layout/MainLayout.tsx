@@ -14,6 +14,8 @@ import { useConnectionStore } from '../../stores/connectionStore'
 import TaskControl from '../TaskControl/TaskControl'
 import MapView from '../MapView/MapView'
 import MapManager from '../MapManager'
+import WaypointManager from '../WaypointManager/WaypointManager'
+import StatusMonitor from '../StatusMonitor'
 
 const { Header, Sider, Content } = Layout
 
@@ -71,12 +73,7 @@ function MainLayout() {
       case 'maps':
         return <MapManager />
       case 'waypoints':
-        return (
-          <div style={{ padding: '24px' }}>
-            <h2>{t('menu.waypoints')}</h2>
-            <p>路点管理功能</p>
-          </div>
-        )
+        return <WaypointManager />
       case 'settings':
         return (
           <div style={{ padding: '24px' }}>
@@ -140,6 +137,11 @@ function MainLayout() {
           >
             {renderContent()}
           </Content>
+          
+          {/* 右侧状态监控面板 */}
+          <Sider width={300} style={{ background: '#f0f2f5' }}>
+            <StatusMonitor />
+          </Sider>
         </Layout>
       </Layout>
     </Layout>
