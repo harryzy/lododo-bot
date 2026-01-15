@@ -41,10 +41,25 @@
     "loadError": "加载地图失败",
     "loadConfirm": "确认加载地图",
     "loadWarning": "加载地图 {{name}} 将中断当前任务，是否继续？",
+    "loadRequiresRestart": "地图加载需要重启系统",
+    "rtabmapLimitation": "由于RTABMap技术限制，切换地图需要重启launch文件。请在终端中执行以下命令：",
+    "simulationCommand": "仿真环境命令",
+    "hardwareCommand": "硬件环境命令",
     "deleteSuccess": "地图删除成功",
     "deleteError": "删除地图失败",
     "deleteConfirm": "确认删除地图",
-    "deleteWarning": "确定要删除地图 {{name}} 吗？此操作不可撤销。"
+    "deleteWarning": "确定要删除地图 {{name}} 吗？此操作不可撤销。",
+    "rename": "重命名",
+    "renameMap": "重命名地图",
+    "newName": "新名称",
+    "renameSuccess": "地图重命名成功",
+    "renameError": "重命名地图失败",
+    "renameValidation": "地图名称只能包含字母、数字、下划线和连字符",
+    "edit": "编辑",
+    "editMetadata": "编辑元数据",
+    "addTag": "添加标签",
+    "editSuccess": "元数据更新成功",
+    "editError": "更新元数据失败"
   },  "connection": {
     "connected": "已连接",
     "disconnected": "未连接",
@@ -199,6 +214,10 @@
     "yes": "是",
     "no": "否",
     "actions": "操作",
-    "delete": "删除"
+    "copy": "复制",
+    "copied": "已复制到剪贴板",
+    "understand": "我知道了",
+    "delete": "删除",
+    "total": "共"
   }
 }

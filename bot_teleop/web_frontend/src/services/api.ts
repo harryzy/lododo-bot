@@ -202,6 +202,14 @@ const maps = {
   // 删除特定版本
   deleteVersion: (map_name: string, version: number) =>
     apiClient.delete<any, any>(`/maps/${map_name}/versions/${version}`),
+  
+  // 重命名地图
+  rename: (map_name: string, new_name: string) =>
+    apiClient.patch<any, any>(`/maps/${map_name}/rename`, { new_name }),
+  
+  // 更新地图元数据
+  updateMetadata: (map_name: string, description?: string, tags?: string[]) =>
+    apiClient.patch<any, any>(`/maps/${map_name}/metadata`, { description, tags }),
 }
 
 // ============================================

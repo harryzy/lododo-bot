@@ -14,6 +14,8 @@ import {
   Modal,
   Popconfirm,
   Tooltip,
+  Input,
+  Form,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -25,6 +27,10 @@ import {
   HistoryOutlined,
   CheckCircleOutlined,
   SwapOutlined,
+  CopyOutlined,
+  ExclamationCircleOutlined,
+  EditOutlined,
+  FormOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { apiService } from '../../services/api';
@@ -64,6 +70,11 @@ const MapManager: React.FC = () => {
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
   const [versionData, setVersionData] = useState<Record<string, VersionInfo[]>>({});
   const [loadingVersions, setLoadingVersions] = useState<Record<string, boolean>>({});
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [editMetadataModalVisible, setEditMetadataModalVisible] = useState(false);
+  const [currentMap, setCurrentMap] = useState<MapInfo | null>(null);
+  const [renameForm] = Form.useForm();
+  const [metadataForm] = Form.useForm();
 
   useEffect(() => {
     loadMaps();
@@ -149,22 +160,80 @@ const MapManager: React.FC = () => {
   };
 
   // 加载地图
-  const handleLoadMap = (record: MapInfo) => {
-    Modal.confirm({
-      title: t('maps.loadConfirm'),
-      content: t('maps.loadWarning', { name: record.name }),
-      okText: t('common.confirm'),
-      cancelText: t('common.cancel'),
-      onOk: async () => {
-        try {
-          await apiService.maps.load({ map_name: record.name });
-          message.success(t('maps.loadSuccess'));
-        } catch (error) {
-          message.error(t('maps.loadError'));
-          console.error('Load map error:', error);
-        }
-      },
-    });
+  const handleLoadMap = async (record: MapInfo) => {
+    try {
+      const response = await apiService.maps.load({ map_name: record.name });
+      
+      if (response.requires_restart) {
+        // 显示launch命令对话框
+        Modal.warning({
+          title: (
+            <Space>
+              <ExclamationCircleOutlined style={{ color: '#faad14' }} />
+              {t('maps.loadRequiresRestart')}
+            </Space>
+          ),
+          width: 700,
+          content: (
+            <div>
+              <p style={{ marginBottom: 16 }}>
+                {t('maps.rtabmapLimitation')}
+              </p>
+              
+              <div style={{ marginBottom: 12 }}>
+                <Typography.Text strong>{t('maps.simulationCommand')}:</Typography.Text>
+                <Input.TextArea 
+                  value={response.launch_command}
+                  readOnly
+                  autoSize={{ minRows: 2, maxRows: 4 }}
+                  style={{ marginTop: 8, fontFamily: 'monospace' }}
+                />
+                <Button
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(response.launch_command);
+                    message.success(t('common.copied'));
+                  }}
+                  style={{ marginTop: 8 }}
+                >
+                  {t('common.copy')}
+                </Button>
+              </div>
+              
+              <div>
+                <Typography.Text strong>{t('maps.hardwareCommand')}:</Typography.Text>
+                <Input.TextArea 
+                  value={response.hardware_launch_command}
+                  readOnly
+                  autoSize={{ minRows: 2, maxRows: 4 }}
+                  style={{ marginTop: 8, fontFamily: 'monospace' }}
+                />
+                <Button
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(response.hardware_launch_command);
+                    message.success(t('common.copied'));
+                  }}
+                  style={{ marginTop: 8 }}
+                >
+                  {t('common.copy')}
+                </Button>
+              </div>
+              
+              <Typography.Paragraph type="secondary" style={{ marginTop: 16, marginBottom: 0 }}>
+                {response.note}
+              </Typography.Paragraph>
+            </div>
+          ),
+          okText: t('common.understand'),
+        });
+      } else {
+        message.success(t('maps.loadSuccess'));
+      }
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || t('maps.loadError'));
+      console.error('Load map error:', error);
+    }
   };
 
   // 删除整个地图
@@ -176,6 +245,57 @@ const MapManager: React.FC = () => {
     } catch (error) {
       message.error(t('maps.deleteError'));
       console.error('Delete map error:', error);
+    }
+  };
+
+  // 显示重命名对话框
+  const showRenameModal = (record: MapInfo) => {
+    setCurrentMap(record);
+    renameForm.setFieldsValue({ new_name: record.name });
+    setRenameModalVisible(true);
+  };
+
+  // 处理重命名
+  const handleRename = async () => {
+    try {
+      const values = await renameForm.validateFields();
+      await apiService.maps.rename(currentMap!.name, values.new_name);
+      message.success(t('maps.renameSuccess'));
+      setRenameModalVisible(false);
+      renameForm.resetFields();
+      loadMaps();
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || t('maps.renameError'));
+      console.error('Rename map error:', error);
+    }
+  };
+
+  // 显示编辑元数据对话框
+  const showEditMetadataModal = (record: MapInfo) => {
+    setCurrentMap(record);
+    metadataForm.setFieldsValue({
+      description: record.description || '',
+      tags: record.tags || [],
+    });
+    setEditMetadataModalVisible(true);
+  };
+
+  // 处理元数据更新
+  const handleUpdateMetadata = async () => {
+    try {
+      const values = await metadataForm.validateFields();
+      await apiService.maps.updateMetadata(
+        currentMap!.name,
+        values.description,
+        values.tags
+      );
+      message.success(t('maps.editSuccess'));
+      setEditMetadataModalVisible(false);
+      metadataForm.resetFields();
+      loadMaps();
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || t('maps.editError'));
+      console.error('Update metadata error:', error);
     }
   };
 
@@ -349,7 +469,7 @@ const MapManager: React.FC = () => {
     {
       title: t('maps.actions'),
       key: 'actions',
-      width: 200,
+      width: 280,
       fixed: 'right' as const,
       render: (_: any, record: MapInfo) => (
         <Space>
@@ -361,6 +481,20 @@ const MapManager: React.FC = () => {
           >
             {t('maps.load')}
           </Button>
+          <Tooltip title={t('maps.rename')}>
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => showRenameModal(record)}
+            />
+          </Tooltip>
+          <Tooltip title={t('maps.editMetadata')}>
+            <Button
+              size="small"
+              icon={<FormOutlined />}
+              onClick={() => showEditMetadataModal(record)}
+            />
+          </Tooltip>
           <Popconfirm
             title={t('maps.deleteConfirm')}
             description={t('maps.deleteWarning', { name: record.name })}
@@ -369,9 +503,7 @@ const MapManager: React.FC = () => {
             cancelText={t('common.cancel')}
             okButtonProps={{ danger: true }}
           >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              {t('common.delete')}
-            </Button>
+            <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
       ),
@@ -484,6 +616,96 @@ const MapManager: React.FC = () => {
           }}
         />
       </Card>
+
+      {/* 重命名对话框 */}
+      <Modal
+        title={t('maps.renameMap')}
+        open={renameModalVisible}
+        onOk={handleRename}
+        onCancel={() => {
+          setRenameModalVisible(false);
+          renameForm.resetFields();
+        }}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+      >
+        <Form form={renameForm} layout="vertical">
+          <Form.Item
+            name="new_name"
+            label={t('maps.newName')}
+            rules={[
+              { required: true, message: t('maps.newName') },
+              {
+                pattern: /^[a-zA-Z0-9_-]+$/,
+                message: t('maps.renameValidation'),
+              },
+            ]}
+          >
+            <Input placeholder={t('maps.newName')} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 编辑元数据对话框 */}
+      <Modal
+        title={t('maps.editMetadata')}
+        open={editMetadataModalVisible}
+        onOk={handleUpdateMetadata}
+        onCancel={() => {
+          setEditMetadataModalVisible(false);
+          metadataForm.resetFields();
+        }}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        width={600}
+      >
+        <Form form={metadataForm} layout="vertical">
+          <Form.Item name="description" label={t('maps.description')}>
+            <Input.TextArea
+              rows={4}
+              placeholder={t('maps.description')}
+            />
+          </Form.Item>
+          <Form.Item name="tags" label={t('maps.tags')}>
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+              {t('maps.addTag')}
+            </Typography.Paragraph>
+            <Input
+              placeholder={t('maps.addTag')}
+              onPressEnter={(e) => {
+                const input = e.currentTarget;
+                const value = input.value.trim();
+                if (value) {
+                  const currentTags = metadataForm.getFieldValue('tags') || [];
+                  if (!currentTags.includes(value)) {
+                    metadataForm.setFieldsValue({
+                      tags: [...currentTags, value],
+                    });
+                  }
+                  input.value = '';
+                }
+              }}
+            />
+            <div style={{ marginTop: 8 }}>
+              {(metadataForm.getFieldValue('tags') || []).map((tag: string) => (
+                <Tag
+                  key={tag}
+                  closable
+                  onClose={() => {
+                    const currentTags = metadataForm.getFieldValue('tags') || [];
+                    metadataForm.setFieldsValue({
+                      tags: currentTags.filter((t: string) => t !== tag),
+                    });
+                  }}
+                  style={{ marginBottom: 4 }}
+                >
+                  {tag}
+                </Tag>
+              ))}
+            </div>
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

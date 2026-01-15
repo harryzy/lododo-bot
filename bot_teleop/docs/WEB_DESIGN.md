@@ -648,17 +648,18 @@ interface WaypointFile {
    - 缩略图预览
 
 2. **地图操作**
-   - 加载地图（切换定位地图）
-   - 删除地图
-   - 重命名地图
+   - ✅ 加载地图（切换定位地图）- **实现状态**: 方案2-增强版（返回launch命令）
+   - ✅ 删除地图
+   - ✅ 重命名地图
+   - ⚠️ **技术限制说明**: RTABMap无法在运行时动态切换地图，必须重启launch文件
 
 3. **地图保存**
    - 探索完成后保存地图
    - 输入地图名称和描述
 
 4. **地图元数据管理**
-   - 添加标签（如：office, warehouse）
-   - 添加描述
+   - ✅ 添加标签（如：office, warehouse）
+   - ✅ 添加描述
 
 #### 3.4.2 API设计
 
@@ -672,10 +673,24 @@ async def list_maps() -> List[MapInfo]:
 
 @app.post("/api/maps/{map_name}/load")
 async def load_map(map_name: str):
-    """加载地图（通过bot_cmd_interface）"""
-    request = create_load_map_request(map_name)
-    await terminal_node.send_request(request)
-    return {"status": "loading"}
+    """加载地图（返回launch命令）
+    
+    ⚠️ 技术限制 (2026-01-15):
+    - RTABMap的地图加载需要在launch文件启动时指定 map_name:=... 参数
+    - 无法在运行时动态切换地图（需要重启rtabmap节点）
+    - 当前实现: 返回完整的launch命令供用户在终端执行
+    
+    🔮 未来改进方向:
+    - 研究RTABMap的动态地图加载机制
+    - 可能的方案: rosservice call /rtabmap/reset + 重新加载数据库
+    - 或者: 实现自动重启rtabmap节点的功能（需要launch文件重构）
+    """
+    # 返回launch命令而非立即加载
+    return {
+        "requires_restart": True,
+        "launch_command": f"ros2 launch ... map_name:={map_name}",
+        "note": "RTABMap limitation: map switching requires restart"
+    }
 
 @app.post("/api/maps/{map_name}/save")
 async def save_map(map_name: str, metadata: MapMetadata):
@@ -687,6 +702,16 @@ async def save_map(map_name: str, metadata: MapMetadata):
 @app.delete("/api/maps/{map_name}")
 async def delete_map(map_name: str):
     """删除地图"""
+    pass
+
+@app.patch("/api/maps/{map_name}/rename")
+async def rename_map(map_name: str, new_name: str):
+    """重命名地图（更新目录名和map_library.yaml）"""
+    pass
+
+@app.patch("/api/maps/{map_name}/metadata")
+async def update_metadata(map_name: str, description: str, tags: List[str]):
+    """更新地图元数据"""
     pass
 ```
 

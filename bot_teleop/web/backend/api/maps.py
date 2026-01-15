@@ -123,6 +123,31 @@ class SwitchVersionResponse(BaseModel):
     new_version: int
 
 
+class RenameMapRequest(BaseModel):
+    """重命名地图请求"""
+    new_name: str
+
+
+class RenameMapResponse(BaseModel):
+    """重命名地图响应"""
+    success: bool
+    message: str
+    old_name: str
+    new_name: str
+
+
+class UpdateMetadataRequest(BaseModel):
+    """更新元数据请求"""
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class UpdateMetadataResponse(BaseModel):
+    """更新元数据响应"""
+    success: bool
+    message: str
+
+
 # ============================================
 # 工具函数
 # ============================================
@@ -315,7 +340,7 @@ async def get_map_info(map_name: str):
 
 @router.post("/maps/load")
 async def load_map(req: MapLoadRequest):
-    """加载地图"""
+    """加载地图 - 返回launch命令（RTABMap需要重启节点才能切换地图）"""
     try:
         maps_dir = get_maps_directory()
         map_path = maps_dir / req.map_name
@@ -323,17 +348,41 @@ async def load_map(req: MapLoadRequest):
         if not map_path.exists():
             raise HTTPException(status_code=404, detail=f"Map '{req.map_name}' not found")
         
-        if not (map_path / "rtabmap.db").exists():
+        # 检查必要的文件
+        has_db = False
+        for db_file in ["rtabmap.db", f"rtabmap_v{req.version or 1}.db", f"{req.map_name}_v{req.version or 1}.db"]:
+            if (map_path / db_file).exists():
+                has_db = True
+                break
+        
+        if not has_db:
             raise HTTPException(
                 status_code=400,
-                detail=f"Map '{req.map_name}' does not have rtabmap.db"
+                detail=f"Map '{req.map_name}' does not have RTABMap database file"
             )
+        
+        # 生成launch命令（根据是否指定版本）
+        version_param = f" version:={req.version}" if req.version else ""
+        launch_cmd = (
+            f"ros2 launch bot_bringup simulation_mission_planner_localization.launch.py "
+            f"map_name:={req.map_name}{version_param}"
+        )
+        
+        # 生成硬件launch命令
+        hw_launch_cmd = (
+            f"ros2 launch bot_bringup hardware_mission_planner_localization.launch.py "
+            f"map_name:={req.map_name}{version_param}"
+        )
         
         return {
             "success": True,
-            "message": f"To load map '{req.map_name}', restart launch file with map_name:={req.map_name}",
+            "requires_restart": True,
+            "message": "Map loading requires system restart (RTABMap limitation)",
             "map_name": req.map_name,
-            "map_path": str(map_path)
+            "version": req.version,
+            "launch_command": launch_cmd,
+            "hardware_launch_command": hw_launch_cmd,
+            "note": "RTABMap cannot dynamically switch maps. Please restart the launch file with the map_name parameter."
         }
         
     except HTTPException:
@@ -400,6 +449,109 @@ async def delete_map(map_name: str):
         return DeleteMapResponse(
             success=True,
             message=f"Map '{map_name}' deleted successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/maps/{map_name}/rename", response_model=RenameMapResponse)
+async def rename_map(map_name: str, req: RenameMapRequest):
+    """重命名地图"""
+    try:
+        maps_dir = get_maps_directory()
+        old_map_path = maps_dir / map_name
+        new_map_path = maps_dir / req.new_name
+        
+        if not old_map_path.exists():
+            raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found")
+        
+        if new_map_path.exists():
+            raise HTTPException(status_code=400, detail=f"Map '{req.new_name}' already exists")
+        
+        # 验证新名称（只允许字母、数字、下划线、连字符）
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', req.new_name):
+            raise HTTPException(
+                status_code=400, 
+                detail="Map name can only contain letters, numbers, underscores and hyphens"
+            )
+        
+        # 重命名目录
+        old_map_path.rename(new_map_path)
+        
+        # 更新map_library.yaml
+        library_file = maps_dir / "map_library.yaml"
+        if library_file.exists():
+            with open(library_file, 'r', encoding='utf-8') as f:
+                library_data = yaml.safe_load(f) or {}
+            
+            maps_data = library_data.get('maps', {})
+            if map_name in maps_data:
+                # 复制旧数据到新key
+                maps_data[req.new_name] = maps_data[map_name]
+                # 更新file_path中的地图名
+                if 'file_path' in maps_data[req.new_name]:
+                    old_path = maps_data[req.new_name]['file_path']
+                    maps_data[req.new_name]['file_path'] = old_path.replace(map_name, req.new_name)
+                # 删除旧key
+                del maps_data[map_name]
+                library_data['maps'] = maps_data
+                
+                with open(library_file, 'w', encoding='utf-8') as f:
+                    yaml.dump(library_data, f, default_flow_style=False, allow_unicode=True)
+        
+        # 重命名目录内的文件（如果文件名包含地图名）
+        import shutil
+        for old_file in new_map_path.glob(f"{map_name}_v*"):
+            new_file_name = old_file.name.replace(map_name, req.new_name)
+            old_file.rename(new_map_path / new_file_name)
+        
+        return RenameMapResponse(
+            success=True,
+            message=f"Map renamed from '{map_name}' to '{req.new_name}'",
+            old_name=map_name,
+            new_name=req.new_name
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/maps/{map_name}/metadata", response_model=UpdateMetadataResponse)
+async def update_map_metadata(map_name: str, req: UpdateMetadataRequest):
+    """更新地图元数据（描述和标签）"""
+    try:
+        maps_dir = get_maps_directory()
+        library_file = maps_dir / "map_library.yaml"
+        
+        if not library_file.exists():
+            raise HTTPException(status_code=404, detail="Map library not found")
+        
+        with open(library_file, 'r', encoding='utf-8') as f:
+            library_data = yaml.safe_load(f) or {}
+        
+        maps_data = library_data.get('maps', {})
+        if map_name not in maps_data:
+            raise HTTPException(status_code=404, detail=f"Map '{map_name}' not found")
+        
+        # 更新元数据
+        if req.description is not None:
+            maps_data[map_name]['description'] = req.description
+        if req.tags is not None:
+            maps_data[map_name]['tags'] = req.tags
+        
+        # 保存更新
+        with open(library_file, 'w', encoding='utf-8') as f:
+            yaml.dump(library_data, f, default_flow_style=False, allow_unicode=True)
+        
+        return UpdateMetadataResponse(
+            success=True,
+            message=f"Metadata updated for map '{map_name}'"
         )
         
     except HTTPException:

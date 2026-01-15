@@ -39,11 +39,26 @@
     "loadFailed": "Failed to load map",
     "loadConfirmTitle": "Confirm Load Map",
     "loadConfirmContent": "Loading map {{mapName}} will interrupt current tasks. Continue?",
+    "loadRequiresRestart": "Map Loading Requires System Restart",
+    "rtabmapLimitation": "Due to RTABMap technical limitations, switching maps requires restarting the launch file. Please execute the following command in terminal:",
+    "simulationCommand": "Simulation Environment Command",
+    "hardwareCommand": "Hardware Environment Command",
     "delete": "Delete",
     "deleteSuccess": "Map {{mapName}} deleted successfully",
     "deleteFailed": "Failed to delete map",
     "deleteConfirmTitle": "Confirm Delete Map",
     "deleteConfirmContent": "Are you sure you want to delete map {{mapName}}? This action cannot be undone.",
+    "rename": "Rename",
+    "renameMap": "Rename Map",
+    "newName": "New Name",
+    "renameSuccess": "Map renamed successfully",
+    "renameError": "Failed to rename map",
+    "renameValidation": "Map name can only contain letters, numbers, underscores and hyphens",
+    "edit": "Edit",
+    "editMetadata": "Edit Metadata",
+    "addTag": "Add Tag",
+    "editSuccess": "Metadata updated successfully",
+    "editError": "Failed to update metadata",
     "totalCount": "Total {{count}} maps"
   },
   "connection": {
@@ -195,6 +210,10 @@
     "yes": "Yes",
     "no": "No",
     "actions": "Actions",
-    "delete": "Delete"
+    "delete": "Delete",
+    "copy": "Copy",
+    "copied": "Copied to clipboard",
+    "understand": "I Understand",
+    "total": "Total"
   }
 }
