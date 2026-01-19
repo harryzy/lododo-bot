@@ -9,14 +9,14 @@
 # ============================================================================
 serial:
   # ST3215舵机串口 / ST3215 Servo Serial Port
-  servo_port: '/dev/ttyACM0'
+  servo_port: '/dev/st3215_servo'  # 使用udev规则固定设备名 / Fixed by udev rule
   servo_baudrate: 1000000  # 1Mbps，备选115200 / 1Mbps, fallback to 115200
   servo_timeout: 0.01      # 10ms读取超时 / 10ms read timeout
   servo_retry_times: 3     # 失败重试次数 / Retry times on failure
   
   # 亚博6轴IMU串口 / Yabo 6-axis IMU Serial Port
-  imu_port: '/dev/ttyUSB0'
-  imu_baudrate: 115200     # 待确认，常见115200或230400 / TBD, common 115200 or 230400
+  imu_port: '/dev/ybimu'   # 使用udev规则固定设备名 / Fixed by udev rule
+  imu_baudrate: 115200     # 已确认 / Confirmed
   imu_timeout: 0.02        # 20ms读取超时 / 20ms read timeout
   imu_retry_times: 3       # 失败重试次数 / Retry times on failure
 
@@ -25,9 +25,9 @@ serial:
 # ============================================================================
 servo:
   # 舵机ID映射 / Servo ID Mapping
-  wheel_1_id: 1  # 轮子1对应舵机ID / Wheel 1 servo ID
-  wheel_2_id: 2  # 轮子2对应舵机ID / Wheel 2 servo ID
-  wheel_3_id: 3  # 轮子3对应舵机ID / Wheel 3 servo ID
+  wheel_1_id: 7  # 轮子1对应舵机ID / Wheel 1 servo ID
+  wheel_2_id: 8  # 轮子2对应舵机ID / Wheel 2 servo ID
+  wheel_3_id: 9  # 轮子3对应舵机ID / Wheel 3 servo ID
   
   # 舵机物理参数 / Servo Physical Parameters
   encoder_resolution: 4096  # 编码器分辨率（12位） / Encoder resolution (12-bit)
@@ -41,6 +41,13 @@ servo:
   # 舵机在线检测 / Servo Online Detection
   online_check_interval: 1.0  # 秒，超时判定为离线 / Seconds, timeout means offline
   startup_scan_enabled: true  # 启动时扫描所有舵机 / Scan all servos on startup
+  
+  # 舵机健康监控 / Servo Health Monitoring
+  health_check_interval: 3.0    # 秒，状态查询间隔 / Seconds, status query interval
+  temperature_warning: 55.0     # °C，温度警告阈值 / °C, temperature warning threshold
+  temperature_critical: 65.0    # °C，温度严重阈值 / °C, temperature critical threshold
+  load_warning: 80.0            # %，负载警告阈值 / %, load warning threshold
+  voltage_min: 10.5             # V，最低电压阈值 / V, minimum voltage threshold
 
 # ============================================================================
 # 亚博6轴IMU配置 / Yabo 6-axis IMU Configuration
@@ -55,9 +62,18 @@ imu:
   # 坐标系配置 / Coordinate Frame Configuration
   frame_id: 'imu_link'
   
+  # IMU物理坐标系（相对于base_link） / IMU Physical Coordinate System (relative to base_link)
+  # 如果IMU正装且三轴对齐，则全为0 / If IMU is mounted upright and aligned, all zeros
+  # 示例: IMU旋转180°安装（x向后），则 yaw: 3.14159 / Example: IMU rotated 180° (x backward), yaw: 3.14159
+  mounting_rotation:
+    roll: 0.0    # 绕X轴旋转（rad） / Rotation around X axis (rad)
+    pitch: 0.0   # 绕Y轴旋转（rad） / Rotation around Y axis (rad)
+    yaw: 0.0     # 绕Z轴旋转（rad） / Rotation around Z axis (rad)
+  
   # 静态零偏标定参数 / Static Bias Calibration Parameters
   calibration:
     enabled: true
+    calibration_file: 'calibration/imu_bias.yaml'  # 相对于工作空间根目录 / Relative to workspace root
     calibration_duration: 600  # 秒（10分钟静止标定） / Seconds (10 min stationary)
     gyro_bias_x: 0.0          # rad/s，标定后填写 / rad/s, fill after calibration
     gyro_bias_y: 0.0          # rad/s
@@ -66,10 +82,17 @@ imu:
     accel_bias_y: 0.0         # m/s²
     accel_bias_z: 0.0         # m/s²
   
-  # 数据协方差（需实测调整） / Data Covariance (adjust after testing)
-  angular_velocity_covariance: 0.01   # rad²/s²
-  linear_acceleration_covariance: 0.01  # m²/s⁴
-  orientation_covariance: 0.01         # rad²
+  # 数据协方差（根据数据手册+保守估计） / Data Covariance (based on datasheet + conservative estimate)
+  angular_velocity_covariance: 0.02   # rad²/s² (陀螺仪噪声)
+  linear_acceleration_covariance: 0.05  # m²/s⁴ (加速度计噪声)
+  orientation_covariance: 0.01         # rad² (姿态估计不确定度)
+  
+  # 滤波参数（imu_filter_node使用） / Filter parameters (for imu_filter_node)
+  filter:
+    enable_dynamic_bias: true           # 启用动态零偏补偿
+    low_pass_alpha: 0.2                 # 低通滤波系数 (截止频率约10Hz @ 50Hz采样)
+    median_window_size: 5               # 中值滤波窗口大小
+    complementary_alpha: 0.98           # 互补滤波系数（姿态融合）
 
 # ============================================================================
 # Astra Pro相机配置 / Astra Pro Camera Configuration
@@ -126,9 +149,9 @@ kinematics:
   max_linear_velocity_y: 0.5   # m/s
   max_angular_velocity: 0.8    # rad/s
   
-  # 加速度限制 / Acceleration Limits
-  max_linear_acceleration: 2.5  # m/s²
-  max_angular_acceleration: 2.0  # rad/s²
+  # 加速度限制（速度斜坡算法使用） / Acceleration Limits (for velocity ramp)
+  max_linear_acceleration: 0.5   # m/s² (分别限制线速度)
+  max_angular_acceleration: 1.0  # rad/s² (分别限制角速度)
 
 # ============================================================================
 # ros2_control配置 / ros2_control Configuration
@@ -167,16 +190,21 @@ odometry:
   # 发布频率 / Publishing Frequency
   publish_rate: 50  # Hz
   
-  # 协方差矩阵（真机需增大） / Covariance Matrix (increase for real robot)
+  # 协方差矩阵（初始保守估计，实测后调整） / Covariance Matrix (conservative initial values, tune after testing)
   pose_covariance:
-    xx: 0.1  # m²（仿真为0.001） / m² (0.001 in simulation)
-    yy: 0.1  # m²
-    tt: 0.2  # rad²（旋转不确定度更大） / rad² (rotation uncertainty higher)
+    xx: 0.1   # 位置不确定度 ±10cm / Position uncertainty ±10cm
+    yy: 0.1   # m²
+    tt: 0.3   # 角度不确定度 ±17° (0.3 rad) / Angular uncertainty ±17°
   
   twist_covariance:
     xx: 0.05  # (m/s)²
     yy: 0.05  # (m/s)²
     tt: 0.1   # (rad/s)²
+  
+  # 调参建议 / Tuning recommendations:
+  # - 实测直行1米，记录位置误差，调整xx/yy
+  # - 实测旋转360°，记录角度误差，调整tt
+  # - 使用rviz观察EKF协方差椭圆，确保不发散
 
 # ============================================================================
 # 启动配置 / Launch Configuration
@@ -224,10 +252,6 @@ safety:
   
   # 看门狗超时 / Watchdog Timeout
   watchdog_timeout: 2.0  # 秒，超时则紧急停止 / Seconds, emergency stop on timeout
-  
-  # 电池电压监控 / Battery Voltage Monitoring
-  battery_voltage_min: 10.5  # V，低于此值告警 / V, warning below this
-  battery_voltage_critical: 10.0  # V，低于此值停止运动 / V, stop motion below this
 
 # ============================================================================
 # 文件路径配置 / File Path Configuration
