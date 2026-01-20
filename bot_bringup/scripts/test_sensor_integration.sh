@@ -53,7 +53,7 @@ if [ -z "$AMENT_PREFIX_PATH" ]; then
 fi
 
 # 后台启动传感器
-ros2 launch bot_bringup sensor_bringup.launch.py > /tmp/sensor_test.log 2>&1 &
+ros2 launch bot_hardware sensor_bringup.launch.py > /tmp/sensor_test.log 2>&1 &
 LAUNCH_PID=$!
 
 echo "传感器启动中... (PID: $LAUNCH_PID)"
