@@ -6,6 +6,9 @@ import sys
 import math
 import random
 import threading
+import yaml
+import os
+from ament_index_python.packages import get_package_share_directory
 
 from YbImuLib import YbImuSerial
 
@@ -24,16 +27,35 @@ class ybimu_driver(Node):
 
 
     def init_topic(self):
-        port_list = ["/dev/myimu", "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2"]
+        # 从hardware_config.yaml读取IMU串口配置 / Read IMU port config from hardware_config.yaml
+        try:
+            config_path = os.path.join(
+                get_package_share_directory('bot_hardware'),
+                'config', 'hardware_config.yaml'
+            )
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            imu_port = config['serial']['imu_port']
+            imu_baudrate = config['serial']['imu_baudrate']
+            self.get_logger().info(f"Loading config: port={imu_port}, baudrate={imu_baudrate}")
+            
+            port_list = [imu_port, "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2"]
+        except Exception as e:
+            self.get_logger().warn(f"Failed to load config: {e}, using default ports")
+            port_list = ["/dev/myimu", "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2"]
+        
         for port in port_list:
             try:
                 self.robot = YbImuSerial(port)
                 self.get_logger().info("Open Ybimu Port OK:%s" % port)
                 break
-            except:
+            except Exception as e:
+                self.get_logger().debug(f"Failed to open {port}: {e}")
                 pass
         if self.robot is None:
             self.get_logger().error("---------Fail To Open Ybimu Serial------------")
+            self.get_logger().error(f"Tried ports: {port_list}")
             return
         self.robot.create_receive_threading()
 

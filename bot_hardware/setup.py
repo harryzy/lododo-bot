@@ -38,8 +38,12 @@ setup(
             # 硬件控制节点 / Hardware control node
             'omni_hardware_node = bot_hardware.omni_hardware_node:main',
             
+            # IMU驱动节点 / IMU driver nodes
+            'ybimu_driver = bot_hardware.imu_ros2_device.ybimu_driver:main',
+            'imu_filter_node = bot_hardware.imu_ros2_device.imu_filter_node:main',
+            'test_imu_coordinate = bot_hardware.imu_ros2_device.test_imu_coordinate:main',
+            
             # 工具命令 / Utility commands
-            # 'test_imu_coordinate = bot_hardware.tools.test_imu_coordinate:main',
             # 'check_timestamp_sync = bot_hardware.tools.check_timestamp_sync:main',
         ],
     },

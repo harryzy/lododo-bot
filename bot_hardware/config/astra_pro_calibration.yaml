@@ -1,0 +1,102 @@
+# Orbbec Astra Pro Camera Calibration (Factory)
+# Serial Number: 17121312643
+# Date: 2026-01-20
+
+color_camera:
+  image_width: 640
+  image_height: 480
+  camera_name: astra_pro_color
+  camera_matrix:
+    rows: 3
+    cols: 3
+    data: [570.3422047415297, 0.0, 319.5,
+           0.0, 570.3422047415297, 239.5,
+           0.0, 0.0, 1.0]
+  distortion_model: plumb_bob
+  distortion_coefficients:
+    rows: 1
+    cols: 5
+    data: [0.0, 0.0, 0.0, 0.0, 0.0]
+  rectification_matrix:
+    rows: 3
+    cols: 3
+    data: [1.0, 0.0, 0.0,
+           0.0, 1.0, 0.0,
+           0.0, 0.0, 1.0]
+  projection_matrix:
+    rows: 3
+    cols: 4
+    data: [570.3422047415297, 0.0, 319.5, 0.0,
+           0.0, 570.3422047415297, 239.5, 0.0,
+           0.0, 0.0, 1.0, 0.0]
+
+depth_camera:
+  image_width: 640
+  image_height: 480
+  camera_name: astra_pro_depth
+  camera_matrix:
+    rows: 3
+    cols: 3
+    data: [570.3422047415297, 0.0, 319.5,
+           0.0, 570.3422047415297, 239.5,
+           0.0, 0.0, 1.0]
+  distortion_model: plumb_bob
+  distortion_coefficients:
+    rows: 1
+    cols: 5
+    data: [0.0, 0.0, 0.0, 0.0, 0.0]
+  rectification_matrix:
+    rows: 3
+    cols: 3
+    data: [1.0, 0.0, 0.0,
+           0.0, 1.0, 0.0,
+           0.0, 0.0, 1.0]
+  projection_matrix:
+    rows: 3
+    cols: 4
+    data: [570.3422047415297, 0.0, 319.5, 0.0,
+           0.0, 570.3422047415297, 239.5, 0.0,
+           0.0, 0.0, 1.0, 0.0]
+
+# Camera specifications
+specifications:
+  depth_range: [0.4, 2.5]  # meters
+  depth_technology: "IR Structured Light"
+  rgb_interface: "UVC (USB Video Class)"
+  depth_interface: "OpenNI 2.x"
+  usb_devices:
+    - vendor_id: "0x2bc5"
+      product_id: "0x0403"
+      description: "Astra Pro Depth Camera"
+    - vendor_id: "0x2bc5"
+      product_id: "0x0501"
+      description: "Astra Pro HD Camera (RGB)"
+
+# Known issues
+issues:
+  - description: "RGB stream low frequency (2-5Hz)"
+    cause: "UVC bandwidth or driver limitation"
+    impact: "Acceptable for SLAM (>1Hz required)"
+    workaround: "Use USB 3.0 port if available"
+  
+  - description: "IR and RGB cannot run simultaneously"
+    cause: "Hardware limitation of Astra Pro"
+    solution: "Set enable_ir:=false in launch"
+
+# Launch command
+launch_command: "ros2 launch astra_camera astra_pro.launch.xml"
+
+# Topics published
+topics:
+  - name: "/camera/color/image_raw"
+    type: "sensor_msgs/msg/Image"
+    encoding: "bgr8"
+  - name: "/camera/depth/image_raw"  
+    type: "sensor_msgs/msg/Image"
+    encoding: "16UC1"
+  - name: "/camera/depth/points"
+    type: "sensor_msgs/msg/PointCloud2"
+  - name: "/camera/color/camera_info"
+    type: "sensor_msgs/msg/CameraInfo"
+  - name: "/camera/depth/camera_info"
+    type: "sensor_msgs/msg/CameraInfo"

@@ -15,7 +15,7 @@ serial:
   servo_retry_times: 3     # 失败重试次数 / Retry times on failure
   
   # 亚博6轴IMU串口 / Yabo 6-axis IMU Serial Port
-  imu_port: '/dev/ybimu'   # 使用udev规则固定设备名 / Fixed by udev rule
+  imu_port: '/dev/ttyUSB0'   # 使用udev规则固定设备名 / Fixed by udev rule
   imu_baudrate: 115200     # 已确认 / Confirmed
   imu_timeout: 0.02        # 20ms读取超时 / 20ms read timeout
   imu_retry_times: 3       # 失败重试次数 / Retry times on failure
