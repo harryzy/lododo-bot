@@ -9,7 +9,7 @@
 # ============================================================================
 serial:
   # ST3215舵机串口 / ST3215 Servo Serial Port
-  servo_port: '/dev/st3215_servo'  # 使用udev规则固定设备名 / Fixed by udev rule
+  servo_port: '/dev/ttyACM0'  # 使用udev规则固定设备名 / Fixed by udev rule
   servo_baudrate: 1000000  # 1Mbps，备选115200 / 1Mbps, fallback to 115200
   servo_timeout: 0.01      # 10ms读取超时 / 10ms read timeout
   servo_retry_times: 3     # 失败重试次数 / Retry times on failure
@@ -25,9 +25,9 @@ serial:
 # ============================================================================
 servo:
   # 舵机ID映射 / Servo ID Mapping
-  wheel_1_id: 7  # 轮子1对应舵机ID / Wheel 1 servo ID
-  wheel_2_id: 8  # 轮子2对应舵机ID / Wheel 2 servo ID
-  wheel_3_id: 9  # 轮子3对应舵机ID / Wheel 3 servo ID
+  wheel_1_id: 8  # 轮子1对应舵机ID / Wheel 1 servo ID
+  wheel_2_id: 9  # 轮子2对应舵机ID / Wheel 2 servo ID
+  wheel_3_id: 7  # 轮子3对应舵机ID / Wheel 3 servo ID
   
   # 舵机物理参数 / Servo Physical Parameters
   encoder_resolution: 4096  # 编码器分辨率（12位） / Encoder resolution (12-bit)
@@ -42,12 +42,28 @@ servo:
   online_check_interval: 1.0  # 秒，超时判定为离线 / Seconds, timeout means offline
   startup_scan_enabled: true  # 启动时扫描所有舵机 / Scan all servos on startup
   
-  # 舵机健康监控 / Servo Health Monitoring
-  health_check_interval: 3.0    # 秒，状态查询间隔 / Seconds, status query interval
-  temperature_warning: 55.0     # °C，温度警告阈值 / °C, temperature warning threshold
-  temperature_critical: 65.0    # °C，温度严重阈值 / °C, temperature critical threshold
-  load_warning: 80.0            # %，负载警告阈值 / %, load warning threshold
-  voltage_min: 10.5             # V，最低电压阈值 / V, minimum voltage threshold
+  # 舵机健康监控子区域 / Servo Health Monitoring Subsection
+  # 参考设计文档§1.4.1 (行594-659) / Reference: Design doc §1.4.1 (Line 594-659)
+  health_monitor:
+    # 监控阈值 / Monitoring Thresholds
+    consecutive_failures_threshold: 5  # 连续失败阈值 / Consecutive failure threshold
+    temperature_warning: 65.0          # °C，温度警告阈值 / Temperature warning threshold
+    temperature_critical: 75.0         # °C，温度严重阈值 / Temperature critical threshold
+    voltage_min: 11.0                  # V，最小电压 / Minimum voltage
+    voltage_max: 13.0                  # V，最大电压 / Maximum voltage
+    load_warning: 80.0                 # %，负载警告阈值 / Load warning threshold
+    
+    # 故障处理策略 / Fault Handling Strategy
+    fault_handling:
+      on_consecutive_failures: "emergency_stop"  # emergency_stop | graceful_stop | log_only
+      on_temperature_critical: "emergency_stop"
+      on_voltage_out_of_range: "graceful_stop"
+    
+    # 日志配置 / Logging Configuration
+    logging:
+      enable_periodic_health_check: true
+      health_check_interval: 5.0  # 秒，定期健康检查间隔 / Health check interval (s)
+      log_level: "WARN"            # DEBUG | INFO | WARN | ERROR | CRITICAL
 
 # ============================================================================
 # 亚博6轴IMU配置 / Yabo 6-axis IMU Configuration
@@ -152,6 +168,24 @@ kinematics:
   # 加速度限制（速度斜坡算法使用） / Acceleration Limits (for velocity ramp)
   max_linear_acceleration: 0.5   # m/s² (分别限制线速度)
   max_angular_acceleration: 1.0  # rad/s² (分别限制角速度)
+  
+  # 速度斜坡限制器高级配置 / VelocityRamp Advanced Configuration
+  # 参考设计文档§3.2.4 Q4 / Reference: Design doc §3.2.4 Q4
+  velocity_ramp:
+    # 急停参数 / Emergency Stop Parameters
+    emergency_stop:
+      enable: true
+      auto_recovery_time: 15.0   # 秒，急停后自动恢复时间 / Auto recovery time (s)
+      manual_recovery: false     # 是否需要手动恢复 / Require manual recovery
+    
+    # 速度突变检测 / Velocity Jump Detection
+    velocity_jump_threshold: 0.3  # m/s，速度突变阈值 / Velocity jump threshold
+    
+    # 初始化参数 / Initialization Parameters
+    initialization:
+      timeout: 2.0                # 秒，初始化超时 / Initialization timeout (s)
+      retry_count: 3              # 初始化失败重试次数 / Retry count on init failure
+      wait_time: 0.02             # 秒，两次读取间隔(20ms) / Wait time between reads (20ms)
 
 # ============================================================================
 # ros2_control配置 / ros2_control Configuration

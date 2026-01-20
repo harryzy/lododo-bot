@@ -102,6 +102,67 @@
 
 ---
 
+## ⚠️ 重要架构决策 (2026-01-19)
+
+### 不使用ros2_control框架 - 采用独立硬件控制节点架构
+
+**决策背景**:
+本项目定位为**Python原型机器人**，设计重点在于快速验证算法和功能，而非构建可复用的通用硬件平台。经过P2.6阶段的技术调研，我们决定**不使用ros2_control框架**，改为采用**独立ROS2硬件控制节点**架构。
+
+**核心理由** ⭐⭐⭐⭐⭐:
+1. **降低实现复杂度**: 避免Python与C++ ros2_control框架的桥接工作（节省2-3天开发时间）
+2. **保持代码纯Python**: 全部核心实现使用Python，无需C++知识，降低维护门槛
+3. **简化调试流程**: 直接使用ROS2标准工具（ros2 topic, ros2 node），无需ros2_control特定工具
+4. **满足功能需求**: 本项目只有一种控制器（全向轮控制），无需ros2_control的动态加载特性
+5. **迁移成本可控**: 未来如需转为ros2_control架构，核心逻辑（OmniHardwareInterface）无需重写
+
+**架构变更**:
+```
+原设计（ros2_control）:                              新设计（Standalone节点）:
+Nav2 → controller_manager                          Nav2 → /cmd_vel → OmniHardwareNode
+       ↓                                                              ↓
+   omni_wheel_controller                              OmniHardwareInterface (复用)
+       ↓                                                              ↓
+   OmniHardwareInterface                                    ST3215Driver
+       ↓
+   ST3215Driver
+```
+
+**实现方案**:
+- **OmniHardwareNode**: 新建独立ROS2节点（~150行Python）
+  - 订阅 `/cmd_vel` (geometry_msgs/Twist)
+  - 发布 `/wheel/odom` (nav_msgs/Odometry)
+  - 发布 `/tf` (base_link → odom)
+  - 50Hz控制循环 (Timer)
+  - 内部调用OmniHardwareInterface完成硬件控制
+- **OmniHardwareInterface**: 保持现有实现（659行Python，已完成P2阶段开发）
+  - read()方法：读取编码器 → 正向运动学 → 里程计计算
+  - write()方法：速度指令 → VelocityRamp限制 → 逆向运动学 → 舵机控制
+  - 所有P1组件集成：ST3215Driver、EncoderHandler、VelocityRamp、ServoHealthMonitor
+
+**不可用功能** (对本项目无影响):
+- ❌ `ros2 control list_controllers` - 无需动态控制器管理
+- ❌ `ros2 control load_controller` - 只有一种控制器
+- ❌ `controller_manager` 配置文件 - 简化为单节点配置
+
+**完全正常功能** ✅:
+- ✅ Nav2导航功能（通过/cmd_vel话题）
+- ✅ RTABMap SLAM（通过/wheel/odom话题）
+- ✅ robot_localization EKF（通过/wheel/odom + /imu/data）
+- ✅ Mission Planner任务管理
+- ✅ 所有现有仿真功能
+
+**详细架构决策文档**: 参见 [ARCHITECTURE_DECISION_STANDALONE_NODE.md](../../docs/ARCHITECTURE_DECISION_STANDALONE_NODE.md)
+
+**对本设计文档的影响**:
+- ✅ §1.1 架构图已更新（移除ros2_control框架内容）
+- ✅ §1.2 分层设计说明已更新
+- ✅ §1.3 设计原则已更新
+- ✅ §3.2.5 OmniHardwareInterface集成示例已更新（展示如何在独立节点中使用）
+- ⚠️ 原ros2_control相关章节保留（标记为参考），作为未来迁移路径的技术储备
+
+---
+
 ### v0.6 重点变更细节 (Round 5安全性增强)
 
 **1. VelocityRamp安全初始化** 🔴 CRITICAL (§3.2.4 Q4新增):
@@ -349,7 +410,7 @@
 
 ## 1. 系统架构设计
 
-### 1.1 整体架构图
+### 1.1 整体架构图 ✅ (v2.0 - 独立硬件控制节点架构)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -368,26 +429,33 @@
            │                     │                     │
            ▼                     ▼                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        ROS2 硬件接口层                               │
+│                   ROS2 硬件控制层 (Standalone Nodes)                 │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│   ┌──────────────────────────────────────────────────────────┐    │
-│   │  ST3215Driver                                            │    │
-│   │  - 串口通信管理                                            │    │
-│   │  - 指令封装/解析                                           │    │
-│   │  - 错误处理与重试                                          │    │
-│   └────────────┬─────────────────────────────────────────────┘    │
-│                │                                                   │
-│   ┌────────────▼──────────────────────────────────────────────┐   │
-│   │  OmniHardwareInterface (ros2_control SystemInterface)     │   │
-│   │  - read(): 读取编码器 → 正向运动学 → /wheel/odom         │   │
-│   │  - write(): /cmd_vel → 逆向运动学 → 舵机速度指令          │   │
-│   │  - 50Hz控制循环                                           │   │
-│   └───────────────────────────────────────────────────────────┘   │
+│   ┌─────────────────────────────────────────────────────────┐      │
+│   │  OmniHardwareNode (独立ROS2节点, 50Hz)                   │      │
+│   │  - 订阅 /cmd_vel (geometry_msgs/Twist)                  │      │
+│   │  - 发布 /wheel/odom (nav_msgs/Odometry)                 │      │
+│   │  - 发布 /tf (base_link → odom)                          │      │
+│   │                                                          │      │
+│   │  ┌────────────────────────────────────────────────┐    │      │
+│   │  │  OmniHardwareInterface (核心逻辑)               │    │      │
+│   │  │  - read(): 编码器 → 正向运动学 → 里程计        │    │      │
+│   │  │  - write(): cmd_vel → VelocityRamp →          │    │      │
+│   │  │             逆向运动学 → 舵机控制              │    │      │
+│   │  │                                                │    │      │
+│   │  │  集成组件:                                      │    │      │
+│   │  │  - ST3215Driver (串口通信)                     │    │      │
+│   │  │  - EncoderHandler (溢出处理)                   │    │      │
+│   │  │  - VelocityRamp (速度限制+急停)                │    │      │
+│   │  │  - OmniKinematics (运动学)                     │    │      │
+│   │  │  - ServoHealthMonitor (健康监控)              │    │      │
+│   │  └────────────────────────────────────────────────┘    │      │
+│   └─────────────────────────────────────────────────────────┘      │
 │                                                                     │
 │   ┌──────────────────────┐      ┌──────────────────────┐          │
-│   │  astra_camera_node   │      │  imu_driver_node     │          │
-│   │  (官方驱动)           │      │  (待确定型号)         │          │
+│   │  astra_camera_node   │      │  imu_filter_node     │          │
+│   │  (官方驱动)           │      │  (坐标转换+滤波)      │          │
 │   │  → /camera/*         │      │  → /imu/data         │          │
 │   └──────────────────────┘      └──────────────────────┘          │
 │                                                                     │
@@ -408,8 +476,8 @@
 │                                                                     │
 │   ┌─────────────────────────────────────────────────────────┐      │
 │   │  Nav2 Navigation Stack                                  │      │
-│   │  - 路径规划、局部避障、控制器                              │      │
-│   │  - DWB控制器 → /cmd_vel                                 │      │
+│   │  - 路径规划、局部避障、DWB控制器                          │      │
+│   │  - 发布 /cmd_vel → OmniHardwareNode                     │      │
 │   └─────────────────────────────────────────────────────────┘      │
 │                                                                     │
 │   ┌─────────────────────────────────────────────────────────┐      │
@@ -418,31 +486,41 @@
 │   └─────────────────────────────────────────────────────────┘      │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
+
+【架构要点】:
+✅ 不使用ros2_control框架 - 采用独立ROS2硬件控制节点
+✅ OmniHardwareNode: 纯Python实现，订阅/cmd_vel，发布/wheel/odom
+✅ OmniHardwareInterface: 核心逻辑复用（已完成P2阶段开发）
+✅ 上层导航功能完全不受影响 (Nav2/RTABMap/EKF/MissionPlanner)
 ```
 
-### 1.2 分层设计说明
+### 1.2 分层设计说明 ✅ (v2.0 - 独立节点架构)
 
 **硬件层** (新开发):
-- 直接与物理硬件交互
-- 提供ROS2标准接口
+- 直接与物理硬件交互（ST3215舵机、IMU传感器、Astra相机）
+- 通过串口/USB/I2C通信
 - 硬件抽象，对上层透明
 
-**ROS2硬件接口层** (新开发):
-- ST3215Driver: 封装串口协议
-- OmniHardwareInterface: ros2_control标准接口
-- 传感器驱动集成
+**ROS2硬件控制层** (新开发 - 独立节点架构):
+- **OmniHardwareNode**: 独立ROS2节点，订阅/cmd_vel，发布/wheel/odom和/tf
+- **OmniHardwareInterface**: 核心硬件控制逻辑（read/write方法，集成所有P1组件）
+- **ST3215Driver**: 封装串口协议（指令封装、错误处理、重试机制）
+- **传感器驱动**: imu_filter_node（坐标转换+滤波）、astra_camera_node（官方驱动）
 
 **导航与感知层** (复用):
-- 与仿真环境共享代码
+- 与仿真环境共享代码（Nav2、RTABMap、robot_localization、MissionPlanner）
 - 通过配置切换（EKF配置、use_sim_time等）
 - 无需修改核心算法
+- 通过标准ROS2话题(/cmd_vel, /wheel/odom, /imu/data)交互
 
-### 1.3 设计原则
+### 1.3 设计原则 ✅ (v2.0 - 更新)
 
 1. **最小侵入原则**: 尽量复用现有仿真代码，只在硬件接口层新增代码
-2. **配置驱动**: 通过YAML配置和launch参数区分仿真/真机
-3. **标准接口**: 遵循ros2_control标准，便于未来扩展
-4. **故障隔离**: 硬件层故障不影响上层逻辑，能优雅降级
+2. **配置驱动**: 通过YAML配置和launch参数区分仿真/真机（单一配置源原则）
+3. **标准ROS2接口**: 使用标准话题和消息类型（/cmd_vel, /wheel/odom, /tf），便于工具调试
+4. **故障隔离**: 硬件层故障不影响上层逻辑，能优雅降级（VelocityRamp急停、ServoHealthMonitor监控）
+5. **简化架构**: 采用独立节点而非ros2_control框架，降低实现复杂度（Python原型机定位）
+6. **迁移友好**: 核心逻辑（OmniHardwareInterface）与框架解耦，未来可快速迁移到ros2_control（2-3天）
 
 ### 1.4 包结构设计 ✅ (已确认)
 
@@ -2589,140 +2667,119 @@ class VelocityRamp:
 
 ---
 
-#### 3.2.5 OmniHardwareInterface 完整集成示例 ✅
+#### 3.2.5 OmniHardwareInterface 完整集成示例 ✅ (v2.0 - 独立节点架构)
 
-本节展示如何在 `OmniHardwareInterface` 中集成 `EncoderHandler`、`VelocityRamp` 和 `OmniKinematics` 三个工具类，实现完整的硬件接口。
+本节展示如何在**独立ROS2节点（OmniHardwareNode）**中集成 `OmniHardwareInterface` 及其工具类（`EncoderHandler`、`VelocityRamp`、`OmniKinematics`），实现完整的硬件控制。
+
+**🎯 架构关键点** (2026-01-19更新):
+- ❌ 不使用ros2_control框架（不依赖controller_manager）
+- ✅ OmniHardwareNode: 独立rclpy.Node，50Hz定时器
+- ✅ OmniHardwareInterface: 纯逻辑类（无ROS2依赖），包含read/write方法
+- ✅ 数据流: /cmd_vel → write() → 舵机，read() → /wheel/odom
 
 **数据流图**:
 ```
-read() 方法:
-  ┌─────────────────────────────────────────────────────────┐
-  │ 1. 读取编码器位置 (ticks)                                 │
-  │    driver.read_position(servo_id) → [pos1, pos2, pos3]  │
-  └──────────────┬──────────────────────────────────────────┘
-                 ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │ 2. 处理编码器溢出 (EncoderHandler)                        │
-  │    get_position_delta() → [delta1, delta2, delta3] (ticks) │
-  └──────────────┬──────────────────────────────────────────┘
-                 ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │ 3. 转换为轮子角度增量                                      │
-  │    delta_rad = delta_ticks * 2π / 4096                  │
-  └──────────────┬──────────────────────────────────────────┘
-                 ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │ 4. 计算轮子角速度                                          │
-  │    wheel_vel[i] = delta_rad[i] / dt                     │
-  └──────────────┬──────────────────────────────────────────┘
-                 ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │ 5. 正向运动学 (OmniKinematics)                           │
-  │    forward_kinematics() → (vx, vy, omega)               │
-  └──────────────┬──────────────────────────────────────────┘
-                 ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │ 6. 更新位姿 & 发布 /wheel/odom                            │
-  │    pose += (vx*dt, vy*dt, omega*dt)                     │
-  └─────────────────────────────────────────────────────────┘
-
-write() 方法:
-  ┌─────────────────────────────────────────────────────────┐
-  │ 1. 读取速度指令 (from controller_manager)                 │
-  │    cmd_vel → (target_vx, target_vy, target_omega)       │
-  └──────────────┬──────────────────────────────────────────┘
-                 ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │ 2. 速度斜坡限制 (VelocityRamp)                            │
-  │    limit() → (limited_vx, limited_vy, limited_omega)    │
-  └──────────────┬──────────────────────────────────────────┘
-                 ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │ 3. 逆向运动学 (OmniKinematics)                            │
-  │    inverse_kinematics() → [w1, w2, w3] (rad/s)          │
-  └──────────────┬──────────────────────────────────────────┘
-                 ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │ 4. 转换为舵机RPM & 写入                                    │
-  │    rpm = wheel_vel * 30/π                               │
-  │    driver.write_speed(servo_id, rpm)                    │
-  └─────────────────────────────────────────────────────────┘
+OmniHardwareNode (50Hz Timer):
+  ↓ 订阅
+/cmd_vel (geometry_msgs/Twist)
+  ↓ 传递给
+OmniHardwareInterface.write()
+  ↓
+┌─────────────────────────────────────────────────────────┐
+│ write() 方法流程:                                         │
+│  1. 读取速度指令 (from /cmd_vel 订阅)                      │
+│     cmd_vel → (target_vx, target_vy, target_omega)      │
+│  2. 速度斜坡限制 (VelocityRamp)                           │
+│     limit() → (limited_vx, limited_vy, limited_omega)   │
+│  3. 逆向运动学 (OmniKinematics)                           │
+│     inverse_kinematics() → [w1, w2, w3] (rad/s)         │
+│  4. 转换为舵机RPM & 写入                                   │
+│     rpm = wheel_vel * 30/π                              │
+│     driver.write_speed(servo_id, rpm)                   │
+└─────────────────────────────────────────────────────────┘
+  ↓
+OmniHardwareInterface.read()
+  ↓
+┌─────────────────────────────────────────────────────────┐
+│ read() 方法流程:                                          │
+│  1. 读取编码器位置 (ticks)                                │
+│     driver.read_position(servo_id) → [pos1, pos2, pos3] │
+│  2. 处理编码器溢出 (EncoderHandler)                       │
+│     get_velocity_rad_s() → [vel1, vel2, vel3] (rad/s)   │
+│     ✅ Round 7修订: 一步计算角速度（封装溢出+转换+速度）      │
+│  3. 正向运动学 (OmniKinematics)                           │
+│     forward_kinematics() → (vx, vy, omega)              │
+│  4. 更新位姿 & 发布 /wheel/odom                           │
+│     pose += (vx*dt, vy*dt, omega*dt)                    │
+└─────────────────────────────────────────────────────────┘
+  ↓ 返回到 OmniHardwareNode
+  ↓ 发布
+/wheel/odom (nav_msgs/Odometry)
+/tf (base_link → odom)
 ```
 
-**完整代码实现**:
+**完整代码实现** (分为2个文件):
 
+**文件1: OmniHardwareInterface (bot_hardware/hardware_interface/omni_hardware_interface.py)**
 ```python
+"""
+OmniHardwareInterface - 全向轮硬件接口核心逻辑类
+⚠️ 2026-01-19架构变更: 改为纯逻辑类，不继承任何ROS2框架接口
+✅ 可在OmniHardwareNode中直接调用read()/write()方法
+✅ 可复用于ros2_control SystemInterface（未来需要时）
+"""
 from bot_hardware.drivers.st3215_driver import ST3215Driver
+from bot_hardware.utils.encoder_handler import EncoderHandler
+from bot_hardware.utils.velocity_ramp import VelocityRamp
 from bot_hardware.utils.omni_kinematics import OmniKinematics
-from hardware_interface import SystemInterface
+from bot_hardware.utils.servo_health_monitor import ServoHealthMonitor
 import numpy as np
 import time
-from rclpy.node import Node
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import TransformStamped
-from tf2_ros import TransformBroadcaster
 
-class OmniHardwareInterface(SystemInterface):
-    """全向轮硬件接口 / Omnidirectional hardware interface"""
+class OmniHardwareInterface:
+    """全向轮硬件接口 / Omnidirectional hardware interface
     
-    def __init__(self):
-        super().__init__()
-        self.logger = None  # 由 ros2_control 框架注入
-        self.config = None
+    纯逻辑类，提供read()和write()方法，供外部节点调用
+    """
+    
+    def __init__(self, config, logger):
+        """初始化硬件接口
+        
+        Args:
+            config: 硬件配置字典 (从hardware_config.yaml加载)
+            logger: ROS2 Logger对象 (由OmniHardwareNode传入)
+        """
+        self.config = config
+        self.logger = logger
         
         # 工具类实例 / Tool class instances
         self.driver = None
         self.encoder_handler = None
         self.velocity_ramp = None
         self.kinematics = None
+        self.servo_health = None
         
         # 状态变量 / State variables
         self.pose = np.array([0.0, 0.0, 0.0])  # [x, y, theta]
         self.last_time = None
         self.servo_ids = []
         
-        # ROS2 发布器 / ROS2 publishers
-        self.odom_pub = None
-        self.tf_broadcaster = None
-    
-    def on_init(self, hardware_info):
-        """初始化硬件接口 / Initialize hardware interface
+        # 从配置读取舵机ID / Read servo IDs from config
+        self.servo_ids = [
+            self.config['servo']['wheel_1_id'],
+            self.config['servo']['wheel_2_id'],
+            self.config['servo']['wheel_3_id']
+        ]
         
-        Args:
-            hardware_info: 从URDF解析的硬件参数
-        """
-        try:
-            # 加载配置文件 / Load config file
-            import yaml
-            from ament_index_python.packages import get_package_share_directory
-            import os
-            
-            config_path = os.path.join(
-                get_package_share_directory('bot_hardware'),
-                'config', 'hardware_config.yaml'
-            )
-            with open(config_path, 'r') as f:
-                self.config = yaml.safe_load(f)
-            
-            # 从配置读取舵机ID / Read servo IDs from config
-            self.servo_ids = [
-                self.config['servo']['wheel_1_id'],
-                self.config['servo']['wheel_2_id'],
-                self.config['servo']['wheel_3_id']
-            ]
-            
-            self.logger.info(f'Servo IDs configured: {self.servo_ids}')
-            
-            return hardware_interface.return_type.OK
-            
-        except Exception as e:
-            self.logger.error(f'Failed to initialize hardware interface: {e}')
-            return hardware_interface.return_type.ERROR
+        self.logger.info(f'[OmniHardwareInterface] Servo IDs configured: {self.servo_ids}')
     
-    def on_configure(self, previous_state):
+    def configure(self):
         """配置硬件 / Configure hardware
         
-        Round 7修订: 修正初始化顺序，解决ServoHealthMonitor循环依赖
+        ⚠️ Round 7修订: 修正初始化顺序，解决ServoHealthMonitor循环依赖
+        
+        Returns:
+            bool: True表示成功, False表示失败
         """
         try:
             # 1. 初始化舵机驱动 / Initialize servo driver (无依赖)
@@ -2731,27 +2788,41 @@ class OmniHardwareInterface(SystemInterface):
                 baudrate=self.config['serial']['servo_baudrate'],
                 timeout=self.config['serial']['servo_timeout']
             )
-            self.logger.info('ST3215 driver initialized')
+            self.logger.info('[OmniHardwareInterface] ST3215 driver initialized')
             
-            # 2. 初始化编码器处理器 / Initialize encoder handler (依赖: driver)
+            # 2. 初始化运动学工具 / Initialize kinematics tool (无依赖)
+            self.kinematics = OmniKinematics(
+                wheel_radius=self.config['kinematics']['wheel_radius'],
+                L1=self.config['kinematics']['wheel_base_distances']['L1'],
+                L2=self.config['kinematics']['wheel_base_distances']['L2'],
+                L3=self.config['kinematics']['wheel_base_distances']['L3']
+            )
+            self.logger.info('[OmniHardwareInterface] OmniKinematics initialized')
+            
+            # 3. 初始化编码器处理器 / Initialize encoder handler (依赖: config)
             # ✅ Round 6修订: 传递config对象统一参数管理
             self.encoder_handler = EncoderHandler(self.config)
-            self.logger.info('EncoderHandler initialized')
+            self.logger.info('[OmniHardwareInterface] EncoderHandler initialized')
             
-            # 3. 读取当前速度 / Read current velocity (依赖: driver, encoder_handler)
+            # 4. 读取当前速度 / Read current velocity (依赖: driver, encoder_handler, kinematics)
             # ⚠️ Round 7修订: 使用完整实现（包含预初始化）
             current_wheel_velocities = self._read_current_wheel_velocities()
+            if current_wheel_velocities is None:
+                # 初始化失败时阻止节点启动
+                self.logger.error('[OmniHardwareInterface] Failed to initialize velocity, hardware configuration aborted')
+                return False
+            
             current_robot_velocity = self.kinematics.forward_kinematics(
                 current_wheel_velocities[0],
                 current_wheel_velocities[1],
                 current_wheel_velocities[2]
             )
             self.logger.info(
-                f'Current robot velocity: vx={current_robot_velocity[0]:.3f}, '
-                f'vy={current_robot_velocity[1]:.3f}, omega={current_robot_velocity[2]:.3f}'
+                f'[OmniHardwareInterface] Current robot velocity: vx={current_robot_velocity[0]:.3f} m/s, '
+                f'vy={current_robot_velocity[1]:.3f} m/s, omega={current_robot_velocity[2]:.3f} rad/s'
             )
             
-            # 4. 初始化VelocityRamp / Initialize VelocityRamp (依赖: current_robot_velocity)
+            # 5. 初始化VelocityRamp / Initialize VelocityRamp (依赖: current_robot_velocity)
             # ✅ Round 6修订: 使用config对象
             self.velocity_ramp = VelocityRamp(self.config)
             self.velocity_ramp.last_linear_velocity = np.array([
@@ -2759,70 +2830,511 @@ class OmniHardwareInterface(SystemInterface):
                 current_robot_velocity[1]
             ])
             self.velocity_ramp.last_angular_velocity = current_robot_velocity[2]
-            self.logger.info('VelocityRamp initialized with current velocity')
+            self.logger.info('[OmniHardwareInterface] VelocityRamp initialized with current velocity')
             
-            # 5. 初始化ServoHealthMonitor / Initialize ServoHealthMonitor (依赖: velocity_ramp)
+            # 6. 初始化ServoHealthMonitor / Initialize ServoHealthMonitor (依赖: velocity_ramp)
             # ⚠️ Round 7修订: 延后初始化，确保velocity_ramp已创建（解决循环依赖）
             self.servo_health = ServoHealthMonitor(
                 self.driver, 
                 self.config,
                 velocity_ramp=self.velocity_ramp  # 传递引用
             )
-            self.logger.info('ServoHealthMonitor initialized')
+            self.logger.info('[OmniHardwareInterface] ServoHealthMonitor initialized')
             
-            # 6. 启动健康监控 / Start health monitoring (最后启动)
+            # 7. 启动健康监控 / Start health monitoring (最后启动)
             self.servo_health.start()
-            self.logger.info('Health monitoring started')
-            self.logger.info('EncoderHandler initialized')
+            self.logger.info('[OmniHardwareInterface] Health monitoring started')
             
-            # 3. 初始化速度斜坡 / Initialize velocity ramp
-            # ✅ Round 6修订: 传递config对象统一参数管理
-            self.velocity_ramp = VelocityRamp(self.config)
-            self.logger.info(
-                f'VelocityRamp initialized: '
-                f'linear={self.config["kinematics"]["max_linear_acceleration"]} m/s², '
-                f'angular={self.config["kinematics"]["max_angular_acceleration"]} rad/s²'
-            )
-            
-            # 4. 初始化运动学工具 / Initialize kinematics tool
-            self.kinematics = OmniKinematics(
-                wheel_radius=self.config['kinematics']['wheel_radius'],
-                L1=self.config['kinematics']['wheel_base_distances']['L1'],
-                L2=self.config['kinematics']['wheel_base_distances']['L2'],
-                L3=self.config['kinematics']['wheel_base_distances']['L3']
-            )
-            self.logger.info('OmniKinematics initialized')
-            
-            # 5. 创建ROS2发布器 (假设有 Node 实例)
-            # 注意: 实际实现需要从 ros2_control 获取 Node 上下文
-            # self.odom_pub = node.create_publisher(Odometry, '/wheel/odom', 10)
-            # self.tf_broadcaster = TransformBroadcaster(node)
-            
-            return hardware_interface.return_type.OK
+            return True
             
         except Exception as e:
-            self.logger.error(f'Failed to configure hardware: {e}')
-            return hardware_interface.return_type.ERROR
+            self.logger.error(f'[OmniHardwareInterface] Failed to configure hardware: {e}')
+            return False
     
-    def on_activate(self, previous_state):
-        """激活硬件 / Activate hardware"""
+    def activate(self):
+        """激活硬件 / Activate hardware
+        
+        Returns:
+            bool: True表示成功, False表示失败
+        """
         try:
             # 扫描舵机在线状态 / Scan servo online status
             for servo_id in self.servo_ids:
                 if not self.driver.ping(servo_id):
-                    self.logger.error(f'Servo {servo_id} not responding!')
-                    return hardware_interface.return_type.ERROR
+                    self.logger.error(f'[OmniHardwareInterface] Servo {servo_id} not responding!')
+                    return False
             
-            self.logger.info('All servos online, hardware activated')
+            self.logger.info('[OmniHardwareInterface] All servos online, hardware activated')
             self.last_time = time.time()
             
-            return hardware_interface.return_type.OK
+            return True
             
         except Exception as e:
-            self.logger.error(f'Failed to activate hardware: {e}')
-            return hardware_interface.return_type.ERROR
+            self.logger.error(f'[OmniHardwareInterface] Failed to activate hardware: {e}')
+            return False
     
-    def read(self, time, duration):
+    def read(self):
+        """读取硬件状态 / Read hardware state
+        
+        ⚠️ Round 7修订: 使用EncoderHandler.get_velocity_rad_s()简化代码
+        
+        数据流程:
+        1. 读取编码器位置 (ticks)
+        2. EncoderHandler处理溢出+转换+计算速度 → 角速度 (rad/s)
+        3. 正向运动学 → 机器人速度 (vx, vy, omega)
+        4. 积分更新位姿
+        
+        Returns:
+            dict: {
+                'pose': np.array([x, y, theta]),
+                'velocity': np.array([vx, vy, omega]),
+                'wheel_velocities': [w1, w2, w3],
+                'timestamp': float
+            }
+        """
+        try:
+            current_time = time.time()
+            dt = current_time - self.last_time if self.last_time else 0.02
+            
+            # Step 1: 读取编码器位置 / Read encoder positions
+            encoder_positions = []
+            for servo_id in self.servo_ids:
+                pos = self.driver.read_position(servo_id)
+                if pos is None:
+                    self.logger.warn(f'[OmniHardwareInterface] Failed to read servo {servo_id} position')
+                    return None
+                encoder_positions.append(pos)
+            
+            # Step 2: 处理编码器溢出+计算速度 / Handle overflow + calculate velocity
+            # ✅ Round 7修订: 使用新方法一步完成（方案A）
+            wheel_velocities = []
+            for i, (servo_id, current_pos) in enumerate(zip(self.servo_ids, encoder_positions)):
+                vel = self.encoder_handler.get_velocity_rad_s(i, current_pos, dt)
+                wheel_velocities.append(vel)
+            
+            # Step 3: 正向运动学 / Forward kinematics
+            vx, vy, omega = self.kinematics.forward_kinematics(
+                wheel_velocities[0],
+                wheel_velocities[1],
+                wheel_velocities[2]
+            )
+            
+            # Step 4: 更新位姿 / Update pose (简单欧拉积分)
+            self.pose[0] += vx * dt  # x
+            self.pose[1] += vy * dt  # y
+            self.pose[2] += omega * dt  # theta
+            
+            self.last_time = current_time
+            
+            return {
+                'pose': self.pose.copy(),
+                'velocity': np.array([vx, vy, omega]),
+                'wheel_velocities': wheel_velocities,
+                'timestamp': current_time
+            }
+            
+        except Exception as e:
+            self.logger.error(f'[OmniHardwareInterface] Read error: {e}')
+            return None
+    
+    def write(self, target_vx, target_vy, target_omega):
+        """写入控制指令 / Write control commands
+        
+        数据流程:
+        1. 接收速度指令 (from /cmd_vel订阅)
+        2. 速度斜坡限制 + 检查急停状态 → 限制后的速度
+        3. 逆向运动学 → 轮子角速度 (rad/s)
+        4. 转换为舵机RPM + 写入
+        
+        Args:
+            target_vx: 目标线速度x (m/s)
+            target_vy: 目标线速度y (m/s)
+            target_omega: 目标角速度 (rad/s)
+        
+        Returns:
+            bool: True表示成功, False表示失败
+        """
+        try:
+            current_time = time.time()
+            
+            # Step 1: 速度斜坡限制 / Velocity ramp limiting
+            # ✅ Round 5: VelocityRamp内部处理急停逻辑（0.5s超时）
+            limited_vx, limited_vy, limited_omega = self.velocity_ramp.limit(
+                target_vx, target_vy, target_omega, current_time
+            )
+            
+            # ⚠️ 检查急停状态 / Check emergency stop status
+            if self.velocity_ramp.is_emergency_stopped:
+                self.logger.warn(
+                    '[OmniHardwareInterface] Emergency stopped, '
+                    'waiting for cooldown recovery...'
+                )
+                # 急停状态下，limit()已返回零速度，继续执行写入零速度到舵机
+            
+            # Step 2: 逆向运动学 / Inverse kinematics
+            wheel_velocities = self.kinematics.inverse_kinematics(
+                limited_vx, limited_vy, limited_omega
+            )
+            
+            # Step 3 & 4: 转换为RPM并写入 / Convert to RPM and write
+            for i, wheel_vel in enumerate(wheel_velocities):
+                rpm = wheel_vel * 30 / np.pi  # rad/s → RPM
+                servo_id = self.servo_ids[i]
+                
+                # 写入舵机 / Write to servo
+                success = self.driver.write_speed(servo_id, rpm)
+                if not success:
+                    self.logger.warn(f'[OmniHardwareInterface] Failed to write speed to servo {servo_id}')
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f'[OmniHardwareInterface] Write error: {e}')
+            return False
+    
+    def _read_current_wheel_velocities(self):
+        """从编码器读取当前轮子速度 / Read current wheel velocities
+        
+        ⚠️ Round 7完整实现: 包含预初始化步骤
+        参见: §3.2.4 Q4 VelocityRamp初始化策略设计
+        
+        Returns:
+            list: [w1, w2, w3] in rad/s, or None on failure
+        """
+        # 实现见§3.2.4 Q4，此处省略...
+        # 关键步骤: 预初始化EncoderHandler → 等待20ms → 计算速度
+        pass
+```
+
+**关键设计说明** (v2.0):
+
+1. **与ros2_control的差异**:
+   - ❌ 不继承`hardware_interface.SystemInterface`
+   - ❌ 不实现`on_init()`, `on_configure()`, `on_activate()`（改为`configure()`, `activate()`）
+   - ❌ 不返回`hardware_interface.return_type.OK`（改为返回bool或dict）
+   - ✅ 纯逻辑类，可被任何ROS2节点调用
+
+2. **EncoderHandler优化** (Round 7):
+   - 使用`get_velocity_rad_s()`方法一步完成（溢出处理+单位转换+速度计算）
+   - 简化调用代码（3行减少到1行）
+   - 性能优化集中在EncoderHandler内部
+
+3. **数据单位转换链**:
+   ```
+   编码器 ticks → EncoderHandler.get_velocity_rad_s() → rad/s →
+   正向运动学 → (vx, vy, omega) m/s, rad/s
+   
+   /cmd_vel (m/s, rad/s) → VelocityRamp.limit() → 
+   逆向运动学 → rad/s → RPM (×30/π) → 舵机
+   ```
+
+---
+
+**文件2: OmniHardwareNode (bot_hardware/bot_hardware/omni_hardware_node.py)**
+```python
+"""
+OmniHardwareNode - 独立ROS2硬件控制节点
+⚠️ 2026-01-19新建: 替代ros2_control架构
+✅ 直接订阅/cmd_vel，发布/wheel/odom和/tf
+✅ 50Hz控制循环（Timer）
+"""
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
+import yaml
+import os
+from ament_index_python.packages import get_package_share_directory
+import numpy as np
+from tf_transformations import quaternion_from_euler
+
+from bot_hardware.hardware_interface.omni_hardware_interface import OmniHardwareInterface
+
+class OmniHardwareNode(Node):
+    """全向轮硬件控制节点 / Omnidirectional hardware control node
+    
+    架构: 独立ROS2节点，内部调用OmniHardwareInterface
+    频率: 50Hz控制循环（Timer）
+    """
+    
+    def __init__(self):
+        super().__init__('omni_hardware_node')
+        
+        # 1. 加载配置文件 / Load configuration
+        self.declare_parameter('config_file', '')
+        config_file = self.get_parameter('config_file').get_parameter_value().string_value
+        
+        if not config_file:
+            # 默认配置文件路径 / Default config file path
+            config_file = os.path.join(
+                get_package_share_directory('bot_hardware'),
+                'config', 'hardware_config.yaml'
+            )
+        
+        with open(config_file, 'r') as f:
+            self.config = yaml.safe_load(f)
+        
+        self.get_logger().info(f'Configuration loaded from: {config_file}')
+        
+        # 2. 初始化硬件接口 / Initialize hardware interface
+        self.hardware_interface = OmniHardwareInterface(self.config, self.get_logger())
+        
+        if not self.hardware_interface.configure():
+            self.get_logger().fatal('Failed to configure hardware interface, node shutdown...')
+            raise RuntimeError('Hardware configuration failed')
+        
+        if not self.hardware_interface.activate():
+            self.get_logger().fatal('Failed to activate hardware, node shutdown...')
+            raise RuntimeError('Hardware activation failed')
+        
+        self.get_logger().info('Hardware interface initialized successfully')
+        
+        # 3. 创建ROS2接口 / Create ROS2 interfaces
+        # 订阅/cmd_vel / Subscribe to /cmd_vel
+        self.cmd_vel_sub = self.create_subscription(
+            Twist,
+            '/cmd_vel',
+            self.cmd_vel_callback,
+            10
+        )
+        
+        # 发布/wheel/odom / Publish /wheel/odom
+        self.odom_pub = self.create_publisher(
+            Odometry,
+            '/wheel/odom',
+            10
+        )
+        
+        # 发布TF / Publish TF
+        self.tf_broadcaster = TransformBroadcaster(self)
+        
+        # 4. 存储最新的cmd_vel指令 / Store latest cmd_vel command
+        self.current_cmd = {
+            'vx': 0.0,
+            'vy': 0.0,
+            'omega': 0.0
+        }
+        
+        # 5. 创建50Hz控制循环定时器 / Create 50Hz control loop timer
+        control_rate = self.config['control']['update_rate']  # 50Hz
+        timer_period = 1.0 / control_rate  # 0.02s
+        self.control_timer = self.create_timer(timer_period, self.control_loop)
+        
+        self.get_logger().info(f'Control loop started at {control_rate}Hz')
+    
+    def cmd_vel_callback(self, msg):
+        """接收/cmd_vel指令 / Receive /cmd_vel command
+        
+        Args:
+            msg: geometry_msgs/Twist消息
+        """
+        self.current_cmd['vx'] = msg.linear.x
+        self.current_cmd['vy'] = msg.linear.y
+        self.current_cmd['omega'] = msg.angular.z
+    
+    def control_loop(self):
+        """50Hz控制循环 / 50Hz control loop
+        
+        执行流程:
+        1. write(): 发送当前cmd_vel到硬件
+        2. read(): 读取编码器，计算里程计
+        3. publish: 发布/wheel/odom和/tf
+        """
+        try:
+            # Step 1: 写入速度指令 / Write velocity command
+            success = self.hardware_interface.write(
+                self.current_cmd['vx'],
+                self.current_cmd['vy'],
+                self.current_cmd['omega']
+            )
+            
+            if not success:
+                self.get_logger().error('Failed to write command to hardware')
+                return
+            
+            # Step 2: 读取硬件状态 / Read hardware state
+            state = self.hardware_interface.read()
+            
+            if state is None:
+                self.get_logger().error('Failed to read hardware state')
+                return
+            
+            # Step 3: 发布里程计 / Publish odometry
+            self.publish_odometry(state)
+            
+            # Step 4: 发布TF / Publish TF
+            self.publish_tf(state)
+            
+        except Exception as e:
+            self.get_logger().error(f'Control loop error: {e}')
+    
+    def publish_odometry(self, state):
+        """发布里程计消息 / Publish odometry message
+        
+        Args:
+            state: hardware_interface.read()返回的状态字典
+        """
+        odom = Odometry()
+        odom.header.stamp = self.get_clock().now().to_msg()
+        odom.header.frame_id = self.config['odometry']['frame_id']  # 'odom'
+        odom.child_frame_id = self.config['odometry']['child_frame_id']  # 'base_link'
+        
+        # 位置 / Position
+        odom.pose.pose.position.x = state['pose'][0]
+        odom.pose.pose.position.y = state['pose'][1]
+        odom.pose.pose.position.z = 0.0
+        
+        # 姿态 (四元数) / Orientation (quaternion)
+        q = quaternion_from_euler(0, 0, state['pose'][2])
+        odom.pose.pose.orientation.x = q[0]
+        odom.pose.pose.orientation.y = q[1]
+        odom.pose.pose.orientation.z = q[2]
+        odom.pose.pose.orientation.w = q[3]
+        
+        # 速度 / Velocity
+        odom.twist.twist.linear.x = state['velocity'][0]
+        odom.twist.twist.linear.y = state['velocity'][1]
+        odom.twist.twist.angular.z = state['velocity'][2]
+        
+        # 协方差矩阵 / Covariance matrix
+        pose_cov = self.config['odometry']['pose_covariance']
+        twist_cov = self.config['odometry']['twist_covariance']
+        odom.pose.covariance[0] = pose_cov['xx']
+        odom.pose.covariance[7] = pose_cov['yy']
+        odom.pose.covariance[35] = pose_cov['tt']
+        odom.twist.covariance[0] = twist_cov['xx']
+        odom.twist.covariance[7] = twist_cov['yy']
+        odom.twist.covariance[35] = twist_cov['tt']
+        
+        self.odom_pub.publish(odom)
+    
+    def publish_tf(self, state):
+        """发布TF变换 / Publish TF transform
+        
+        Args:
+            state: hardware_interface.read()返回的状态字典
+        """
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = self.config['odometry']['frame_id']
+        t.child_frame_id = self.config['odometry']['child_frame_id']
+        
+        # 平移 / Translation
+        t.transform.translation.x = state['pose'][0]
+        t.transform.translation.y = state['pose'][1]
+        t.transform.translation.z = 0.0
+        
+        # 旋转 / Rotation
+        q = quaternion_from_euler(0, 0, state['pose'][2])
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+        
+        self.tf_broadcaster.sendTransform(t)
+    
+    def destroy_node(self):
+        """节点销毁清理 / Node cleanup"""
+        self.get_logger().info('Shutting down omni_hardware_node...')
+        # 清理硬件资源 / Cleanup hardware resources
+        if hasattr(self.hardware_interface, 'servo_health'):
+            self.hardware_interface.servo_health.stop()
+        super().destroy_node()
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    
+    try:
+        node = OmniHardwareNode()
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f'Fatal error: {e}')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+```
+
+**OmniHardwareNode设计要点**:
+
+1. **启动流程**:
+   - 加载配置文件 → 创建OmniHardwareInterface → configure() → activate() → 启动Timer
+
+2. **控制循环**:
+   - 频率: 50Hz（可配置）
+   - 顺序: write() → read() → publish_odometry() → publish_tf()
+
+3. **/cmd_vel订阅**:
+   - 回调函数只更新`self.current_cmd`字典
+   - Timer中周期性读取并写入硬件
+
+4. **与ros2_control架构的差异对比**:
+   | 特性 | ros2_control架构 | Standalone节点 |
+   |------|-----------------|---------------|
+   | 接口继承 | hardware_interface.SystemInterface | rclpy.Node |
+   | 控制器加载 | controller_manager动态加载 | 无需加载（直接订阅/cmd_vel） |
+   | 控制循环 | controller_manager驱动 | create_timer()驱动 |
+   | 配置管理 | URDF + controller yaml | hardware_config.yaml单文件 |
+   | 调试工具 | ros2 control list_controllers | ros2 topic list/echo |
+   | 实现语言 | C++ (插件) / Python (桥接) | 纯Python |
+   | 开发时间 | 2-3天（桥接工作） | 1天（直接实现） |
+
+5. **Launch文件集成** (新增示例):
+   ```python
+   # bot_hardware/launch/hardware_bringup.launch.py
+   from launch import LaunchDescription
+   from launch_ros.actions import Node
+   from ament_index_python.packages import get_package_share_directory
+   import os
+   
+   def generate_launch_description():
+       config_file = os.path.join(
+           get_package_share_directory('bot_hardware'),
+           'config', 'hardware_config.yaml'
+       )
+       
+       return LaunchDescription([
+           # 启动硬件控制节点 / Start hardware control node
+           Node(
+               package='bot_hardware',
+               executable='omni_hardware_node',
+               name='omni_hardware_node',
+               output='screen',
+               parameters=[{'config_file': config_file}]
+           ),
+           
+           # 启动IMU滤波节点 / Start IMU filter node
+           Node(
+               package='bot_hardware',
+               executable='imu_filter_node',
+               name='imu_filter_node',
+               output='screen'
+           )
+       ])
+   ```
+
+**setup.py entry_points更新**:
+```python
+entry_points={
+    'console_scripts': [
+        'omni_hardware_node = bot_hardware.omni_hardware_node:main',  # 新增
+        'imu_filter_node = bot_hardware.imu_ros2_device.imu_filter_node:main',
+        # ... 其他工具节点
+    ],
+}
+```
+
+---
         """读取硬件状态 / Read hardware state
         
         数据流程:

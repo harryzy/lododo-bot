@@ -1,0 +1,118 @@
+<?xml version="1.0"?>
+<!--
+  LeKiwi Robot ros2_control Hardware Plugin Configuration
+  全向轮机器人ros2_control硬件插件配置
+  
+  功能 / Features:
+  - 定义OmniHardwareInterface硬件插件
+  - 配置State Interfaces (6个): 位姿 + 速度
+  - 配置Command Interfaces (3个): 目标速度
+  - 链接hardware_config.yaml配置文件
+  
+  设计参考 / Design Reference:
+  - HARDWARE_DEPLOYMENT_DESIGN.md §3.4 (行3350-3550)
+  - ros2_control文档: https://control.ros.org/humble/doc/
+  
+  创建日期 / Created: 2026-01-19
+-->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="bot_hardware_ros2_control" params="
+    name
+    config_package:=bot_hardware
+    config_file:=config/hardware_config.yaml
+    use_sim:=false">
+    
+    <!-- ============================================================ -->
+    <!-- ros2_control 硬件接口定义 / Hardware Interface Definition     -->
+    <!-- ============================================================ -->
+    
+    <ros2_control name="${name}" type="system">
+      
+      <!-- 硬件插件配置 / Hardware Plugin Configuration -->
+      <hardware>
+        <plugin>bot_hardware/OmniHardwareInterface</plugin>
+        
+        <!-- 参数配置 / Parameters -->
+        <param name="config_package">${config_package}</param>
+        <param name="config_file">${config_file}</param>
+        <param name="use_sim">${use_sim}</param>
+      </hardware>
+      
+      <!-- ============================================================ -->
+      <!-- 状态接口定义 / State Interfaces (6个)                         -->
+      <!-- ============================================================ -->
+      <!-- 
+        ros2_control框架通过这些接口读取机器人状态
+        Controllers can read robot state through these interfaces
+      -->
+      
+      <joint name="base_link">
+        <!-- 位姿状态 / Pose State -->
+        <state_interface name="position_x">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="position_y">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="position_theta">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        
+        <!-- 速度状态 / Velocity State -->
+        <state_interface name="velocity_x">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity_y">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity_theta">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        
+        <!-- ============================================================ -->
+        <!-- 命令接口定义 / Command Interfaces (3个)                       -->
+        <!-- ============================================================ -->
+        <!-- 
+          Controllers通过这些接口发送速度指令
+          Controllers send velocity commands through these interfaces
+        -->
+        
+        <command_interface name="linear_x">
+          <param name="min">-0.5</param>  <!-- 从hardware_config.yaml读取 / Read from config -->
+          <param name="max">0.5</param>
+        </command_interface>
+        <command_interface name="linear_y">
+          <param name="min">-0.5</param>
+          <param name="max">0.5</param>
+        </command_interface>
+        <command_interface name="angular_z">
+          <param name="min">-1.0</param>  <!-- rad/s -->
+          <param name="max">1.0</param>
+        </command_interface>
+      </joint>
+      
+    </ros2_control>
+    
+    <!-- ============================================================ -->
+    <!-- Gazebo仿真插件 (可选) / Gazebo Plugin (Optional)              -->
+    <!-- ============================================================ -->
+    <!-- 
+      仿真环境中使用gazebo_ros2_control插件
+      Use gazebo_ros2_control plugin in simulation
+    -->
+    
+    <xacro:if value="${use_sim}">
+      <gazebo>
+        <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+          <robot_param>robot_description</robot_param>
+          <robot_param_node>robot_state_publisher</robot_param_node>
+          <parameters>${config_package}/${config_file}</parameters>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+    
+  </xacro:macro>
+
+</robot>

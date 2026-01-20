@@ -1,0 +1,149 @@
+# ros2_control Controller Manager配置
+# Controller Manager Configuration for LeKiwi Robot
+#
+# 功能 / Features:
+# - 配置controller_manager更新频率
+# - 定义omni_wheel_controller (全向轮速度控制器)
+# - 定义joint_state_broadcaster (状态广播器)
+#
+# 设计参考 / Design Reference:
+# - HARDWARE_DEPLOYMENT_DESIGN.md §3.4 
+# - ros2_control_demos: https://github.com/ros-controls/ros2_control_demos
+#
+# 创建日期 / Created: 2026-01-19
+
+controller_manager:
+  ros__parameters:
+    # 更新频率 / Update Rate
+    update_rate: 50  # Hz - 匹配设计文档要求 / Match design doc requirement
+    
+    # 控制器列表 / Controller List
+    # 注意: 实际控制器配置在各自的命名空间下 / Actual controller config in their namespace
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    
+    omni_wheel_controller:
+      type: velocity_controllers/OmniWheelController
+    
+    # 硬件接口 / Hardware Interface
+    # 指向bot_hardware.ros2_control.xacro中定义的hardware
+    # Points to hardware defined in bot_hardware.ros2_control.xacro
+    hardware_interface:
+      - bot_hardware_interface
+
+
+# ============================================================================
+# Joint State Broadcaster配置 / Joint State Broadcaster Configuration
+# ============================================================================
+# 功能: 发布/joint_states话题，供robot_state_publisher使用
+# Function: Publish /joint_states for robot_state_publisher
+
+joint_state_broadcaster:
+  ros__parameters:
+    # 这个控制器不需要特殊参数
+    # This controller doesn't need special parameters
+    joints: []  # 由hardware interface自动填充 / Auto-filled by hardware interface
+    
+
+# ============================================================================
+# Omni Wheel Controller配置 / Omni Wheel Controller Configuration
+# ============================================================================
+# 功能: 接收/cmd_vel，转换为轮速指令，通过command_interfaces发送
+# Function: Receive /cmd_vel, convert to wheel commands, send via command_interfaces
+
+omni_wheel_controller:
+  ros__parameters:
+    # 控制接口映射 / Control Interface Mapping
+    # 对应bot_hardware.ros2_control.xacro中定义的command_interfaces
+    # Corresponds to command_interfaces defined in bot_hardware.ros2_control.xacro
+    command_interfaces:
+      - base_link/linear_x
+      - base_link/linear_y
+      - base_link/angular_z
+    
+    # 状态接口映射 / State Interface Mapping
+    state_interfaces:
+      - base_link/position_x
+      - base_link/position_y
+      - base_link/position_theta
+      - base_link/velocity_x
+      - base_link/velocity_y
+      - base_link/velocity_theta
+    
+    # 话题配置 / Topic Configuration
+    use_stamped_vel: false  # 使用geometry_msgs/Twist (非TwistStamped)
+    
+    # 速度限制 / Velocity Limits
+    # 从hardware_config.yaml读取，这里作为备份
+    # Read from hardware_config.yaml, these are fallback values
+    linear:
+      x:
+        has_velocity_limits: true
+        max_velocity: 0.5  # m/s
+        min_velocity: -0.5
+        has_acceleration_limits: true
+        max_acceleration: 0.5  # m/s²
+        min_acceleration: -0.5
+      y:
+        has_velocity_limits: true
+        max_velocity: 0.5
+        min_velocity: -0.5
+        has_acceleration_limits: true
+        max_acceleration: 0.5
+        min_acceleration: -0.5
+    
+    angular:
+      z:
+        has_velocity_limits: true
+        max_velocity: 1.0  # rad/s
+        min_velocity: -1.0
+        has_acceleration_limits: true
+        max_acceleration: 1.0  # rad/s²
+        min_acceleration: -1.0
+    
+    # 发布器配置 / Publisher Configuration
+    publish_rate: 50.0  # Hz - 与controller_manager.update_rate一致
+    
+    # 里程计配置 / Odometry Configuration
+    # 注意: OmniHardwareInterface已发布/wheel/odom
+    # Note: OmniHardwareInterface already publishes /wheel/odom
+    # 这个控制器可以选择不发布里程计
+    enable_odom_tf: false  # TF由robot_state_publisher发布
+    
+    # 坐标系配置 / Frame Configuration
+    base_frame_id: base_link
+    odom_frame_id: odom
+    
+    # 看门狗超时 / Watchdog Timeout
+    # 超过此时间未收到cmd_vel则停止机器人
+    # Stop robot if no cmd_vel received for this duration
+    cmd_vel_timeout: 0.5  # seconds
+
+
+# ============================================================================
+# 备注 / Notes
+# ============================================================================
+# 
+# 1. 控制器加载顺序 / Controller Loading Order:
+#    - joint_state_broadcaster 必须先加载 / Must load first
+#    - omni_wheel_controller 依赖state_interfaces / Depends on state_interfaces
+#
+# 2. 话题订阅 / Topic Subscription:
+#    - Controller订阅: /cmd_vel (geometry_msgs/Twist)
+#    - Nav2发布到: /cmd_vel
+#    - 无需remapping / No remapping needed
+#
+# 3. 状态发布 / State Publishing:
+#    - OmniHardwareInterface发布: /wheel/odom (nav_msgs/Odometry)
+#    - robot_localization订阅: /wheel/odom
+#    - EKF融合后发布: /odometry/filtered
+#
+# 4. 性能监控 / Performance Monitoring:
+#    - 监控/diagnostics话题查看控制器状态
+#    - 使用rqt_controller_manager图形化管理
+#
+# 5. 调试命令 / Debug Commands:
+#    ros2 control list_controllers  # 查看已加载控制器
+#    ros2 control list_hardware_interfaces  # 查看硬件接口
+#    ros2 topic echo /cmd_vel  # 监控速度指令
+#    ros2 topic echo /wheel/odom  # 监控里程计

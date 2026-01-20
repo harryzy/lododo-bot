@@ -2,15 +2,38 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>bot_hardware</name>
-  <version>0.0.0</version>
-  <description>Hardware interface package for LeKiwi bot / LeKiwi机器人硬件接口包</description>
+  <version>0.1.0</version>
+  <description>Hardware interface package for LeKiwi omnidirectional robot / LeKiwi全向机器人硬件接口包</description>
   <maintainer email="jeladeer@msn.com">hurry</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- ROS2基础依赖 / ROS2 basic dependencies -->
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  
+  <!-- ros2_control依赖 / ros2_control dependencies -->
+  <depend>controller_interface</depend>
+  <depend>hardware_interface</depend>
+  <depend>controller_manager</depend>
+  <depend>controller_manager_msgs</depend>
+  <depend>joint_state_broadcaster</depend>
+  
+  <!-- Launch依赖 / Launch dependencies -->
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  
+  <!-- URDF/xacro依赖 / URDF/xacro dependencies -->
+  <depend>urdf</depend>
+  <depend>xacro</depend>
+  <depend>robot_state_publisher</depend>
+  
+  <!-- 工具依赖 / Utility dependencies -->
+  <depend>ament_index_python</depend>
 
+  <!-- 测试依赖 / Test dependencies -->
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
