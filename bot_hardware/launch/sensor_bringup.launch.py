@@ -97,13 +97,15 @@ def generate_launch_description():
             'enable_depth': 'true',
             'enable_point_cloud': 'true',
             'use_uvc_camera': 'true',  # UVC模式获取RGB
-            'uvc_camera_format': 'yuyv',  # 正确的格式
+            'uvc_camera_format': 'mjpeg',  # 改用MJPEG格式避免YUYV转换问题
             'color_width': '640',
             'color_height': '480',
             'color_fps': '30',
             'depth_width': '640',
             'depth_height': '480',
             'depth_fps': '30',
+            'enable_d2c_viewer': 'false',  # 禁用动态TF发布，避免与static TF冲突
+            'publish_tf': 'false',  # ⚠️ 关键！禁用相机驱动的TF发布，使用我们的static TF
         }.items(),
         condition=IfCondition(enable_camera)
     )
@@ -140,6 +142,63 @@ def generate_launch_description():
         condition=IfCondition(publish_static_tf)
     )
     
+    # camera_link → camera_color_frame (RGB相机坐标系)
+    static_tf_camera_color = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_camera_color',
+        arguments=[
+            '0', '0', '0',  # 与camera_link重合
+            '0', '0', '0',
+            'camera_link',
+            'camera_color_frame'
+        ],
+        condition=IfCondition(publish_static_tf)
+    )
+    
+    # camera_color_frame → camera_color_optical_frame (光学坐标系转换)
+    # 光学坐标系: X右, Y下, Z前 (ROS相机标准)
+    static_tf_camera_color_optical = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_camera_color_optical',
+        arguments=[
+            '0', '0', '0',
+            '-1.5707963267948966', '0', '-1.5707963267948966',  # -90°绕X, -90°绕Z
+            'camera_color_frame',
+            'camera_color_optical_frame'
+        ],
+        condition=IfCondition(publish_static_tf)
+    )
+    
+    # camera_link → camera_depth_frame (深度相机坐标系)
+    static_tf_camera_depth = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_camera_depth',
+        arguments=[
+            '0', '0', '0',  # 与camera_link重合
+            '0', '0', '0',
+            'camera_link',
+            'camera_depth_frame'
+        ],
+        condition=IfCondition(publish_static_tf)
+    )
+    
+    # camera_depth_frame → camera_depth_optical_frame (深度光学坐标系)
+    static_tf_camera_depth_optical = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_camera_depth_optical',
+        arguments=[
+            '0', '0', '0',
+            '-1.5707963267948966', '0', '-1.5707963267948966',  # -90°绕X, -90°绕Z
+            'camera_depth_frame',
+            'camera_depth_optical_frame'
+        ],
+        condition=IfCondition(publish_static_tf)
+    )
+    
     return LaunchDescription([
         # 参数声明
         enable_imu_arg,
@@ -156,4 +215,8 @@ def generate_launch_description():
         # 静态TF
         static_tf_imu,
         static_tf_camera,
+        static_tf_camera_color,
+        static_tf_camera_color_optical,
+        static_tf_camera_depth,
+        static_tf_camera_depth_optical,
     ])

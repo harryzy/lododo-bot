@@ -292,6 +292,7 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
+          message_filter_queue_size: 50  # ⚠️ 增大队列解决'queue is full'警告
         
         # Obstacle point cloud (marking and clearing)
         # 障碍物点云（标记和清除）
@@ -306,6 +307,7 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
+          message_filter_queue_size: 50  # ⚠️ 增大队列解决'queue is full'警告
       
       # 膨胀层 / Inflation layer
       inflation_layer:
@@ -381,7 +383,7 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-          # inf_is_valid不适用于LaserScan，已移除
+          message_filter_queue_size: 50  # ⚠️ 增大队列解决'queue is full'警告
       
       # 膨胀层 / Inflation layer
       # 探索模式：适度膨胀，平衡安全性和可达性

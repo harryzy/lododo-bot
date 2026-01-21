@@ -15,7 +15,9 @@
 #
 # ==============================================================================
 
-rtabmap:
+# ⚠️ CRITICAL: Key must match node name 'rtabmap_slam' for params to load!
+# 关键：key必须匹配节点名'rtabmap_slam'参数才能加载！
+rtabmap_slam:
   ros__parameters:
     # ========================================================================
     # Basic Configuration / 基础配置
@@ -49,13 +51,16 @@ rtabmap:
     rgbd_cameras: 1                  # Number of RGB-D cameras / RGB-D相机数量
     
     # Synchronization / 同步
-    # Allow approximate time sync (Gazebo timestamps may not be exact)
-    # 允许近似时间同步(Gazebo时间戳可能不完全一致)
+    # Allow approximate time sync (Real hardware timestamps have delays)
+    # 允许近似时间同步(真机时间戳有延迟)
     approx_sync: true
-    approx_sync_max_interval: 0.01   # Max 10ms difference / 最大10ms差异
+    approx_sync_max_interval: 0.1    # Max 100ms difference (真机需要更宽松) / 最大100ms差异
     
     # Queue size / 队列大小
-    sync_queue_size: 10              # Reasonable buffer / 合理的缓冲 (renamed from queue_size)
+    # CRITICAL: Must be large enough for 4-topic sync (odom+rgb+depth+camera_info)
+    # 关键：必须足够大以同步4个话题(里程计+RGB+深度+相机信息)
+    sync_queue_size: 30              # 增大到30解决同步失败 (was 10)
+    topic_queue_size: 30             # Topic input queue (was not set, defaults to 10)
     
     # ========================================================================
     # Visual Odometry / 视觉里程计
@@ -69,16 +74,17 @@ rtabmap:
     
     # Feature detection / 特征检测
     Vis/FeatureType: "6"             # 6=ORB, 0=SURF, 1=SIFT (ORB fastest)
-    Vis/MaxFeatures: "1500"          # Extract 1500 features per frame (increased) / 每帧提取1500个特征
-    Vis/MinInliers: "20"             # Minimum inliers for valid pose (more strict) / 有效位姿的最小内点数
+    Vis/MaxFeatures: "2000"          # Extract 2000 features per frame (提高特征丰富度) / 每帧提取2000个特征
+    Vis/MinInliers: "30"             # Minimum inliers for valid pose (提高质量要求) / 有效位姿的最小内点数
     
     # Correspondence / 对应关系
-    Vis/CorNNDR: "0.8"               # Nearest-neighbor distance ratio / 最近邻距离比
-    Vis/CorGuessWinSize: "40"        # Correspondence window size / 对应窗口大小
+    Vis/CorNNDR: "0.7"               # Nearest-neighbor distance ratio (降低到0.7，更严格匹配) / 最近邻距离比
+    Vis/CorGuessWinSize: "20"        # Correspondence window size (减小窗口，提高精度) / 对应窗口大小
+    Vis/CorType: "0"                 # 0=Features Matching (最精确)
     
     # Robustness / 鲁棒性
-    Vis/MaxDepth: "5.0"              # Max depth for features (reduced for better quality) / 特征最大深度
-    Vis/MinDepth: "0.2"              # Min depth for features (filter close noise) / 特征最小深度
+    Vis/MaxDepth: "4.0"              # Max depth for features (进一步降低，减少远距噪声) / 特征最大深度
+    Vis/MinDepth: "0.3"              # Min depth for features (提高阈值，过滤近距噪声) / 特征最小深度
     Vis/RoiRatios: "0.0 0.0 0.0 0.0" # Use full image / 使用完整图像
     
     # Depth filtering / 深度过滤
@@ -132,10 +138,10 @@ rtabmap:
     DbSqlite3/Synchronous: "1"        # 1=NORMAL（平衡性能和安全）
     
     # Loop closure thresholds / 闭环阈值
-    RGBD/LinearUpdate: "0.05"        # Min translation to add node (5cm, denser) / 添加节点的最小平移
-    RGBD/AngularUpdate: "0.05"       # Min rotation to add node (~3°, denser) / 添加节点的最小旋转
-    Rtabmap/LoopThr: "0.15"          # Loop closure threshold (higher = stricter) / 闭环阈值（越高越严格）
-    Rtabmap/LoopRatio: "0.8"         # Loop closure ratio / 闭环比率
+    RGBD/LinearUpdate: "0.1"         # Min translation to add node (10cm, 减少节点密度) / 添加节点的最小平移
+    RGBD/AngularUpdate: "0.1"        # Min rotation to add node (~6°, 减少角度噪声累积) / 添加节点的最小旋转
+    Rtabmap/LoopThr: "0.2"           # Loop closure threshold (提高到0.2，更严格) / 闭环阈值（越高越严格）
+    Rtabmap/LoopRatio: "0.9"         # Loop closure ratio (提高到0.9) / 闭环比率
     
     # Proximity detection / 临近检测
     RGBD/ProximityBySpace: "true"    # Use space proximity / 使用空间临近
@@ -147,6 +153,15 @@ rtabmap:
     RGBD/LoopClosureReextractFeatures: "true" # Re-extract for better accuracy / 重新提取以提高精度
     RGBD/OptimizeFromGraphEnd: "true" # Optimize from graph end to reduce drift / 从图末端优化减少漂移
     RGBD/LoopClosureIdentityGuess: "false" # Don't assume identity for loop closure / 不假设闭环为恒等变换
+    
+    # ========================================================================
+    # 2D Mode Constraints (Ground Robot) / 2D模式约束(地面机器人)
+    # ========================================================================
+    
+    # Force 3DoF (x, y, yaw only) for ground robots
+    # 强制3自由度(仅x, y, yaw)用于地面机器人
+    Reg/Force3DoF: "true"            # ⚠️ 关键！强制2D模式，消除z/pitch/roll漂移
+    RGBD/OptimizeMaxError: "1.0"     # 优化最大误差阈值(米)
     
     # ========================================================================
     # Graph Optimization / 图优化
@@ -199,7 +214,7 @@ rtabmap:
     # ========================================================================
     
     # Processing / 处理
-    Rtabmap/DetectionRate: "0.5"     # 从1.0降到0.5Hz，减轻SLAM处理负载
+    Rtabmap/DetectionRate: "0.3"     # 降低到0.3Hz，减少噪声累积和角度漂移
     Rtabmap/TimeThr: "0"             # No time threshold / 无时间阈值
     
     # Memory limits / 内存限制

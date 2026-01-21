@@ -107,7 +107,7 @@ imu:
   filter:
     enable_dynamic_bias: true           # 启用动态零偏补偿
     low_pass_alpha: 0.2                 # 低通滤波系数 (截止频率约10Hz @ 50Hz采样)
-    median_window_size: 5               # 中值滤波窗口大小
+    median_window_size: 20              # 中值滤波窗口大小（增大以减少陀螺仪噪声）
     complementary_alpha: 0.98           # 互补滤波系数（姿态融合）
 
 # ============================================================================

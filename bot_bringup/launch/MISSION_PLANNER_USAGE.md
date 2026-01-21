@@ -668,4 +668,4 @@ ros2 service call /mission/start_patrol \
 
 **最后更新 / Last Updated**: 2025-12-31  
 **版本 / Version**: 1.0  
-**维护者 / Maintainer**: LeKiwi Bot Development Team
+**维护者 / Maintainer**: lododo Bot Development Team

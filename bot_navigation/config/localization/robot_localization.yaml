@@ -151,12 +151,12 @@ ekf_filter_node:
     # Configuration Matrix / 配置矩阵
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
     # true = use this measurement, false = ignore
-    # Wheel odometry: Trust x, y, yaw positions and vx, vy, vyaw velocities
-    # 轮式里程计：信任 x, y, yaw 位置和 vx, vy, vyaw 速度
-    # Now also using yaw as backup when visual odometry fails
-    # 现在也使用 yaw 作为视觉里程计失败时的备份
-    odom0_config: [true,  true,  false, false, false, true,
-                   true,  true,  false, false, false, true,
+    # Wheel odometry: Only x, y positions and vx, vy velocities (NO yaw!)
+    # 轮式里程计：仅 x, y 位置和 vx, vy 速度（不使用yaw！）
+    # Omnidirectional wheel yaw is unreliable due to uneven slippage
+    # 全向轮yaw不可靠（三轮打滑不均），角度由IMU负责
+    odom0_config: [true,  true,  false, false, false, false,
+                   true,  true,  false, false, false, false,
                    false, false, false]
     
     # Queue Size / 队列大小
@@ -183,45 +183,73 @@ ekf_filter_node:
     odom0_twist_rejection_threshold: 5.0
     
     # ==========================================================================
-    # Odometry Source 1: Visual Odometry (from RTAB-Map rgbd_odometry)
-    # 里程计源 1: 视觉里程计（来自 RTAB-Map rgbd_odometry）
-    # SECONDARY source - used for rotation refinement when available
-    # 辅助数据源 - 在可用时用于旋转精化
+    # IMU Source: Real Hardware IMU (after calibration)
+    # IMU数据源：真机IMU（标定后）
+    # CRITICAL for rotation stability - provides yaw and vyaw
+    # 对旋转稳定性至关重要 - 提供yaw和vyaw
     # ==========================================================================
     
     # Input Topic / 输入话题
-    odom1: /visual_odom
+    imu0: /imu/data
     
     # Configuration Matrix / 配置矩阵
-    # Visual odometry: Use yaw and yaw rate (vyaw) in DIFFERENTIAL mode
-    # 视觉里程计：在差分模式下使用 yaw 和 yaw 速率 (vyaw)
-    # Visual odometry provides better rotation estimation than wheel odometry
-    # 视觉里程计提供比轮式里程计更好的旋转估计
-    # Using differential mode to avoid absolute position jumps
-    # 使用差分模式避免绝对位置跳跃
-    odom1_config: [false, false, false, false, false, true,
-                   false, false, false, false, false, true,
-                   false, false, false]
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    # IMU provides: orientation (yaw) + angular velocity (vyaw)
+    # IMU提供：姿态角(yaw) + 角速度(vyaw)
+    # After calibration, IMU is highly accurate for rotation
+    # 标定后，IMU对旋转非常准确
+    imu0_config: [false, false, false, false, false, true,
+                  false, false, false, false, false, true,
+                  false, false, false]
     
     # Queue Size / 队列大小
-    odom1_queue_size: 5
+    imu0_queue_size: 10
     
     # Differential Mode / 差分模式
-    # CRITICAL: Use differential mode for visual odometry yaw
-    # 关键：对视觉里程计的 yaw 使用差分模式
-    # This prevents jumps when visual tracking is lost/recovered
-    # 这可以防止视觉追踪丢失/恢复时的跳跃
-    odom1_differential: true
+    # Use absolute orientation from IMU
+    # 使用IMU的绝对姿态角
+    imu0_differential: false
     
     # Relative Mode / 相对模式
-    odom1_relative: false
+    imu0_relative: true
+    
+    # Remove Gravitational Acceleration / 移除重力加速度
+    # Must be true when using IMU linear acceleration
+    # 使用IMU线性加速度时必须为true
+    imu0_remove_gravitational_acceleration: true
     
     # Rejection Thresholds / 拒绝阈值
-    # STRICTER thresholds to filter out visual odom outliers when tracking is unstable
-    # 更严格的阈值以过滤跟踪不稳定时的视觉里程计异常值
-    odom1_pose_rejection_threshold: 3.0
-    odom1_twist_rejection_threshold: 2.0
+    # After calibration, IMU is very reliable
+    # 标定后，IMU非常可靠
+    imu0_pose_rejection_threshold: 0.8
+    imu0_twist_rejection_threshold: 0.8
+    imu0_linear_acceleration_rejection_threshold: 0.8
     
+    # ==========================================================================
+    # Visual Localization (RTABMap SLAM)
+    # 视觉定位（RTABMap SLAM）
+    # ==========================================================================
+    # 
+    # NOTE: RTABMap provides global localization through map→odom TF transform
+    # 注意：RTABMap通过map→odom TF变换提供全局定位
+    #
+    # No need to subscribe to visual odometry topic in EKF!
+    # EKF不需要订阅视觉里程计话题！
+    #
+    # Data flow / 数据流:
+    #   1. EKF fuses wheel+IMU → publishes odom→base_link
+    #      EKF融合轮式+IMU → 发布odom→base_link
+    #   2. RTABMap detects loop closures → publishes map→odom
+    #      RTABMap检测闭环 → 发布map→odom
+    #   3. Final transform: map→base_link = map→odom × odom→base_link
+    #      最终变换：map→base_link = map→odom × odom→base_link
+    #
+    # This architecture provides:
+    # 这种架构提供：
+    #   - Local accuracy: EKF fusion (局部精度：EKF融合)
+    #   - Global correction: RTABMap loop closure (全局修正：RTABMap闭环)
+    #   - No topic subscription conflicts (无话题订阅冲突)
+    #
     # ==========================================================================
     # Debug Configuration / 调试配置
     # ==========================================================================
