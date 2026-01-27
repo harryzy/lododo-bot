@@ -1,0 +1,108 @@
+# ==============================================================================
+# RTABMap Minimal Configuration for Real Hardware
+# RTABMap真机最小化配置 - 模仿仿真的成功模式
+# ==============================================================================
+#
+# Philosophy / 设计理念:
+#   Simulation works with DEFAULT parameters + remapping
+#   真机也应该用默认参数，只改关键的use_sim_time
+#
+# ==============================================================================
+
+rtabmap_slam:
+  ros__parameters:
+    # ========================================================================
+    # Basic Configuration / 基础配置
+    # ========================================================================
+    
+    # Use real hardware time / 使用真机时间
+    use_sim_time: false
+    
+    # Frame IDs / 坐标系ID
+    frame_id: base_link              # Robot base frame / 机器人基座坐标系
+    # ⚠️ CRITICAL: Do NOT set odom_frame_id here! 
+    # 关键：不要在这里设置odom_frame_id！
+    # If odom_frame_id is set, RTABMap will FORCE subscribe_odom=false and get odom from TF instead!
+    # 如果设置了odom_frame_id，RTABMap会强制禁用subscribe_odom并从TF获取里程计！
+    # See CommonDataSubscriber.cpp:531-540
+    # odom_frame_id: odom  # ← COMMENTED OUT to allow topic subscription
+    map_frame_id: map                # Map frame / 地图坐标系
+    
+    # ========================================================================
+    # Topic Subscription / 话题订阅 (与仿真一致)
+    # ========================================================================
+    
+    # Subscribe to RGB-D data / 订阅RGB-D数据
+    subscribe_rgb: true              # Subscribe to RGB image / 订阅RGB图像
+    subscribe_depth: true            # Subscribe to depth image / 订阅深度图像
+    subscribe_scan: false            # Don't use laser scan / 不使用激光扫描
+    subscribe_stereo: false          # Not using stereo camera / 不使用双目相机
+    
+    # Odometry source / 里程计来源
+    subscribe_odom: true             # ⚠️ CRITICAL: Must be in YAML, not just launch file! 必须在YAML中设置，不能仅在launch文件!
+    subscribe_odom_info: false       # Don't need odom info / 不需要里程计信息
+    
+    # ⚠️ NOTE: subscribe_user_data NOT needed (RTABMap built WITHOUT RTABMAP_SYNC_USER_DATA macro)
+    # 注意：不需要subscribe_user_data（RTABMap编译时未启用RTABMAP_SYNC_USER_DATA宏）
+    # Setting it to true will cause ERROR and be forced back to false
+    # 设置为true会导致ERROR并被强制改回false
+    
+    # Disable laser scan related warnings / 禁用laser scan相关警告
+    subscribe_scan_cloud: false
+    gen_scan: false
+    
+    # ========================================================================
+    # RGB-D Parameters / RGB-D参数 (与仿真一致)
+    # ========================================================================
+    
+    rgbd_cameras: 1                  # Number of RGB-D cameras / RGB-D相机数量
+    
+    # Synchronization / 同步
+    approx_sync: true                # Allow approximate time sync / 允许近似时间同步
+    
+    # Queue size / 队列大小
+    sync_queue_size: 10              # Reasonable buffer / 合理的缓冲
+    
+    # TF Transform Waiting / TF变换等待
+    wait_for_transform: 0.5          # ⚠️ CRITICAL: Wait up to 0.5s for TF (increased from default 0.2s) / 关键：等待TF最多0.5秒（从默认0.2秒增加）
+    tf_delay: 0.05                   # TF publish delay (50ms buffer) / TF发布延迟（50ms缓冲）
+    tf_tolerance: 0.1                # TF lookup tolerance (100ms) / TF查询容差（100ms）
+    
+    # ========================================================================
+    # Real Hardware Specific / 真机特定配置
+    # ========================================================================
+    
+    # ⚠️ CRITICAL: Must match EKF's QoS (RELIABLE=1)
+    # 关键：必须匹配EKF的QoS（RELIABLE=1）
+    # Real hardware EKF publishes with RELIABLE, simulation uses BEST_EFFORT
+    # 真机EKF用RELIABLE发布，仿真用BEST_EFFORT
+    qos: 1                           # General QoS (RELIABLE) 通用QoS
+    qos_odom: 1                      # Odometry specific QoS (RELIABLE) 里程计专用QoS
+    qos_image: 1                     # Image QoS (RELIABLE) 图像QoS
+    qos_camera_info: 1               # Camera info QoS (RELIABLE) 相机信息QoS
+    
+    # ========================================================================
+    # 2D SLAM Mode (Critical for stability) / 2D SLAM模式（稳定性关键）
+    # ========================================================================
+    
+    # Force 2D mode (3DOF: x, y, yaw only) to eliminate z/roll/pitch instability
+    # 强制2D模式（仅3自由度：x, y, yaw）消除z/roll/pitch不稳定性
+    Reg/Force3DoF: 'true'            # ⚠️ CRITICAL: Force 2D registration / 关键：强制2D配准
+    
+    # Optimize only from graph end (faster, more stable than full graph optimization)
+    # 仅从图末端优化（比全图优化更快更稳定）
+    RGBD/OptimizeFromGraphEnd: 'true'  # Reduce optimization overhead / 减少优化开销
+    
+    # Increase odometry trust (reduce visual odometry drift corrections)
+    # 增加里程计信任度（减少视觉里程计漂移修正）
+    RGBD/AngularUpdate: '0.05'       # Min angular change to add keyframe (rad) / 添加关键帧的最小角度变化
+    RGBD/LinearUpdate: '0.05'        # Min linear change to add keyframe (m) / 添加关键帧的最小线性变化
+    
+    # ⚠️ CRITICAL: 增加里程计协方差容忍度（修复 "Odometry is reset" 警告）
+    # EKF输出协方差~0.0045，需要提高RTABMap的容忍度
+    odom_tf_linear_variance: 0.01    # Odometry linear variance threshold (default ~0.001) / 里程计线性方差阈值
+    odom_tf_angular_variance: 0.01   # Odometry angular variance threshold / 里程计角度方差阈值
+    RGBD/NewMapOdomChangeDistance: '0'  # Disable new map on odom change / 禁用里程计变化时创建新地图
+    RGBD/ForceOdom3DoF: 'true'       # Force 2D odometry / 强制2D里程计
+    Mem/UseOdomFeatures: 'false'     # Don't use odom features / 不使用里程计特征
+

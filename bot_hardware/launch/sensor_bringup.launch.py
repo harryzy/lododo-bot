@@ -95,17 +95,19 @@ def generate_launch_description():
             'enable_ir': 'false',  # 禁用红外避免与RGB冲突
             'enable_color': 'true',
             'enable_depth': 'true',
-            'enable_point_cloud': 'true',
+            'enable_point_cloud': 'false',  # ⚠️ 禁用驱动层点云，减少USB带宽（RTABMap会生成点云）
             'use_uvc_camera': 'true',  # UVC模式获取RGB
-            'uvc_camera_format': 'mjpeg',  # 改用MJPEG格式避免YUYV转换问题
+            'uvc_camera_format': 'mjpeg',  # MJPEG格式
             'color_width': '640',
-            'color_height': '480',
-            'color_fps': '30',
+            'color_height': '480',  # ⚠️ 升级到640x480@30Hz获得更多特征点 / Upgrade to 640x480@30Hz for more features
+            'color_fps': '30',  # 30fps（硬件支持，比15fps更稳定）
             'depth_width': '640',
-            'depth_height': '480',
-            'depth_fps': '30',
-            'enable_d2c_viewer': 'false',  # 禁用动态TF发布，避免与static TF冲突
-            'publish_tf': 'false',  # ⚠️ 关键！禁用相机驱动的TF发布，使用我们的static TF
+            'depth_height': '480',  # 480p分辨率与RGB保持同步 / Synchronized resolution with RGB
+            'depth_fps': '30',  # 30fps与RGB保持同步，避免RGB-D错配导致点云抖动 / 30fps synchronized with RGB to prevent point cloud jitter
+            'color_depth_synchronization': 'true',  # ⚠️ 关键！启用RGB-D硬件同步
+            'depth_registration': 'false',  # 不启用硬件深度对齐（RTABMap软件对齐）
+            'enable_d2c_viewer': 'false',  # 禁用动态TF发布
+            'publish_tf': 'false',  # ⚠️ 关键！禁用相机驱动TF，使用static TF
         }.items(),
         condition=IfCondition(enable_camera)
     )
@@ -128,19 +130,20 @@ def generate_launch_description():
         condition=IfCondition(publish_static_tf)
     )
     
-    # base_link → camera_link
-    static_tf_camera = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='static_tf_camera',
-        arguments=[
-            '0.15', '0', '0.20',  # x, y, z (相机位于前方15cm，高20cm)
-            '0', '0', '0',         # roll, pitch, yaw
-            'base_link',
-            'camera_link'
-        ],
-        condition=IfCondition(publish_static_tf)
-    )
+    # base_link → camera_link  
+    # ⚠️ 已注释：使用robot_state_publisher从URDF发布camera_link的TF
+    # static_tf_camera = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     name='static_tf_camera',
+    #     arguments=[
+    #         '0.15', '0', '0.20',  # x, y, z (相机位于前方15cm，高20cm)
+    #         '0', '0', '0',         # roll, pitch, yaw
+    #         'base_link',
+    #         'camera_link'
+    #     ],
+    #     condition=IfCondition(publish_static_tf)
+    # )
     
     # camera_link → camera_color_frame (RGB相机坐标系)
     static_tf_camera_color = Node(
@@ -212,9 +215,9 @@ def generate_launch_description():
         # 相机启动
         astra_camera_launch,
         
-        # 静态TF
+        # 静态TF  
         static_tf_imu,
-        static_tf_camera,
+        # static_tf_camera,  # ⚠️ 已删除：使用robot_state_publisher从URDF发布
         static_tf_camera_color,
         static_tf_camera_color_optical,
         static_tf_camera_depth,

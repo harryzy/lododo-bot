@@ -133,7 +133,11 @@ class OmniHardwareNode(Node):
         self.direct_wheel_speeds = [0.0, 0.0, 0.0]  # rad/s
         
         # 硬件状态 / Hardware state
-        self.pose = np.array([0.0, 0.0, 0.0])  # [x, y, theta]
+        # ⚠️ CRITICAL FIX: 初始位姿设置为非零值，避免RTABMap identity pose检测
+        # RTABMap会在检测到(0,0,0)位姿时触发"Odometry is reset"并重置地图
+        # 使用极小的非零初始值（0.001m, 0.001m, 0.0001rad）避免触发identity检测
+        # Initial pose set to non-zero to avoid RTABMap identity pose detection
+        self.pose = np.array([0.001, 0.001, 0.0001])  # [x, y, theta] - small non-zero initial offset
         self.last_time = None
         self.last_command_time = None  # 看门狗超时检测
         self.watchdog_triggered = False  # 看门狗状态标志（防止重复警告）

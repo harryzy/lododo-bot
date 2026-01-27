@@ -70,6 +70,8 @@ from launch.substitutions import (
 )
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
+from launch.substitutions import Command
 from nav2_common.launch import RewrittenYaml
 
 
@@ -102,6 +104,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # Package Directories / 包目录
     # ==========================================================================
     pkg_bot_bringup = get_package_share_directory('bot_bringup')
+    pkg_bot_description = get_package_share_directory('bot_description')
     pkg_bot_hardware = get_package_share_directory('bot_hardware')
     pkg_bot_navigation = get_package_share_directory('bot_navigation')
     pkg_bot_slam = get_package_share_directory('bot_slam')
@@ -118,8 +121,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # EKF配置（真机版本，使用RTABMap兼容配置）
     ekf_config = os.path.join(pkg_bot_navigation, 'config', 'localization', 'robot_localization_rtabmap.yaml')
     
-    # RTABMap配置
-    rtabmap_config = os.path.join(pkg_bot_slam, 'config', 'slam', 'rtabmap.yaml')
+    # RTABMap配置（真机专用配置文件 - 最小化版本）
+    rtabmap_config = os.path.join(pkg_bot_slam, 'config', 'slam', 'rtabmap_real_minimal.yaml')
     
     # 地图文件路径（定位模式使用）
     map_file = os.path.join(maps_dir, map_name_str, 'map.yaml') if map_name_str else ''
@@ -150,6 +153,44 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         root_key='',  # Empty: config file key 'rtabmap_slam' matches node name
         param_rewrites=param_substitutions,
         convert_types=True
+    )
+    
+    # ==========================================================================
+    # Robot Description / 机器人模型
+    # ==========================================================================
+    
+    # Robot State Publisher（发布简化URDF的TF）
+    # 使用与仿真相同的简化模型：lekiwi_bot_simple.urdf.xacro
+    urdf_path = PathJoinSubstitution([
+        FindPackageShare('bot_description'),
+        'urdf',
+        'lekiwi_bot_simple.urdf.xacro'
+    ])
+    
+    robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        name='robot_state_publisher',
+        output='screen',
+        arguments=['--ros-args', '--log-level', log_level_str],
+        parameters=[
+            {
+                'robot_description': ParameterValue(Command(['xacro ', urdf_path]), value_type=str),
+                'use_sim_time': False,
+            }
+        ],
+    )
+    
+    # Joint State Publisher（发布wheel joints的TF状态）
+    # 真机上轮子由硬件控制器管理，但TF树仍需要joint states来显示wheel_links
+    # 发布默认状态（角度=0），确保RViz正确显示所有links
+    joint_state_publisher = Node(
+        package='joint_state_publisher',
+        executable='joint_state_publisher',
+        name='joint_state_publisher',
+        output='screen',
+        arguments=['--ros-args', '--log-level', log_level_str],
+        parameters=[{'use_sim_time': False}],
     )
     
     # ==========================================================================
@@ -189,6 +230,25 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         parameters=[configured_ekf_config],
     )
     
+    # Static TF: map → odom (initialization fallback)
+    # RTABMap will override this once SLAM is initialized
+    # 静态TF: map → odom (初始化回退方案)
+    # RTABMap初始化后会接管这个变换
+    static_map_to_odom = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_map_to_odom_fallback',
+        arguments=[
+            '--x', '0', '--y', '0', '--z', '0',
+            '--roll', '0', '--pitch', '0', '--yaw', '0',
+            '--frame-id', 'map',
+            '--child-frame-id', 'odom',
+            '--ros-args', '--log-level', log_level_str
+        ],
+        parameters=[{'use_sim_time': False}],
+        condition=IfCondition(slam)  # Only in SLAM mode / 仅SLAM模式
+    )
+    
     # ==========================================================================
     # PHASE 3: RTABMap Visual SLAM / 第三阶段：RTABMap视觉SLAM
     # ==========================================================================
@@ -202,13 +262,24 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         arguments=['--ros-args', '--log-level', log_level_str],
         parameters=[
             configured_rtabmap_config,
-            {'delete_db_on_start': True}  # 删除旧数据库，开始新地图
+            {
+                'delete_db_on_start': True,  # 删除旧数据库，开始新地图
+                # ⚠️ NOTE: subscribe_odom no longer needed in parameters
+                # It's now controlled by YAML config (without odom_frame_id set)
+                # 注意：subscribe_odom不再需要在parameters中设置
+                # 现在由YAML配置控制（不设置odom_frame_id）
+                'qos': 1,  # RELIABLE匹配EKF
+                'qos_odom': 1,  # RELIABLE匹配EKF
+                'qos_image': 1,
+                'qos_camera_info': 1,
+            }
         ],
         remappings=[
             ('rgb/image', '/camera/color/image_raw'),
             ('rgb/camera_info', '/camera/color/camera_info'),
             ('depth/image', '/camera/depth/image_raw'),
             ('odom', '/odometry/filtered'),
+            ('grid_map', '/map'),  # ← CRITICAL: Output occupancy grid for Nav2 / 输出占据栅格给Nav2
         ],
         condition=IfCondition(slam)
     )
@@ -224,12 +295,19 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             configured_rtabmap_config,
             {'Mem/IncrementalMemory': 'false'},  # 定位模式，不建图
             {'Mem/InitWMWithAllNodes': 'true'},  # 从已有地图初始化
+            {
+                'qos': 1,  # RELIABLE匹配EKF
+                'qos_odom': 1,  # RELIABLE匹配EKF
+                'qos_image': 1,
+                'qos_camera_info': 1,
+            }
         ],
         remappings=[
             ('rgb/image', '/camera/color/image_raw'),
             ('rgb/camera_info', '/camera/color/camera_info'),
             ('depth/image', '/camera/depth/image_raw'),
             ('odom', '/odometry/filtered'),
+            ('grid_map', '/map'),  # ← CRITICAL: Output occupancy grid for Nav2
         ],
         condition=UnlessCondition(slam)
     )
@@ -341,7 +419,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             target_action=ekf_filter,
             on_start=[
                 LogInfo(msg='[Event] EKF filter started!'),
-                LogInfo(msg='[Phase 3] Starting RTABMap SLAM/Localization and depth processing...'),
+                LogInfo(msg='[Phase 3] Starting static map→odom TF, RTABMap SLAM/Localization and depth processing...'),
+                static_map_to_odom,    # Static TF fallback (SLAM mode only) / 静态TF回退（仅SLAM模式）
                 rtabmap_slam,          # SLAM模式（条件启动）
                 rtabmap_localization,  # 定位模式（条件启动）
                 # rtabmap_viz,           # 可视化
@@ -407,8 +486,11 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         LogInfo(msg='  → Nav2 starts (on RTABMap ready)'),
         LogInfo(msg='='*70),
         
-        # Phase 1+2: Start Hardware Layer + EKF immediately
-        # 第一、二阶段：立即启动硬件层和EKF
+        # Phase 1+2: Start Robot Model + Hardware Layer + EKF immediately
+        # 第一、二阶段：立即启动机器人模型、硬件层和EKF
+        LogInfo(msg='[Phase 0] Loading robot model (lekiwi_bot_simple.urdf.xacro)...'),
+        robot_state_publisher,
+        joint_state_publisher,
         LogInfo(msg='[Phase 1] Starting hardware layer...'),
         hardware_bringup,
         LogInfo(msg='[Phase 2] Starting EKF sensor fusion...'),
