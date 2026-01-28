@@ -323,7 +323,32 @@ rosdep install --from-paths src --ignore-src -r -y
 # 串口权限（重要！）
 sudo usermod -a -G dialout $USER
 # 注销重新登录生效或执行：newgrp dialout
+
+步骤 1：增加系统 socket 缓冲区（关键！）
+# 临时修改（立即生效）
+sudo sysctl -w net.core.rmem_max=10485760
+sudo sysctl -w net.core.wmem_max=10485760
+sudo sysctl -w net.core.rmem_default=10485760
+# 永久修改（重启后依然有效）
+echo "# Increase socket buffer size for ROS2 DDS" | sudo tee -a /etc/sysctl.conf
+echo "net.core.rmem_max = 10485760" | sudo tee -a /etc/sysctl.conf
+echo "net.core.wmem_max = 10485760" | sudo tee -a /etc/sysctl.conf  
+echo "net.core.rmem_default = 10485760" | sudo tee -a /etc/sysctl.conf
+# 验证
+sysctl net.core.rmem_max  # 应该显示 10485760
+
+# 检查是否有 YbImuLib 源码（应该在 bot_hardware 包中）
+find ~/lododo_bot/src -name "YbImuLib*"
+
+# 如果找到 setup.py，安装它
+cd ~/lododo_bot/src/bot_hardware/bot_hardware/imu_ros2_device/YbImuLib  # 根据实际路径调整
+pip3 install .
+
+# 或者如果有 .whl 文件
+# pip3 install YbImuLib-*.whl
+
 ```
+
 
 ### 5. 网络配置（关键！）
 
@@ -377,25 +402,21 @@ cat > ~/cyclonedds.xml << 'EOF'
 <CycloneDDS xmlns="https://cdds.io/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Domain id="any">
     <General>
-      <!-- 自动选择网络接口（WiFi或以太网） -->
-      <NetworkInterfaceAddress>auto</NetworkInterfaceAddress>
-      <!-- WiFi环境：允许IP分片（大图像数据） -->
+      <Interfaces>
+        <NetworkInterface autodetermine="true"/>
+      </Interfaces>
       <AllowMulticast>true</AllowMulticast>
-      <MaxMessageSize>65500</MaxMessageSize>
+      <MaxMessageSize>65500B</MaxMessageSize>
     </General>
     <Internal>
-      <!-- 增大接收缓冲区（处理WiFi数据包） -->
-      <MinimumSocketReceiveBufferSize>10MB</MinimumSocketReceiveBufferSize>
+      <SocketReceiveBufferSize min="10MB"/>
     </Internal>
     <Discovery>
-      <!-- 加快节点发现速度 -->
       <ParticipantIndex>auto</ParticipantIndex>
       <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
-      <!-- WiFi环境：更短的心跳间隔 -->
       <SPDPInterval>1s</SPDPInterval>
     </Discovery>
     <Tracing>
-      <!-- 调试时启用日志（生产环境可关闭） -->
       <Verbosity>warning</Verbosity>
     </Tracing>
   </Domain>
@@ -411,12 +432,16 @@ cat > ~/cyclonedds.xml << 'EOF'
 <CycloneDDS xmlns="https://cdds.io/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Domain id="any">
     <General>
-      <NetworkInterfaceAddress>auto</NetworkInterfaceAddress>
+      <!-- 使用新的参数名 -->
+      <Interfaces>
+        <NetworkInterface autodetermine="true"/>
+      </Interfaces>
       <AllowMulticast>true</AllowMulticast>
-      <MaxMessageSize>65500</MaxMessageSize>
+      <MaxMessageSize>65500B</MaxMessageSize>
     </General>
     <Internal>
-      <MinimumSocketReceiveBufferSize>10MB</MinimumSocketReceiveBufferSize>
+      <!-- 使用新的参数结构 -->
+      <SocketReceiveBufferSize min="10MB"/>
     </Internal>
     <Discovery>
       <ParticipantIndex>auto</ParticipantIndex>
