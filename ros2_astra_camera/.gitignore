@@ -762,3 +762,13 @@ FodyWeavers.xsd
 # Additional files built by Visual Studio
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudio,visualstudiocode,c++,python,jetbrains+all,ros,ros2
+
+### Custom Rules for OpenNI2 Runtime Libraries ###
+# OpenNI2 预编译库是运行时依赖，需要提交到仓库
+# 覆盖上面的 *.so、*.a 和 [Aa][Rr][Mm]64/ 规则
+!astra_camera/openni2_redist/
+!astra_camera/openni2_redist/**/
+!astra_camera/openni2_redist/**/*.so
+!astra_camera/openni2_redist/**/*.so.*
+!astra_camera/openni2_redist/**/*.a
+!astra_camera/openni2_redist/**/*.dylib

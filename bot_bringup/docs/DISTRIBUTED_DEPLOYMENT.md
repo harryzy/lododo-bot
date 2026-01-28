@@ -127,15 +127,33 @@ source install/setup.bash
 
 **如果编译astra_camera时遇到依赖问题**：
 ```bash
-# 安装额外的OpenNI2依赖（Astra相机底层库）
-cd ~/lododo_bot/src
-git clone https://github.com/orbbec/ros_astra_camera.git -b ros2
+# libglog在Ubuntu 22.04 arm64可能不可用，需要从源码编译
+cd ~/
+git clone https://github.com/google/glog.git
+cd glog
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_SHARED_LIBS=ON
+make -j4
+sudo make install
+sudo ldconfig
+
+# 如果libuvc-dev也找不到，同样源码编译
+cd ~/
+git clone https://github.com/libuvc/libuvc.git
+cd libuvc
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr
+make -j4
+sudo make install
+sudo ldconfig
+
+# 回到工作空间重新编译
 cd ~/lododo_bot
 rosdep install --from-paths src --ignore-src -r -y
 
-# 如果rosdep失败，手动安装OpenNI2
-sudo apt install -y libopenni2-dev
-# 或从Orbbec官网下载SDK：https://www.orbbec.com/developers/astra-sdk/
+# 清理后重新编译astra_camera
+rm -rf build/astra_camera install/astra_camera
+colcon build --packages-select astra_camera astra_camera_msgs --symlink-install
 ```
 
 **方案B：rsync同步（开发时使用）**
@@ -154,12 +172,153 @@ sudo apt install -y \
   ros-humble-image-transport \
   ros-humble-cv-bridge \
   ros-humble-camera-info-manager \
+  ros-humble-image-publisher \
+  ros-humble-v4l2-camera \
   libusb-1.0-0-dev \
   libudev-dev \
+  libuvc-dev \
+  libglog-dev \
   python3-serial
+
+# 1. 检查是否有pkg-config文件
+pkg-config --list-all | grep glog
+
+# 2. 如果没有，创建pkg-config文件
+sudo mkdir -p /usr/lib/aarch64-linux-gnu/pkgconfig
+sudo tee /usr/lib/aarch64-linux-gnu/pkgconfig/libglog.pc > /dev/null << 'EOF'
+prefix=/usr
+exec_prefix=${prefix}
+libdir=/lib/aarch64-linux-gnu
+includedir=${prefix}/include
+
+Name: libglog
+Description: Google Logging Library
+Version: 0.6.0
+Libs: -L${libdir} -lglog
+Cflags: -I${includedir}
+EOF
+
+# 3. 更新pkg-config环境变量
+export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH
+echo 'export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH' >> ~/.bashrc
+
+# 4. 验证能找到
+pkg-config --modversion libglog
+
+# 5. 重新编译
+cd ~/lododo_bot
+rm -rf build/astra_camera
+colcon build --packages-select astra_camera astra_camera_msgs --symlink-install
+
+# 1. 手动删除glog 0.6.0的文件
+sudo rm -rf /usr/include/glog
+sudo rm -f /usr/lib/libglog*
+sudo rm -f /usr/lib/pkgconfig/libglog.pc
+sudo rm -f /usr/lib/cmake/glog
+sudo ldconfig
+
+cd ~/
+rm -rf glog
+
+# 2. 安装0.4.0版本
+git clone https://github.com/google/glog.git
+cd glog
+git checkout v0.4.0
+mkdir build && cd build
+cmake .. \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DBUILD_SHARED_LIBS=ON \
+  -DCMAKE_BUILD_TYPE=Release
+make -j4
+sudo make install
+sudo ldconfig
+
+# 3. 创建pkg-config文件（如果没有自动生成）
+sudo tee /usr/lib/aarch64-linux-gnu/pkgconfig/libglog.pc > /dev/null << 'EOF'
+prefix=/usr
+exec_prefix=${prefix}
+libdir=/usr/lib/aarch64-linux-gnu
+includedir=${prefix}/include
+
+Name: libglog
+Description: Google Logging Library
+Version: 0.4.0
+Libs: -L${libdir} -lglog
+Cflags: -I${includedir}
+EOF
+
+export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH
+
+# 4. 验证
+pkg-config --modversion libglog
+
+# 5. 重新编译
+cd ~/lododo_bot
+rm -rf build/astra_camera* install/astra_camera*
+colcon build --packages-select astra_camera astra_camera_msgs --symlink-install
+
+# 安装nlohmann-json库
+sudo apt install -y nlohmann-json3-dev
+
+cd ~/lododo_bot
+rm -rf build/astra_camera
+
+
+
+# 使用Debug模式编译（快3-5倍）
+colcon build --packages-select astra_camera astra_camera_msgs \
+  --symlink-install \
+  --cmake-args -DCMAKE_BUILD_TYPE=Debug \
+  --parallel-workers 1
+
+# 检查当前内存使用
+free -h
+
+# 增加SWAP到4GB（如果小于2GB）
+sudo swapoff /swapfile
+sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+free -h  # 验证SWAP已增加
+
+# 编译完成后，单独编译相机（使用单线程）
+colcon build --packages-select \
+  astra_camera_msgs \
+  astra_camera \
+  --symlink-install \
+  --parallel-workers 1 \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+
+# 回到工作空间重新编译
+cd ~/lododo_bot
+rm -rf build/astra_camera install/astra_camera
+colcon build --packages-select astra_camera_msgs astra_camera \
+  --symlink-install \
+  --parallel-workers 1 \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+# 清理之前的失败编译
+rm -rf build/astra_camera install/astra_camera log/latest*
+
+# 限制编译并行度和内存
+colcon build --packages-select astra_camera \
+  --symlink-install \
+  --parallel-workers 1 \
+  --executor sequential \
+  --cmake-args \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_EXAMPLES=OFF \
+    -DBUILD_TESTS=OFF
+
 
 # Astra相机驱动需要从源码编译（已包含在bot_hardware包中）
 # 无需额外安装，bot_hardware包中已经包含了astra_camera驱动
+
+# 使用rosdep自动安装所有依赖（推荐）
+cd ~/lododo_bot
+rosdep install --from-paths src --ignore-src -r -y
 
 # 串口权限（重要！）
 sudo usermod -a -G dialout $USER
@@ -472,6 +631,84 @@ ros2 param set /astra_camera color_fps 15
    - 控制指令：RELIABLE
 
 ## 故障排查
+
+### 问题0：树莓派编译astra_camera时卡死
+
+**症状**：编译停在 `[astra_camera:build 42%]` 长时间无响应
+
+**原因**：内存耗尽（树莓派4GB内存不足以并行编译C++代码）
+
+**解决**：
+```bash
+# 1. 强制停止编译（Ctrl+C 或新SSH会话执行）
+pkill -9 colcon
+
+# 2. 增加SWAP到4GB
+sudo swapoff -a
+sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+free -h  # 验证SWAP已增加
+
+# 3. 使用单线程编译
+cd ~/lododo_bot
+colcon build --packages-select astra_camera_msgs astra_camera \
+  --symlink-install \
+  --parallel-workers 1 \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release
+```
+
+### 问题0.1：ARM64架构找不到OpenNI2库
+
+**症状**：
+```
+CMake Error: can't find 'openni2_redist/arm64/libOpenNI2.so'
+```
+
+**原因**：astra_camera预编译的OpenNI2只有x86_64版本，缺少ARM64版本
+
+**解决（推荐使用预编译包）**：
+```bash
+# 方案A：下载Orbbec官方预编译包（推荐，1-2分钟完成）
+cd ~/
+wget https://github.com/orbbec/OpenNI_SDK/releases/download/v2.3.0.86-beat6/OpenNI_2.3.0.86_202210111155_4c8f5aa4_beta6_arm64.zip
+sudo apt install -y unzip unrar
+
+# 解压两层压缩包
+unzip OpenNI_2.3.0.86_202210111155_4c8f5aa4_beta6_arm64.zip
+unrar x 066797_OpenNI_2.3.0.86_202210111155_4c8f5aa4_beta6_a311d.rar
+
+# 查找并复制库文件
+mkdir -p ~/lododo_bot/src/ros2_astra_camera/astra_camera/openni2_redist/arm64
+find . -name "libOpenNI2.so"  # 找到实际位置
+cp -r OpenNI-Linux-Arm64-2.3.0/* ~/lododo_bot/src/ros2_astra_camera/astra_camera/openni2_redist/arm64/
+
+# 方案B：从源码编译（见上方"编译完成后，单独编译相机"章节的方案B）
+```
+
+**注意**：优先使用方案A预编译包，除非有特殊需求才从源码编译！
+
+### 问题0.2：编译OpenNI2时报"Can't determine host platform"
+
+**症状**：
+```
+ThirdParty/PSCommon/BuildSystem/CommonDefs.mak:22: *** Can't determine host platform.
+```
+
+**原因**：使用了错误的 OpenNI2 仓库（occipital 版本不支持 ARM64）
+
+**解决**：不要从源码编译，直接使用 Orbbec 官方预编译包
+```bash
+# 删除错误的尝试
+rm -rf ~/OpenNI2
+
+# 使用预编译包（见问题0.1的方案A）
+wget https://github.com/orbbec/OpenNI_SDK/releases/download/v2.3.0.86-beat6/OpenNI_2.3.0.86_202210111155_4c8f5aa4_beta6_arm64.zip
+sudo apt install -y unzip unrar
+unzip OpenNI_2.3.0.86_202210111155_4c8f5aa4_beta6_arm64.zip
+unrar x 066797_OpenNI_2.3.0.86_202210111155_4c8f5aa4_beta6_a311d.rar
+```
 
 ### 问题1：节点互相发现不了
 
