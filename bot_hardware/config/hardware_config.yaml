@@ -73,7 +73,8 @@ imu:
   model: 'yabo_6axis'
   
   # 发布频率 / Publishing Frequency
-  publish_rate: 50  # Hz，与轮式里程计同步 / Hz, sync with wheel odometry
+  # ⚠️ 树莓派优化：降低到15Hz减少CPU负载（EKF只需10Hz）
+  publish_rate: 15  # Hz，降低频率适配树莓派性能
   
   # 坐标系配置 / Coordinate Frame Configuration
   frame_id: 'imu_link'
@@ -192,7 +193,8 @@ kinematics:
 # ============================================================================
 ros2_control:
   # 控制循环频率 / Control Loop Frequency
-  update_rate: 50  # Hz
+  # ⚠️ 树莓派优化：降低到20Hz减少CPU负载
+  update_rate: 20  # Hz
   
   # 硬件接口类型 / Hardware Interface Type
   hardware_interface: 'bot_hardware/OmniHardwareInterface'
@@ -222,7 +224,8 @@ odometry:
   child_frame_id: 'base_link'
   
   # 发布频率 / Publishing Frequency
-  publish_rate: 50  # Hz
+  # ⚠️ 树莓派优化：降低到20Hz减少CPU负载
+  publish_rate: 20  # Hz
   
   # 协方差矩阵（初始保守估计，实测后调整） / Covariance Matrix (conservative initial values, tune after testing)
   pose_covariance:

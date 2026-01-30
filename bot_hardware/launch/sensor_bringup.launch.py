@@ -99,11 +99,11 @@ def generate_launch_description():
             'use_uvc_camera': 'true',  # UVC模式获取RGB
             'uvc_camera_format': 'mjpeg',  # MJPEG格式
             'color_width': '640',
-            'color_height': '480',  # ⚠️ 升级到640x480@30Hz获得更多特征点 / Upgrade to 640x480@30Hz for more features
-            'color_fps': '30',  # 30fps（硬件支持，比15fps更稳定）
+            'color_height': '480',
+            'color_fps': '15',  # ⚠️ 树莓派优化：降低到15fps减少带宽和CPU负载
             'depth_width': '640',
-            'depth_height': '480',  # 480p分辨率与RGB保持同步 / Synchronized resolution with RGB
-            'depth_fps': '30',  # 30fps与RGB保持同步，避免RGB-D错配导致点云抖动 / 30fps synchronized with RGB to prevent point cloud jitter
+            'depth_height': '480',  # 480p分辨率与RGB保持同步
+            'depth_fps': '15',  # ⚠️ 树莓派优化：降低到15fps与RGB同步
             'color_depth_synchronization': 'true',  # ⚠️ 关键！启用RGB-D硬件同步
             'depth_registration': 'false',  # 不启用硬件深度对齐（RTABMap软件对齐）
             'enable_d2c_viewer': 'false',  # 禁用动态TF发布

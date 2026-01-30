@@ -93,6 +93,11 @@ rtabmap_slam:
     # 仅从图末端优化（比全图优化更快更稳定）
     RGBD/OptimizeFromGraphEnd: 'true'  # Reduce optimization overhead / 减少优化开销
     
+    # ⚠️ 树莓派性能优化：降低SLAM检测频率
+    Rtabmap/DetectionRate: '0.5'     # 2秒处理一帧（从默认1Hz降低，减少50% CPU）
+    Vis/MaxFeatures: '200'           # 最大特征点数量（从默认400降低）
+    GFTT/MinDistance: '10'           # 特征点最小距离（增加，减少特征点数量）
+    
     # Increase odometry trust (reduce visual odometry drift corrections)
     # 增加里程计信任度（减少视觉里程计漂移修正）
     RGBD/AngularUpdate: '0.05'       # Min angular change to add keyframe (rad) / 添加关键帧的最小角度变化

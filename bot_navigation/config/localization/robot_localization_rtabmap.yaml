@@ -22,13 +22,13 @@ ekf_filter_node:
     use_sim_time: true
     
     # Update frequency (Hz) / 更新频率
-    # ⚠️ CRITICAL: 降低到20Hz避免EKF过载（"Failed to meet update rate"）
-    # 原因：IMU实际频率只有10Hz，50Hz会导致EKF耗时2秒无法满足更新速率
-    frequency: 20.0
+    # ⚠️ CRITICAL: 树莓派性能优化 - 降低到10Hz避免EKF过载
+    # 树莓派4B运行SLAM+Nav2时CPU占用高，20Hz仍会"Failed to meet update rate"
+    frequency: 10.0
     
     # Sensor timeout / 传感器超时
-    # ⚠️ 增加到0.2s以容忍IMU低频率（10Hz = 100ms间隔）
-    sensor_timeout: 0.2
+    # ⚠️ 增加到0.5s容忍树莓派CPU延迟
+    sensor_timeout: 0.5
     
     # Frames / 坐标系
     map_frame: map
