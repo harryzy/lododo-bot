@@ -59,9 +59,11 @@ rtabmap_slam:
     
     # Synchronization / 同步
     approx_sync: true                # Allow approximate time sync / 允许近似时间同步
+    approx_sync_max_interval: 0.1    # ⚠️ WiFi环境：允许100ms时间戳差异（默认10ms太严格）
     
     # Queue size / 队列大小
-    sync_queue_size: 10              # Reasonable buffer / 合理的缓冲
+    sync_queue_size: 30              # ⚠️ WiFi不稳定环境：增大队列容忍网络延迟
+    topic_queue_size: 30             # 增加话题队列
     
     # TF Transform Waiting / TF变换等待
     wait_for_transform: 0.5          # ⚠️ CRITICAL: Wait up to 0.5s for TF (increased from default 0.2s) / 关键：等待TF最多0.5秒（从默认0.2秒增加）
@@ -72,14 +74,12 @@ rtabmap_slam:
     # Real Hardware Specific / 真机特定配置
     # ========================================================================
     
-    # ⚠️ CRITICAL: Must match EKF's QoS (RELIABLE=1)
-    # 关键：必须匹配EKF的QoS（RELIABLE=1）
-    # Real hardware EKF publishes with RELIABLE, simulation uses BEST_EFFORT
-    # 真机EKF用RELIABLE发布，仿真用BEST_EFFORT
+    # ⚠️ CRITICAL QoS配置：分布式WiFi环境优化
+    # WiFi环境下大图像用BEST_EFFORT更可靠（RELIABLE会因重传超时失败）
     qos: 1                           # General QoS (RELIABLE) 通用QoS
     qos_odom: 1                      # Odometry specific QoS (RELIABLE) 里程计专用QoS
-    qos_image: 1                     # Image QoS (RELIABLE) 图像QoS
-    qos_camera_info: 1               # Camera info QoS (RELIABLE) 相机信息QoS
+    qos_image: 2                     # ⚠️ WiFi环境：BEST_EFFORT避免大图像传输超时
+    qos_camera_info: 2               # Camera info也改为BEST_EFFORT匹配Astra驱动
     
     # ========================================================================
     # 2D SLAM Mode (Critical for stability) / 2D SLAM模式（稳定性关键）

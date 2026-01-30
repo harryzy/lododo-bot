@@ -24,6 +24,7 @@ from ament_index_python.packages import get_package_share_directory
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from sensor_msgs.msg import Imu
 from scipy.spatial.transform import Rotation as R
 
@@ -62,6 +63,14 @@ class IMUFilterNode(Node):
         self.accel_filter = MovingAverageFilter(self.filter_window_size)
         self.gyro_filter = MovingAverageFilter(self.filter_window_size)
         
+        # 创建QoS配置（BEST_EFFORT以匹配robot_localization默认QoS）
+        # Create QoS profile (BEST_EFFORT to match robot_localization default)
+        qos_profile = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,  # 从RELIABLE改为BEST_EFFORT
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10
+        )
+        
         # 创建订阅和发布 / Create subscription and publisher
         self.subscription = self.create_subscription(
             Imu,
@@ -73,7 +82,7 @@ class IMUFilterNode(Node):
         self.publisher = self.create_publisher(
             Imu,
             '/imu/data',
-            10
+            qos_profile  # 使用BEST_EFFORT QoS
         )
         
         self.get_logger().info('IMU Filter Node initialized')
