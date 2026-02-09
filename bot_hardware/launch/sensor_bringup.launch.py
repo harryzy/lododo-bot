@@ -98,16 +98,18 @@ def generate_launch_description():
             'enable_point_cloud': 'false',  # ⚠️ 禁用驱动层点云，减少USB带宽（RTABMap会生成点云）
             'use_uvc_camera': 'true',  # UVC模式获取RGB
             'uvc_camera_format': 'mjpeg',  # MJPEG格式
-            'color_width': '640',
-            'color_height': '480',
-            'color_fps': '15',  # ⚠️ 树莓派优化：降低到15fps减少带宽和CPU负载
-            'depth_width': '640',
-            'depth_height': '480',  # 480p分辨率与RGB保持同步
-            'depth_fps': '15',  # ⚠️ 树莓派优化：降低到15fps与RGB同步
+            'color_width': '160',
+            'color_height': '120',
+            'color_fps': '15',  # 🔧 WiFi带宽优化：降低到5Hz减少67%带宽
+            'depth_width': '160',
+            'depth_height': '120',  # 🔧 降低到QVGA分辨率减少75%带宽
+            'depth_fps': '30',  # 🔧 深度与彩色同步（硬件约束30Hz最小，驱动会调整）
             'color_depth_synchronization': 'true',  # ⚠️ 关键！启用RGB-D硬件同步
             'depth_registration': 'false',  # 不启用硬件深度对齐（RTABMap软件对齐）
             'enable_d2c_viewer': 'false',  # 禁用动态TF发布
             'publish_tf': 'false',  # ⚠️ 关键！禁用相机驱动TF，使用static TF
+            # 'enable_hardware_d2d': 'true',  # ⚠️ 移除：参数不被驱动支持
+            # 'timestamp_mode': '0',  # ⚠️ 移除：参数不被驱动支持
         }.items(),
         condition=IfCondition(enable_camera)
     )

@@ -272,6 +272,10 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
                 'qos_odom': 1,  # RELIABLE匹配EKF
                 'qos_image': 1,
                 'qos_camera_info': 1,
+                'topic_queue_size': 100,  # 单个话题缓冲队列（增大以应对频率不稳定）
+                'sync_queue_size': 100,  # 同步器队列（增大以应对时间戳不对齐）
+                'approx_sync': True,  # 使用近似时间同步
+                'approx_sync_max_interval': 1.0,  # 最大同步间隔1秒
             }
         ],
         remappings=[
@@ -300,6 +304,10 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
                 'qos_odom': 1,  # RELIABLE匹配EKF
                 'qos_image': 1,
                 'qos_camera_info': 1,
+                'topic_queue_size': 100,  # 单个话题缓冲队列（增大以应对频率不稳定）
+                'sync_queue_size': 100,  # 同步器队列（增大以应对时间戳不对齐）
+                'approx_sync': True,  # 使用近似时间同步
+                'approx_sync_max_interval': 1.0,  # 最大同步间隔1秒
             }
         ],
         remappings=[

@@ -19,16 +19,16 @@ ekf_filter_node:
     # Basic Configuration / 基础配置
     # ========================================================================
     
-    use_sim_time: true
+    use_sim_time: false
     
     # Update frequency (Hz) / 更新频率
-    # ⚠️ CRITICAL: 树莓派+不稳定IMU优化 - 降低到5Hz避免EKF在IMU缺失时崩溃
-    # IMU实际频率4.5Hz且不稳定（最大延迟0.6s），必须降低EKF频率
-    frequency: 5.0
+    # ⚠️ 提升到20Hz匹配轮式里程计频率，减少输出延迟
+    # 高频率确保时间戳与传感器同步，解决RTABMap approx_sync问题
+    frequency: 20.0
     
     # Sensor timeout / 传感器超时
-    # ⚠️ 增加到1.0s容忍IMU极端延迟（实测最大0.6s）
-    sensor_timeout: 1.0
+    # ⚠️ 降低到0.2s，高频率下不需要长时间容忍
+    sensor_timeout: 0.2
     
     # Frames / 坐标系
     map_frame: map
@@ -52,16 +52,14 @@ ekf_filter_node:
     # ========================================================================
     
     # Wheel odometry (from omni_controller_node) / 轮式里程计
-    # ⚠️ 临时方案：IMU不稳定时，启用wheel odom的yaw和vyaw
-    # 虽然全向轮旋转有打滑，但好过没有IMU数据
     # ✅ USE: x, y positions (accurate from wheel encoders)
     # ✅ USE: vx, vy velocities (accurate from wheel speeds)
-    # ⚠️ ENABLE: yaw, vyaw (临时启用，因为IMU太不稳定)
+    # ❌ DISABLE: yaw, vyaw (由IMU提供，轮式里程计旋转不准）
     odom0: /wheel/odom
     odom0_config: [true,  true,  false,    # x, y, z position: USE xy from wheels
-                   false, false, true,     # roll, pitch, yaw: ENABLE yaw (IMU不稳定)
+                   false, false, false,    # roll, pitch, yaw: DISABLE yaw (由IMU提供)
                    true,  true,  false,    # vx, vy, vz: USE linear velocities
-                   false, false, true,     # vroll, vpitch, vyaw: ENABLE vyaw (IMU不稳定)
+                   false, false, false,    # vroll, vpitch, vyaw: DISABLE vyaw (由IMU提供)
                    false, false, false]    # ax, ay, az: disable acceleration
     odom0_differential: false
     odom0_relative: false
@@ -81,20 +79,19 @@ ekf_filter_node:
     # odom1_relative: false
     # odom1_queue_size: 10
     
-    # IMU data (from Gazebo IMU plugin) / IMU数据
-    # ❌ 临时禁用IMU - 数据极不稳定（4.5Hz平均，最大延迟0.6s，std dev 0.17s）
-    # 导致EKF输出抖动，RTABMap建图模糊
-    # 修复IMU驱动后恢复此配置，并禁用wheel odom的yaw
-    # imu0: /imu/data
-    # imu0_config: [false, false, false,
-    #               false, false, true,
-    #               false, false, false,
-    #               false, false, true,
-    #               false, false, false]
-    # imu0_differential: false
-    # imu0_relative: false
-    # imu0_queue_size: 10
-    # imu0_remove_gravitational_acceleration: true
+    # IMU data (from YbIMU driver) / IMU数据
+    # ✅ 启用IMU - 提供yaw和vyaw（角速度）
+    # 真实硬件环境下IMU数据稳定，用于姿态估计
+    imu0: /imu/data
+    imu0_config: [false, false, false,
+                  false, false, true,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
     
     # ========================================================================
     # Process Noise Covariance / 过程噪声协方差

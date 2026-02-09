@@ -33,6 +33,7 @@ setup(
     entry_points={
         'console_scripts': [
             'depth_to_laserscan = bot_perception.depth_to_laserscan:main',
+            'camera_timestamp_sync_node = bot_perception.camera_timestamp_sync_node:main',
         ],
     },
 )

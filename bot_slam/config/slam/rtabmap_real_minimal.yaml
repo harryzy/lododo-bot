@@ -39,7 +39,8 @@ rtabmap_slam:
     subscribe_stereo: false          # Not using stereo camera / 不使用双目相机
     
     # Odometry source / 里程计来源
-    subscribe_odom: true             # ⚠️ CRITICAL: Must be in YAML, not just launch file! 必须在YAML中设置，不能仅在launch文件!
+    # ⚠️ 重新启用odom订阅测试
+    subscribe_odom: true             # 启用外部odom
     subscribe_odom_info: false       # Don't need odom info / 不需要里程计信息
     
     # ⚠️ NOTE: subscribe_user_data NOT needed (RTABMap built WITHOUT RTABMAP_SYNC_USER_DATA macro)
@@ -59,14 +60,16 @@ rtabmap_slam:
     
     # Synchronization / 同步
     approx_sync: true                # Allow approximate time sync / 允许近似时间同步
-    approx_sync_max_interval: 0.1    # ⚠️ WiFi环境：允许100ms时间戳差异（默认10ms太严格）
+    # ⚠️ REMOVED: approx_sync_max_interval doesn't exist in ROS2 RTABMap
+    # 改用sync_queue_size缓存足够多的帧来匹配异步时间戳
     
-    # Queue size / 队列大小
-    sync_queue_size: 30              # ⚠️ WiFi不稳定环境：增大队列容忍网络延迟
-    topic_queue_size: 30             # 增加话题队列
+    # Queue size / 队列大小 (相机时间戳异步需要超大队列缓存多帧)
+    sync_queue_size: 500             # ⚠️ 超大队列：500帧 @15Hz = 33秒缓存
+    topic_queue_size: 500            # 话题队列同步增加
+    queue_size: 500                  # ROS订阅者队列大小
     
     # TF Transform Waiting / TF变换等待
-    wait_for_transform: 0.5          # ⚠️ CRITICAL: Wait up to 0.5s for TF (increased from default 0.2s) / 关键：等待TF最多0.5秒（从默认0.2秒增加）
+    wait_for_transform: 1.0          # ⚠️ CRITICAL: 增加到1.0s等待TF（适配不稳定数据）
     tf_delay: 0.05                   # TF publish delay (50ms buffer) / TF发布延迟（50ms缓冲）
     tf_tolerance: 0.1                # TF lookup tolerance (100ms) / TF查询容差（100ms）
     
@@ -75,11 +78,11 @@ rtabmap_slam:
     # ========================================================================
     
     # ⚠️ CRITICAL QoS配置：分布式WiFi环境优化
-    # WiFi环境下大图像用BEST_EFFORT更可靠（RELIABLE会因重传超时失败）
+    # 必须使用RELIABLE确保数据完整性,否则approx_sync无法匹配
     qos: 1                           # General QoS (RELIABLE) 通用QoS
     qos_odom: 1                      # Odometry specific QoS (RELIABLE) 里程计专用QoS
-    qos_image: 2                     # ⚠️ WiFi环境：BEST_EFFORT避免大图像传输超时
-    qos_camera_info: 2               # Camera info也改为BEST_EFFORT匹配Astra驱动
+    qos_image: 1                     # ⚠️ 改回RELIABLE,确保color/depth同步
+    qos_camera_info: 1               # Camera info也用RELIABLE
     
     # ========================================================================
     # 2D SLAM Mode (Critical for stability) / 2D SLAM模式（稳定性关键）

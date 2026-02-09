@@ -201,6 +201,19 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     )
     
     # ==========================================================================
+    # PHASE 1.5: Camera Timestamp Synchronization / 第1.5阶段：相机时间戳同步
+    # ==========================================================================
+    # ⚠️ DISABLED: Astra相机时间戳同步节点（测试发现不稳定）
+    # 改用RTABMap的超大队列(500)直接处理异步时间戳
+    # camera_timestamp_sync = Node(
+    #     package='bot_perception',
+    #     executable='camera_timestamp_sync_node',
+    #     name='camera_timestamp_sync',
+    #     output='screen',
+    #     parameters=[{'use_sim_time': False}],
+    # )
+    
+    # ==========================================================================
     # PHASE 2: RTABMap SLAM / 第二阶段：RTABMap SLAM
     # ==========================================================================
     # RTABMap SLAM节点（SLAM建图模式）
@@ -226,15 +239,15 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
                 'qos_image': 1,  # RELIABLE匹配Astra相机 (BEST_EFFORT在FastDDS下无法接收)
                 'qos_camera_info': 1,  # RELIABLE匹配Astra相机
                 
-                # ⚠️ 时间同步容忍度（WiFi环境+代理优化后已改善）
-                'approx_sync_max_interval': 0.2,  # 允许200ms时间戳差异
+                # ⚠️ 同步配置：全部由YAML控制，不在launch覆盖
+                # sync_queue_size, topic_queue_size等参数在rtabmap_real_minimal.yaml中设置
             }
         ],
         remappings=[
-            ('rgb/image', '/camera/color/image_raw'),
+            ('rgb/image', '/camera/color/image_raw'),  # ⚠️ 直接使用原始话题
             ('rgb/camera_info', '/camera/color/camera_info'),
             ('depth/image', '/camera/depth/image_raw'),
-            ('odom', '/odometry/filtered'),
+            ('odom', '/odometry/filtered'),  # ⚠️ 使用EKF融合后的里程计(IMU+wheel)
             ('grid_map', '/map'),  # ← CRITICAL: Output occupancy grid for Nav2 / 输出占据栅格给Nav2
         ]
     )
@@ -256,7 +269,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             'approx_sync': True,
         }],
         remappings=[
-            ('depth/image', '/camera/depth/image_raw'),
+            ('depth/image', '/camera/depth/image_raw'),  # ⚠️ 使用原始话题
             ('depth/camera_info', '/camera/depth/camera_info'),
             ('cloud', '/camera/cloud'),
         ]
@@ -315,13 +328,14 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # ==========================================================================
     # Event-Driven Launch Sequence / 事件驱动启动序列
     # ==========================================================================
-    # Event 1: EKF启动完成 → 启动RTABMap + 深度处理
+    # Event 1: EKF启动完成 → 直接启动RTABMap + 深度处理
     event_ekf_started = RegisterEventHandler(
         OnProcessStart(
             target_action=ekf_filter,
             on_start=[
                 LogInfo(msg='[Event] EKF filter started!'),
                 LogInfo(msg='[Phase 2] Starting static map→odom TF, RTABMap SLAM and depth processing...'),
+                LogInfo(msg='[NOTE] RTABMap using LARGE queue (500) to handle async camera timestamps'),
                 static_map_to_odom,    # Static TF fallback
                 rtabmap_slam,          # SLAM节点
                 point_cloud_xyz,       # 深度转点云
@@ -329,6 +343,10 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             ]
         )
     )
+    
+    # Event 1.5: 时间戳同步事件（已禁用）
+    # event_timestamp_sync_started = RegisterEventHandler(...)
+
     
     # Event 2: RTABMap SLAM启动完成 → 启动Nav2（如果启用）
     event_rtabmap_slam_started = RegisterEventHandler(
@@ -358,6 +376,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         
         # Event handlers (define subsequent startup sequence)
         event_ekf_started,
+        # event_timestamp_sync_started,  # ⚠️ 已禁用时间戳同步
         event_rtabmap_slam_started,
         
         # RViz独立启动
