@@ -17,7 +17,7 @@ class ROSConnection {
    * 初始化 ROS 连接
    * @param url rosbridge WebSocket URL
    */
-  connect(url: string = 'ws://localhost:9090'): ROSLIB.Ros {
+  connect(url: string = 'ws://localhost:9091'): ROSLIB.Ros {
     if (this.ros) {
       console.warn('[ROSConnection] 已存在连接，先断开')
       this.disconnect()

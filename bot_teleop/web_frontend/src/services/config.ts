@@ -75,7 +75,7 @@ class ConfigService {
         ping_timeout: 10,
       },
       rosbridge: {
-        url: 'ws://localhost:9090',
+        url: 'ws://localhost:9091',
       },
       ui: {
         language: 'zh-CN',

@@ -69,9 +69,10 @@ rtabmap_slam:
     queue_size: 500                  # ROS订阅者队列大小
     
     # TF Transform Waiting / TF变换等待
-    wait_for_transform: 1.0          # ⚠️ CRITICAL: 增加到1.0s等待TF（适配不稳定数据）
-    tf_delay: 0.05                   # TF publish delay (50ms buffer) / TF发布延迟（50ms缓冲）
-    tf_tolerance: 0.1                # TF lookup tolerance (100ms) / TF查询容差（100ms）
+    # ⚠️ 分布式部署专用配置：容忍跨网络TF延迟
+    wait_for_transform: 2.0          # ⚠️ 增加到2.0s等待TF（分布式网络延迟）
+    tf_delay: 0.2                    # TF publish delay (200ms buffer) / TF发布延迟（200ms缓冲，适配网络抖动）
+    tf_tolerance: 0.5                # TF lookup tolerance (500ms) / TF查询容差（500ms，容忍跨机器延迟）
     
     # ========================================================================
     # Real Hardware Specific / 真机特定配置
@@ -101,15 +102,25 @@ rtabmap_slam:
     Vis/MaxFeatures: '200'           # 最大特征点数量（从默认400降低）
     GFTT/MinDistance: '10'           # 特征点最小距离（增加，减少特征点数量）
     
+    # ========================================================================
+    # 方案A: 禁用视觉角度估计，完全信任IMU角度 (2026-02-11)
+    # Solution A: Disable visual angle estimation, fully trust IMU angle
+    # ========================================================================
+    # Why: 视觉里程计(160×120+200特征)在低分辨率下角度估计不可靠，
+    #      与IMU稳定角度产生18°冲突导致地图模糊
+    #      Visual odometry unreliable at low resolution, conflicts with stable IMU
+    
+    Odom/Strategy: '0'               # ⚠️ 新增：禁用视觉里程计角度估计 (0=Frame-to-Map, no visual odom)
+    
     # Increase odometry trust (reduce visual odometry drift corrections)
     # 增加里程计信任度（减少视觉里程计漂移修正）
-    RGBD/AngularUpdate: '0.05'       # Min angular change to add keyframe (rad) / 添加关键帧的最小角度变化
+    RGBD/AngularUpdate: '10.0'       # ⚠️ 改为10.0：大阈值=禁用角度更新 (原0.05)
     RGBD/LinearUpdate: '0.05'        # Min linear change to add keyframe (m) / 添加关键帧的最小线性变化
     
     # ⚠️ CRITICAL: 增加里程计协方差容忍度（修复 "Odometry is reset" 警告）
     # EKF输出协方差~0.0045，需要提高RTABMap的容忍度
     odom_tf_linear_variance: 0.01    # Odometry linear variance threshold (default ~0.001) / 里程计线性方差阈值
-    odom_tf_angular_variance: 0.01   # Odometry angular variance threshold / 里程计角度方差阈值
+    odom_tf_angular_variance: 0.001  # ⚠️ 改为0.001：完全信任odom角度（IMU来源，稳定±0.001°）(原0.01)
     RGBD/NewMapOdomChangeDistance: '0'  # Disable new map on odom change / 禁用里程计变化时创建新地图
     RGBD/ForceOdom3DoF: 'true'       # Force 2D odometry / 强制2D里程计
     Mem/UseOdomFeatures: 'false'     # Don't use odom features / 不使用里程计特征

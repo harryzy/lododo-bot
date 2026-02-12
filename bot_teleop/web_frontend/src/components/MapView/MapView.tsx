@@ -39,7 +39,7 @@ function MapView() {
     console.log('[MapView] 初始化 ROS 连接...')
     
     // 连接 rosbridge
-    rosConnection.connect('ws://localhost:9090')
+    rosConnection.connect('ws://localhost:9091')
     
     // 监听连接状态
     const handleConnectionChange = (connected: boolean) => {
@@ -109,7 +109,7 @@ function MapView() {
     console.log('[MapView] 初始化 ROS 连接...')
     
     // 连接 rosbridge
-    rosConnection.connect('ws://localhost:9090')
+    rosConnection.connect('ws://localhost:9091')
     
     // 监听连接状态
     const handleConnectionChange = (connected: boolean) => {

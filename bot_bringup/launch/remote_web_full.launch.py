@@ -9,13 +9,11 @@ remote_web_full.launch.py - PC端远程完整Web控制环境启动文件
   - 包含Web接口、任务调度、命令适配器
   
 组件（PC端）/ Components (PC Side):
-  1. EKF传感器融合 - 融合轮式里程计和IMU
-  2. RTABMap (SLAM/Localization) - 地图构建/定位
-  3. Nav2导航栈 - 路径规划和避障
-  4. MissionPlanner - 任务调度和管理
-  5. CommandAdapter - 统一命令接口
-  6. rosbridge_server - Web前端连接桥
-  7. RViz（可选）- 可视化
+  1. EKF + RTABMap + Nav2 - 通过remote_slam.launch.py或remote_navigation.launch.py启动
+  2. MissionPlanner - 任务调度和管理
+  3. CommandAdapter - 统一命令接口
+  4. rosbridge_server - Web前端连接桥
+  5. RViz（可选）- 可视化
   
 架构 / Architecture:
   [Web Frontend / Voice / CLI]
@@ -26,9 +24,8 @@ remote_web_full.launch.py - PC端远程完整Web控制环境启动文件
            ↓
   MissionPlanner (Task Scheduling)
            ↓
-  Nav2 + RTABMap (Navigation + Mapping)
-           ↓
-  EKF Fusion (Sensor Fusion)
+  remote_slam.launch.py / remote_navigation.launch.py
+  (包含: Nav2 + RTABMap + EKF)
            ↓
   [Network] ← Hardware Layer (Raspberry Pi)
 
@@ -77,9 +74,10 @@ Web前端访问 / Web Frontend Access:
   - rosbridge_server监听所有网络接口（0.0.0.0:9090）
   - 确保防火墙允许9090端口（WebSocket）和8000端口（Web服务器）
   - Web服务器需要手动启动（不在launch文件中）
+  - 本launch文件复用remote_slam.launch.py和remote_navigation.launch.py，避免重复配置
 
 Author: LeKiwi Bot Development Team
-Date: 2026-01-29
+Date: 2026-02-12 (Refactored)
 """
 
 import os
@@ -92,7 +90,6 @@ from launch.actions import (
     LogInfo,
     OpaqueFunction,
 )
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -119,22 +116,20 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # Package Directories / 包目录
     # ==========================================================================
     pkg_bot_bringup = get_package_share_directory('bot_bringup')
-    pkg_bot_navigation = get_package_share_directory('bot_navigation')
-    pkg_bot_cmd_interface = get_package_share_directory('bot_cmd_interface')
     
     # ==========================================================================
     # Base Navigation System / 基础导航系统
     # ==========================================================================
     
-    # 根据模式选择合适的launch文件
+    # 根据模式选择合适的launch文件（这些文件已包含EKF、RTABMap、Nav2）
     if slam_str.lower() == 'true':
-        # SLAM模式：使用remote_slam.launch.py
+        # SLAM模式：使用remote_slam.launch.py（已测试通过）
         base_system = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(pkg_bot_bringup, 'launch', 'remote_slam.launch.py')
             ),
             launch_arguments={
-                'enable_nav': 'true',    # Web控制需要Nav2
+                'enable_nav': 'true',    # Web控制需要Nav2导航功能
                 'use_rviz': use_rviz,
                 'rviz_config': rviz_config,
                 'nav2_params': nav2_params,
@@ -142,7 +137,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             }.items()
         )
     else:
-        # 定位模式：使用remote_navigation.launch.py
+        # 定位模式：使用remote_navigation.launch.py（已测试通过）
+        # 注意：remote_navigation.launch.py已经默认启用Nav2，不需要额外参数
         base_system = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(pkg_bot_bringup, 'launch', 'remote_navigation.launch.py')
@@ -159,6 +155,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # ==========================================================================
     # Mission Planner / 任务调度器
     # ==========================================================================
+    # 注意：MissionPlanner不在remote_slam/remote_navigation中，需要在这里启动
     
     mission_planner = Node(
         package='bot_navigation',
@@ -170,15 +167,16 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             'update_rate': 10.0,
             'task_timeout': 600.0,
             'enable_auto_recovery': True,
-            'persistence_dir': '~/lododo_bot/mission_data',
+            'persistence_dir': os.path.expanduser('~/lododo_bot/mission_data'),
         }],
-        arguments=['--ros-args', '--log-level', 'info'],
+        arguments=['--ros-args', '--log-level', log_level],
         respawn=False,
     )
     
     # ==========================================================================
     # Command Adapter / 统一命令接口
     # ==========================================================================
+    # 注意：使用bot_cmd_interface包的独立launch文件
     
     cmd_adapter_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -190,7 +188,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         ),
         launch_arguments={
             'use_sim_time': 'false',
-            'log_level': 'info',
+            'log_level': log_level,
             'use_mock': 'false',
             'service_timeout': '10.0',
         }.items()
@@ -199,6 +197,7 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
     # ==========================================================================
     # rosbridge_server / Web前端连接桥
     # ==========================================================================
+    # 注意：监听所有网络接口，确保Web前端可以连接
     
     rosbridge_server = Node(
         package='rosbridge_server',
@@ -212,7 +211,9 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             'authenticate': False,  # 生产环境建议启用认证
             'retry_startup_delay': 5.0,
         }],
-        arguments=['--ros-args', '--log-level', 'info'],
+        arguments=['--ros-args', '--log-level', log_level],
+        respawn=True,  # rosbridge可能因网络问题崩溃，启用自动重启
+        respawn_delay=5.0,
     )
     
     # ==========================================================================
@@ -224,44 +225,33 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         LogInfo(msg='Remote Web Full Control Environment (PC Side)'),
         LogInfo(msg='远程完整Web控制环境（PC端）'),
         LogInfo(msg='='*70),
-        LogInfo(msg=f'Mode / 模式: {"SLAM (Building Map)" if slam_str == "true" else "Localization (Navigation)"}'),
+        LogInfo(msg=f'Mode / 模式: {"SLAM (建图)" if slam_str.lower() == "true" else "Localization (定位)"}'),
         LogInfo(msg=f'Map / 地图: {map_name_str if map_name_str else "N/A (SLAM mode)"}'),
         LogInfo(msg=f'rosbridge Port / 端口: {rosbridge_port_str}'),
         LogInfo(msg='='*70),
-        LogInfo(msg='Components (PC Side) / 组件（PC端）:'),
-        LogInfo(msg='  [1] EKF Fusion (Sensor Fusion)'),
-        LogInfo(msg='  [2] RTABMap (SLAM/Localization)'),
-        LogInfo(msg='  [3] Nav2 Navigation'),
-        LogInfo(msg='  [4] MissionPlanner (Task Scheduler)'),
-        LogInfo(msg='  [5] CommandAdapter (Command Interface)'),
-        LogInfo(msg='  [6] rosbridge_server (Web Bridge)'),
+        LogInfo(msg='Launch Composition / 启动组合:'),
+        LogInfo(msg=f'  [Base] {"remote_slam.launch.py" if slam_str.lower() == "true" else "remote_navigation.launch.py"}'),
+        LogInfo(msg='         (包含: EKF + RTABMap + Nav2)'),
+        LogInfo(msg='  [+] MissionPlanner (任务调度)'),
+        LogInfo(msg='  [+] CommandAdapter (命令接口)'),
+        LogInfo(msg='  [+] rosbridge_server (Web桥接)'),
         LogInfo(msg='='*70),
         LogInfo(msg='Prerequisites / 前置条件:'),
-        LogInfo(msg='  1. Hardware layer must be running on Raspberry Pi'),
-        LogInfo(msg='     硬件层必须在树莓派上运行'),
-        LogInfo(msg='  2. ROS_DOMAIN_ID must match between PC and Pi'),
-        LogInfo(msg='     ROS_DOMAIN_ID在PC和树莓派上必须匹配'),
-        LogInfo(msg='  3. Network configured (DDS, firewall, socket buffer)'),
-        LogInfo(msg='     网络已配置（DDS、防火墙、socket缓冲区）'),
+        LogInfo(msg='  1. Hardware layer running on Raspberry Pi'),
+        LogInfo(msg='     硬件层在树莓派上运行'),
+        LogInfo(msg='  2. ROS_DOMAIN_ID matches between PC and Pi'),
+        LogInfo(msg='     ROS_DOMAIN_ID在PC和树莓派上匹配'),
         LogInfo(msg='='*70),
-        LogInfo(msg='Web Frontend / Web前端:'),
-        LogInfo(msg='  1. Start web server manually:'),
-        LogInfo(msg='     cd ~/lododo_bot/src/bot_teleop && bash scripts/start_web_server.sh'),
-        LogInfo(msg='  2. Access in browser:'),
-        LogInfo(msg='     http://<pc_ip>:8000'),
-        LogInfo(msg='  3. WebSocket endpoint:'),
-        LogInfo(msg=f'     ws://<pc_ip>:{rosbridge_port_str}'),
-        LogInfo(msg='='*70),
-        LogInfo(msg='Command Interface Topics / 命令接口话题:'),
-        LogInfo(msg='  Request:  /cmd/request'),
-        LogInfo(msg='  Response: /cmd/response'),
+        LogInfo(msg='Web Access / Web访问:'),
+        LogInfo(msg=f'  WebSocket: ws://<pc_ip>:{rosbridge_port_str}'),
+        LogInfo(msg='  Web UI: http://<pc_ip>:8000 (需要手动启动web服务器)'),
         LogInfo(msg='='*70),
         
-        # 启动组件
-        base_system,           # 基础导航系统（SLAM或定位）
-        mission_planner,       # 任务调度
-        cmd_adapter_launch,    # 命令接口
-        rosbridge_server,      # Web桥接
+        # 启动组件（按依赖顺序）
+        base_system,           # 1. 基础导航系统（EKF + RTABMap + Nav2）
+        mission_planner,       # 2. 任务调度器（依赖Nav2）
+        cmd_adapter_launch,    # 3. 命令接口（依赖MissionPlanner）
+        rosbridge_server,      # 4. Web桥接（独立组件）
     ]
 
 
@@ -288,7 +278,7 @@ def generate_launch_description():
     declare_map_name = DeclareLaunchArgument(
         'map_name',
         default_value='',
-        description='Map name for localization mode / 定位模式使用的地图名称'
+        description='Map name for localization mode (required if slam:=false) / 定位模式使用的地图名称（slam:=false时必需）'
     )
     
     declare_use_rviz = DeclareLaunchArgument(
@@ -317,7 +307,7 @@ def generate_launch_description():
     
     declare_rosbridge_port = DeclareLaunchArgument(
         'rosbridge_port',
-        default_value='9090',
+        default_value='9091',
         description='rosbridge_server WebSocket port / rosbridge服务器WebSocket端口'
     )
     
