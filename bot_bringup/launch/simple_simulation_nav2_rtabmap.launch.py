@@ -319,8 +319,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         parameters=[rtabmap_config],
         remappings=[
             # RGB-D camera topics (matching simplified model output)
-            ('rgb/image', '/camera/image_raw'),
-            ('rgb/camera_info', '/camera/camera_info'),
+            ('rgb/image', '/camera/color/image_raw'),
+            ('rgb/camera_info', '/camera/color/camera_info'),
             ('depth/image', '/camera/depth/image_raw'),
             
             # Odometry input: Use raw wheel odom (unfused, before EKF)
@@ -348,8 +348,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         output='screen',
         parameters=[rtabmap_config],
         remappings=[
-            ('rgb/image', '/camera/image_raw'),
-            ('rgb/camera_info', '/camera/camera_info'),
+            ('rgb/image', '/camera/color/image_raw'),
+            ('rgb/camera_info', '/camera/color/camera_info'),
             ('depth/image', '/camera/depth/image_raw'),
             ('odom', '/rtabmap/odom'),  # Use visual odom / 使用视觉里程计
         ],

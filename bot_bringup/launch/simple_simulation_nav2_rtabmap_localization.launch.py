@@ -330,8 +330,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
             }
         ],
         remappings=[
-            ('rgb/image', '/camera/image_raw'),
-            ('rgb/camera_info', '/camera/camera_info'),
+            ('rgb/image', '/camera/color/image_raw'),
+            ('rgb/camera_info', '/camera/color/camera_info'),
             ('depth/image', '/camera/depth/image_raw'),
             ('odom', '/odometry/filtered'),
             ('grid_map', '/map'),
@@ -346,8 +346,8 @@ def launch_setup(context: LaunchContext, *args, **kwargs):
         output='screen',
         parameters=[rtabmap_config],
         remappings=[
-            ('rgb/image', '/camera/image_raw'),
-            ('rgb/camera_info', '/camera/camera_info'),
+            ('rgb/image', '/camera/color/image_raw'),
+            ('rgb/camera_info', '/camera/color/camera_info'),
             ('depth/image', '/camera/depth/image_raw'),
             ('odom', '/rtabmap/odom'),
         ],

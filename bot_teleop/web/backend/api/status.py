@@ -55,9 +55,9 @@ async def check_ros_nodes() -> List[Dict[str, Any]]:
     # Key node list (use actual node names)
     critical_nodes = [
         "/mission_planner",
-        "/rtabmap",
+        "/rtabmap_slam",           # Fixed: actual node name
         "/robot_state_publisher",
-        "/controller_manager",
+        "/controller_server",      # Fixed: Nav2 controller server
     ]
     
     try:
@@ -114,9 +114,9 @@ async def check_ros_topics() -> List[Dict[str, Any]]:
     """
     # 关键话题列表（使用实际的话题名称）
     critical_topics = [
-        "/localization_pose",
+        "/rtabmap/localization_pose",      # Fixed: RTABMap's localization pose
         "/cmd_vel",
-        "/camera/image_raw",
+        "/camera/color/image_raw",         # Fixed: actual color image topic
         "/camera/depth/image_raw",
         "/imu/data",
     ]
